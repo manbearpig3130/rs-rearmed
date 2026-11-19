@@ -36,6 +36,18 @@ static NSString *const kInternalMSL =
      "  float3 e = t.sample(s, in.uv + float2(u.px.x, 0)).rgb, w = t.sample(s, in.uv - float2(u.px.x, 0)).rgb;\n"
      "  float3 lo = min(c, min(min(n, so), min(e, w))), hi = max(c, max(max(n, so), max(e, w)));\n"
      "  return float4(clamp(c + u.k * (4.0 * c - n - so - e - w), lo, hi), 1.0);\n"
+     "}\n"
+     // Supersampling (RS_METAL_SCALE above the screen's pixels): the frame scaled down to the output before the
+     // present, each pixel the mean of its footprint in linear light, from four bilinear samples at the middles of the
+     // footprint's quarters (at 2:1 exactly its four pixels). Placed by the pixel's position, so the rows stay the
+     // frame's, as MetalFX's output keeps them.
+     "fragment float4 rsm_downscale_fs(rsm_blit_v in [[stage_in]], texture2d<float> t [[texture(0)]],\n"
+     "                                 sampler s [[sampler(0)]], constant float2 &px [[buffer(0)]]) {\n"
+     "  float2 uv = in.pos.xy * px, q = px * 0.25;\n"
+     "  float3 c = pow(t.sample(s, uv - q, level(0)).rgb, 2.2) + pow(t.sample(s, uv + q, level(0)).rgb, 2.2)\n"
+     "           + pow(t.sample(s, uv + float2(q.x, -q.y), level(0)).rgb, 2.2)\n"
+     "           + pow(t.sample(s, uv + float2(-q.x, q.y), level(0)).rgb, 2.2);\n"
+     "  return float4(pow(c * 0.25, 1.0 / 2.2), 1.0);\n"
      "}\n";
 
 static id<MTLTexture> rsm_dummy(RSMContext *ctx, bool cube) {
@@ -1491,4 +1503,33 @@ void rsm_present_draw(RSMContext *ctx, id<MTLTexture> target, id<MTLTexture> src
     }
     [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [e endEncoding];
+}
+
+bool rsm_downscale_draw(RSMContext *ctx, id<MTLTexture> dst, id<MTLTexture> src, id<MTLSamplerState> smp) {
+    if (!ctx->down_pipeline || ctx->down_pipeline.label.integerValue != (NSInteger)dst.pixelFormat) {
+        MTLRenderPipelineDescriptor *d = [MTLRenderPipelineDescriptor new];
+        d.vertexFunction = [ctx->internal_lib newFunctionWithName:@"rsm_blit_vs"];
+        d.fragmentFunction = [ctx->internal_lib newFunctionWithName:@"rsm_downscale_fs"];
+        d.colorAttachments[0].pixelFormat = dst.pixelFormat;
+        d.label = [NSString stringWithFormat:@"%lu", (unsigned long)dst.pixelFormat];
+        NSError *e = nil;
+        ctx->down_pipeline = [ctx->dev newRenderPipelineStateWithDescriptor:d error:&e];
+        if (!ctx->down_pipeline) {
+            rsm_log("downscale pipeline: %s", e.localizedDescription.UTF8String);
+            return false;
+        }
+    }
+    MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+    rp.colorAttachments[0].texture = dst;
+    rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLRenderCommandEncoder> e = [rsm_cmd(ctx) renderCommandEncoderWithDescriptor:rp];
+    [e setRenderPipelineState:ctx->down_pipeline];
+    [e setFragmentTexture:src atIndex:0];
+    [e setFragmentSamplerState:smp atIndex:0];
+    float px[2] = {1.0f / (float)dst.width, 1.0f / (float)dst.height};  // one of dst's pixels in uv
+    [e setFragmentBytes:px length:sizeof px atIndex:0];
+    [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [e endEncoding];
+    return true;
 }

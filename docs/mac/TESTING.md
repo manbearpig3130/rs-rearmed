@@ -550,7 +550,7 @@ switches…, under Advanced. All off unless set.
 | `RS_METAL_PASS_TIMES=FILE` | Metal: the GPU's time in each render pass of a frame, by its place in the frame, from every eighth frame; with the present, and "between" for the upscaler. The file is rewritten about every 8 s. Read the shares: at a fixed frame rate the GPU's clock follows the load |
 | `RS_METAL_MSAA=1\|2\|4\|8`, `RS_METAL_ANISO=1-16` | MSAA on the game's screen-sized targets with depth (1 off), the least anisotropy of mipmapped textures (1: the game's) |
 | `RS_METAL_UPSCALE=0`, `RS_METAL_COLORS=vivid` | no MetalFX upscaling on a Retina screen (the log has `upscaling WxH to WxH with MetalFX` when it runs); the layer left untagged (not sRGB) |
-| `RS_METAL_SCALE=N` | the game at N% of its size (50-100), scaled up: the log has `Metal drawable WxH (points at N%)` and `render scale` with the engine's size |
+| `RS_METAL_SCALE=N` | the game at N% of its size (50-200), scaled up or down: the log has `Metal drawable WxH (points at N%)` and `render scale` with the engine's size, and above the screen's pixels `downscaling WxH to WxH at present` |
 | `RS_MODS_…=0`, `RS_MODS_BUDGET_MS=N` | one of the built-in fixes off, and the DLC mounting's time per frame (0: one archive a frame): [INSTALL.md](INSTALL.md#settings-and-switches) |
 | `--renderer-check` | the renderer a start would use, without starting the game |
 | `RS_RENDERER_TEST_NO_METAL=1` | act as if Metal could not start |

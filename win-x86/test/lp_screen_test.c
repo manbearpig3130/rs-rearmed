@@ -111,6 +111,16 @@ int main(void) {
   CHECK(lp_output_size(640, 360, 1, 0.5, 1280, 720, &rw, &rh) && rw == 1280 && rh == 720, "0.5 at 1x: %dx%d", rw, rh);
   CHECK(lp_output_size(1280, 720, 2, 1, 0, 0, &rw, &rh) && rw == 2560, "no screen: no cap");
   CHECK(!lp_output_size(0, 0, 2, 1, 1470, 956, &rw, &rh), "degenerate sizes: nothing");
+  // more pixels than the screen has (supersampling): scaled down to them
+  CHECK(lp_output_size(2560, 1440, 1, 2, 1280, 720, &rw, &rh) && rw == 1280 && rh == 720, "2 at 1x: %dx%d", rw, rh);
+  CHECK(lp_output_size(1920, 1080, 1, 1.5, 1280, 720, &rw, &rh) && rw == 1280 && rh == 720, "1.5 at 1x: %dx%d", rw,
+        rh);
+  CHECK(lp_output_size(5880, 3824, 2, 4, 1470, 956, &rw, &rh) && rw == 2940 && rh == 1912,
+        "RS_METAL_RETINA=1 at 2: %dx%d", rw, rh);
+  CHECK(lp_output_size(2205, 1434, 2, 1.5, 1470, 956, &rw, &rh) && rw == 2940 && rh == 1912,
+        "1.5 at 2x: still fewer than the screen's, up: %dx%d", rw, rh);
+  CHECK(lp_output_size(1920, 1080, 1, 1, 1280, 720, &rw, &rh) && rw == 1280 && rh == 720,
+        "a back buffer larger than a 1x screen: down to it, %dx%d", rw, rh);
 
   printf("%d passed, %d failed\n", passed, failed);
   return failed != 0;

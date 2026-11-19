@@ -174,8 +174,8 @@ static option g_opts[] = {
     {"rsLowLatency", "RS_METAL_DRAWABLES", 0, METAL, 2, 0, {"", "2"}, {"$[31679]", "$[31678]"}, NULL, NULL, 0},
     {"rsMetalFXUpscaling", "RS_METAL_UPSCALE", 0, METAL, 2, 1, OFF_ON, NULL, NULL, 0},
     {"rsFullRetina", "RS_METAL_RETINA", 0, METAL, 2, 0, OFF_ON, NULL, NULL, 0},
-    {"rsRenderScale", "RS_METAL_SCALE", 1, METAL, 4, 3, {"50", "75", "90", ""}, {"50%", "75%", "90%", "100%"}, NULL,
-     NULL, 0},
+    {"rsRenderScale", "RS_METAL_SCALE", 1, METAL, 6, 3, {"50", "75", "90", "", "150", "200"},
+     {"50%", "75%", "90%", "100%", "150%", "200%"}, NULL, NULL, 0},
     {"rsSharpening", "RS_METAL_SHARPEN", 1, METAL, 4, 0, {"", "30", "60", "100"}, {"OFF", "LOW", "MEDIUM", "HIGH"},
      NULL, NULL, 0},
     {"rsAntiAliasing", "RS_METAL_MSAA", 1, METAL, 4, 2, {"1", "2", "4", "8"}, {"OFF", "2X", "4X", "8X"}, NULL, NULL,
@@ -375,14 +375,15 @@ static int choice(const option *o) { return o->now >= 0 ? o->now : o->dflt; }
 // Why an option can't be changed now, as its row says it (NULL: it can), by the choices the game starts with next:
 // an option of one renderer while the other is chosen; Low Latency with a fixed frame rate, whose presents are not
 // held for the display and have the two drawables already; MetalFX upscaling with nothing upscaled (Full Retina at a
-// render scale of 100%); a switch the session sets (session_set).
+// render scale of 100% or more: the frame has the screen's pixels, or more, scaled down); a switch the session sets
+// (session_set).
 static const char SESSION[] = "SET FOR THIS SESSION";
 static const char *locked(const option *o) {
   const option *renderer = opt_of_id("rsRenderer"), *fps = opt_of_id("rsFrameRate");
   const option *retina = opt_of_id("rsFullRetina"), *scale = opt_of_id("rsRenderScale");
   if (o->only && o->only - 1 != choice(renderer)) return o->only == METAL ? "METAL ONLY" : "OPENGL ONLY";
   if (!strcmp(o->id, "rsLowLatency") && choice(fps) != fps->dflt) return "DISPLAY RATE ONLY";
-  if (!strcmp(o->id, "rsMetalFXUpscaling") && choice(retina) == 1 && choice(scale) == scale->dflt)
+  if (!strcmp(o->id, "rsMetalFXUpscaling") && choice(retina) == 1 && choice(scale) >= scale->dflt)
     return "NOT UPSCALING";
   return o->session ? SESSION : NULL;
 }

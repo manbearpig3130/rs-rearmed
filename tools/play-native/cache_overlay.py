@@ -725,8 +725,8 @@ MENU_OPTIONS = [
      "Draws every pixel of a Retina screen{C} for the sharpest picture. Enabling this takes about four times the "
      "graphics work. Takes effect the next time the game starts.", 16),
     ("rsRenderScale", "38919", "RENDER SCALE", "38920",
-     "Draws the game at a lower resolution and scales it up to the screen{C} for less graphics work and a softer "
-     "picture. Takes effect the next time the game starts.", 17),
+     "Below 100%{C} fewer pixels scaled up to the screen{C} for less graphics work and a softer picture. Above{C} "
+     "more pixels scaled down{C} for a cleaner picture. Takes effect the next time the game starts.", 17),
     ("rsSharpening", "38925", "SHARPENING", "38926",
      "Sharpens the picture on the screen{C} after any upscaling. Takes effect at once.", 18),
     ("rsAntiAliasing", "38905", "ANTI-ALIASING", "38906",

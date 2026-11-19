@@ -78,10 +78,12 @@ The shell follows the display's refresh rate (`RS_FPS` fixes a rate; its rule an
 `shims/platform/include/rsp_fps.h`, which Learn & Play uses too). On a Retina screen the game renders in
 points and each frame is scaled up to the screen's pixels with MetalFX (`rs_gfx_set_output_size`,
 [METAL.md](METAL.md#metal-core-shimsopenglsrcmetal)); `RS_METAL_RETINA=1` renders at backing-pixel size instead.
-`RS_METAL_SCALE=N` renders at N% of either, 50-100, scaled up the same way (`shims/platform/include/rsp_scale.h`, which
-Learn & Play uses too): the drawable and the engine's resolution take that size, and mouse positions are converted at
-that scale. Below 1 a division can't give a window's points back from the engine's pixels, so `rsp_screen_width` and
-`rsp_screen_height` give the points last set (`rsp_engine.c`); otherwise a window would be adopted again every 0.1 s.
+`RS_METAL_SCALE=N` renders at N% of either, 50-200 (`shims/platform/include/rsp_scale.h`, which Learn & Play uses
+too): below the screen's pixels each frame is scaled up the same way, above them down (supersampling,
+[METAL.md](METAL.md#metal-core-shimsopenglsrcmetal)). The drawable and the engine's resolution take that size, and
+mouse positions are converted at that scale. Below 1 a division can't give a window's points back from the engine's
+pixels, so `rsp_screen_width` and `rsp_screen_height` give the points last set (`rsp_engine.c`); otherwise a window
+would be adopted again every 0.1 s.
 A window takes any shape, where the original kept it at 16:9 (`RS_WINDOW_ANY_SHAPE=0` does too): the game sets
 its cameras from its resolution and lays out its menus to the width, so it needs nothing more
 ([INSTALL.md](INSTALL.md#window-modes)). The screen saver and display sleep stay off while the game is open, in

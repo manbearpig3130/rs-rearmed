@@ -355,6 +355,10 @@ static void test_render_scale(void) {
         "scale 0.75: engine %dx%d", s->width, s->height);
   s->width = 960;
   CHECK(rsp_screen_width() == 1280, "scale 0.75: an engine width not set -> %d", rsp_screen_width());
+  rsp_set_render_scale(1.5);  // above 1 (supersampling): the points come back too
+  rsp_set_display_mode(0, 1281, 721);
+  CHECK(s->width == 1922 && s->height == 1082 && rsp_screen_width() == 1281 && rsp_screen_height() == 721,
+        "scale 1.5: engine %dx%d, points %dx%d", s->width, s->height, rsp_screen_width(), rsp_screen_height());
   rsp_set_render_scale(0);
   CHECK(rsp_render_scale() == 1.0, "scale 0 -> 1");
   rsp_set_render_scale(-2);
@@ -721,7 +725,8 @@ static void test_renderer_startup(void) {
 static void test_scale(void) {
   CHECK(rsp_scale_value(NULL) == 1.0 && rsp_scale_value("") == 1.0 && rsp_scale_value("100") == 1.0, "unset or 100");
   CHECK(rsp_scale_value("75") == 0.75 && rsp_scale_value("50") == 0.5, "a percentage");
-  CHECK(rsp_scale_value("49") == 1.0 && rsp_scale_value("101") == 1.0 && rsp_scale_value("0") == 1.0, "out of range");
+  CHECK(rsp_scale_value("150") == 1.5 && rsp_scale_value("200") == 2.0, "above 100: supersampling");
+  CHECK(rsp_scale_value("49") == 1.0 && rsp_scale_value("201") == 1.0 && rsp_scale_value("0") == 1.0, "out of range");
   CHECK(rsp_scale_value("75%") == 1.0 && rsp_scale_value("0.75") == 1.0 && rsp_scale_value("half") == 1.0,
         "a whole number only");
 }

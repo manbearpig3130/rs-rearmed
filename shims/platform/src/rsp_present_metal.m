@@ -193,13 +193,14 @@ static void view_size(NSView *view, int *w, int *h, CGFloat *scale) {
 
 // A drawable smaller than the view's backing pixels (the game in points on a Retina screen, or RS_METAL_SCALE below
 // 100): libRSOpenGL scales each frame up to them (MetalFX), so a Retina screen gets a sharp picture for a fraction
-// of the native cost. The backing pixels already (RS_METAL_RETINA=1, or a 1x screen, at 100%): nothing.
+// of the native cost. Larger (RS_METAL_SCALE above 100: supersampling): it scales each frame down to them. The
+// backing pixels already (RS_METAL_RETINA=1, or a 1x screen, at 100%): nothing.
 static void set_output(rsp_mtl *m, NSView *view) {
   if (!gfx.set_output) return;
   NSSize s = [view convertRectToBacking:[view bounds]].size;
   int ow = (int)(s.width + 0.5), oh = (int)(s.height + 0.5);
   gfx.lock(m->ctx);
-  if (ow > m->w && oh > m->h) gfx.set_output(m->ctx, ow, oh);
+  if ((ow > m->w && oh > m->h) || (ow < m->w && oh < m->h)) gfx.set_output(m->ctx, ow, oh);
   else gfx.set_output(m->ctx, 0, 0);
   gfx.unlock(m->ctx);
 }

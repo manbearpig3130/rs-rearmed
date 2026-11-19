@@ -570,10 +570,14 @@ void rsmtl_gfx_make_current(rs_gfx_context *c) { rsm_tls = (__bridge RSMContext 
 
 rs_gfx_context *rsmtl_gfx_current(void) { return (__bridge rs_gfx_context *)rsm_tls; }
 
-// The drawable's size: the output size when it is larger than the framebuffer, else the framebuffer's.
+// The drawable's size: the output size when it is larger than the framebuffer (upscaled) or smaller (downscaled:
+// supersampling), else the framebuffer's.
 static bool rsm_upscaling(RSMContext *ctx) { return ctx->out_w > ctx->w && ctx->out_h > ctx->h; }
+static bool rsm_downscaling(RSMContext *ctx) {
+    return ctx->out_w > 0 && ctx->out_h > 0 && ctx->out_w < ctx->w && ctx->out_h < ctx->h;
+}
 static CGSize rsm_out_size(RSMContext *ctx) {
-    return rsm_upscaling(ctx) ? CGSizeMake(ctx->out_w, ctx->out_h) : CGSizeMake(ctx->w, ctx->h);
+    return rsm_upscaling(ctx) || rsm_downscaling(ctx) ? CGSizeMake(ctx->out_w, ctx->out_h) : CGSizeMake(ctx->w, ctx->h);
 }
 
 void rsmtl_gfx_set_output_size(rs_gfx_context *c, int w, int h) {
@@ -590,16 +594,21 @@ void rsmtl_gfx_set_output_size(rs_gfx_context *c, int w, int h) {
     pthread_mutex_unlock(&ctx->lock);
 }
 
-// Upscaling at present: MetalFX's spatial scaler from the framebuffer to the output size, into fx_out, which the
-// present then draws into the drawable (y flip). RS_METAL_UPSCALE=0, or no MetalFX (before macOS 13, a GPU it
-// doesn't support): the present draws the framebuffer with a bilinear sampler instead. Made once per size.
-static void rsm_upscale_setup(RSMContext *ctx) {
-    ctx->fx_tried = true;
+static id<MTLSamplerState> rsm_linear_sampler(RSMContext *ctx) {
     if (!ctx->linear_sampler) {
         MTLSamplerDescriptor *sd = [MTLSamplerDescriptor new];
         sd.minFilter = sd.magFilter = MTLSamplerMinMagFilterLinear;
         ctx->linear_sampler = [ctx->dev newSamplerStateWithDescriptor:sd];
     }
+    return ctx->linear_sampler;
+}
+
+// Upscaling at present: MetalFX's spatial scaler from the framebuffer to the output size, into fx_out, which the
+// present then draws into the drawable (y flip). RS_METAL_UPSCALE=0, or no MetalFX (before macOS 13, a GPU it
+// doesn't support): the present draws the framebuffer with a bilinear sampler instead. Made once per size.
+static void rsm_upscale_setup(RSMContext *ctx) {
+    ctx->fx_tried = true;
+    rsm_linear_sampler(ctx);
     const char *e = getenv("RS_METAL_UPSCALE");
     if (e && *e == '0')
         return;
@@ -638,8 +647,37 @@ static void rsm_upscale_setup(RSMContext *ctx) {
     }
 }
 
-// Present into the drawable: the framebuffer as it is, or upscaled.
+// Downscaling at present (supersampling: RS_METAL_SCALE above the screen's pixels): the framebuffer scaled down into
+// fx_out at the drawable's size (rsm_downscale_draw), which the present then draws into the drawable as it draws an
+// upscaled frame, sharpening after the scale as there. Made once per size; without it, a bilinear sample.
+static void rsm_downscale(RSMContext *ctx, id<MTLTexture> drawable) {
+    id<MTLSamplerState> smp = rsm_linear_sampler(ctx);
+    if (!ctx->fx_out || ctx->fx_out.width != drawable.width || ctx->fx_out.height != drawable.height) {
+        MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:ctx->def_color.pixelFormat
+                                                                                      width:drawable.width
+                                                                                     height:drawable.height
+                                                                                  mipmapped:NO];
+        td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+        td.storageMode = MTLStorageModePrivate;
+        ctx->fx_out = [ctx->dev newTextureWithDescriptor:td];
+        ctx->fx_out.label = @"rsgl downscaled frame";
+        static int told;
+        if (told++ < 4)
+            rsm_log("downscaling %dx%d to %lux%lu at present (RS_METAL_SCALE: supersampling)", ctx->w, ctx->h,
+                    (unsigned long)drawable.width, (unsigned long)drawable.height);
+    }
+    if (ctx->fx_out && rsm_downscale_draw(ctx, ctx->fx_out, ctx->def_color, smp))
+        rsm_present_draw(ctx, drawable, ctx->fx_out, ctx->present_sampler);
+    else
+        rsm_present_draw(ctx, drawable, ctx->def_color, smp);
+}
+
+// Present into the drawable: the framebuffer as it is, upscaled or downscaled.
 static void rsm_present_frame(RSMContext *ctx, id<MTLTexture> drawable) {
+    if (rsm_downscaling(ctx) && drawable.width != ctx->def_color.width) {
+        rsm_downscale(ctx, drawable);
+        return;
+    }
     if (!rsm_upscaling(ctx) || drawable.width == ctx->def_color.width) {
         rsm_present_draw(ctx, drawable, ctx->def_color, ctx->present_sampler);
         return;

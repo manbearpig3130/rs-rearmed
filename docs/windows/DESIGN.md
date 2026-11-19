@@ -139,6 +139,8 @@ edition's `shims/platform/include/rsp_scale.h`; `RS_D3D9_DISPLAY=WxH` overrides)
 screen's (points on a Retina screen, or a scale below 100), `lp_window.m` asks libRSOpenGL for an output of the screen's
 pixels for the back buffer, no larger than the screen (`rs_gfx_set_output_size`), so each frame is scaled up with MetalFX
 before the layer fits it to the window, as on the Mac ([Mac METAL.md](../mac/METAL.md#metal-core-shimsopenglsrcmetal)).
+With more (a scale above 100, or a back buffer larger than the screen) the output is the screen's pixels too, and each
+frame is scaled down to them (supersampling); before, the layer fitted a back buffer larger than the screen itself.
 A window the user resizes becomes the game's resolution at the same scale.
 `[Renderer.Win32] Fullscreen` in `Rocksmith.ini` (in the game: Options > Visual Settings > Windowed Mode):
 

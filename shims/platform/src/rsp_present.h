@@ -20,7 +20,7 @@
 // Drawable size: the view's size in points (1x, what the GL surface is without
 // wantsBestResolutionOpenGLSurface), or with RS_METAL_RETINA=1 its backing size in pixels, at
 // RS_METAL_SCALE's percentage (rsp_scale.h). A drawable smaller than the backing pixels is scaled up
-// to them at present.
+// to them at present, a larger one (supersampling) down.
 // Drawables: RS_METAL_DRAWABLES=2|3, else 3 with vsync and 2 without (rsp_layer.h, Learn & Play's too), and
 // RS_METAL_HUD's Metal Performance HUD on the layer.
 #ifndef RSP_PRESENT_H

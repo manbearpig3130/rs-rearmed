@@ -180,6 +180,15 @@ static int test_metal(void) {
     CHECK(px[0] == 0 && px[1] == 255 && px[2] == 0, "frame while upscaling %d %d %d", px[0], px[1], px[2]);
     rsp_mtl_size(g_m, &w, &h);
     CHECK(w == 128 && h == 96, "framebuffer still %dx%d", w, h);
+    // Downscaling (supersampling): a smaller output makes the drawable that size, and frames present the same way.
+    rsp_mtl_lock(g_m);
+    set_out(rsp_mtl_context(g_m), 64, 48);
+    CHECK(layer.drawableSize.width == 64 && layer.drawableSize.height == 48, "downscaled drawableSize %gx%g",
+          layer.drawableSize.width, layer.drawableSize.height);
+    for (int i = 0; i < 5; i++) frame(0, 0, 1, w, h, px);
+    rsp_mtl_unlock(g_m);
+    CHECK(px[0] == 0 && px[1] == 0 && px[2] == 255, "frame while downscaling %d %d %d", px[0], px[1], px[2]);
+    CHECK(glGetError() == GL_NO_ERROR, "no GL errors while downscaling");
     rsp_mtl_lock(g_m);
     set_out(rsp_mtl_context(g_m), 0, 0);
     rsp_mtl_unlock(g_m);

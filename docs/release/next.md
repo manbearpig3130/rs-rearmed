@@ -17,3 +17,7 @@ notes and empties this file. -->
   and the installer didn't offer it.
 - **Sharpening:** RS_METAL_SHARPEN=N (0-100), Sharpening in the installer and SHARPENING in the game's ADV DISPLAY
   SETTINGS (Mac), sharpens the picture on the screen after any upscaling. Before, there was none.
+- **Render scale above 100% for a cleaner picture:** Render scale, under Advanced in the installer's Settings and
+  switches and RENDER SCALE in the game's ADV DISPLAY SETTINGS (Mac), goes up to 150% and 200% (`RS_METAL_SCALE`): the
+  game draws more pixels than the screen has and scales them down to it (supersampling), for less shimmer on thin lines
+  and fine textures. Before, it went from 50% to 100%.
