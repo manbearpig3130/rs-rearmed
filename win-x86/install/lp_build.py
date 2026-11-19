@@ -731,7 +731,8 @@ def make_icns(exe, dest, run=subprocess.run):
 
 
 def info_plist(version, icon, game_mode=False):
-    """The app's Info.plist; GAME_MODE (RS_GAME_MODE, the installer's Settings and switches): the games category."""
+    """The app's Info.plist; GAME_MODE (RS_GAME_MODE, the installer's Settings and switches): the music games
+    category, which puts the app in macOS's library of games (install_app has Spotlight read it) and Game Mode on."""
     p = {
         "CFBundleExecutable": EXE,
         "CFBundleIdentifier": BUNDLE_ID,
@@ -743,7 +744,7 @@ def info_plist(version, icon, game_mode=False):
         "LSMinimumSystemVersion": "11.0",
         # Not a game category unless asked for: macOS turns Game Mode on for one in full screen, whatever
         # LSSupportsGameMode says, and the audio of a plug-in host (rs-tonehost) then crackles while the game has focus
-        "LSApplicationCategoryType": "public.app-category." + ("games" if game_mode else "music"),
+        "LSApplicationCategoryType": "public.app-category.music-games" if game_mode else "public.app-category.music",
         "LSSupportsGameMode": bool(game_mode),
         "NSHighResolutionCapable": True,
         "NSMicrophoneUsageDescription": "Rocksmith listens to your guitar through the Real Tone cable or another input.",
@@ -842,4 +843,8 @@ def install_app(work, game, app=None, home=None, run=subprocess.run, say=None):
                   "Support/lsregister")
     if os.path.exists(lsregister):
         run([lsregister, "-f", app], capture_output=True)
+    # macOS's library of games (Game Mode, info_plist) is its Game Mode agent's, made from Spotlight's category of each
+    # app: Spotlight reads the new app now, and the agent makes the library again
+    run(["/usr/bin/mdimport", "-i", app], capture_output=True)
+    run(["/bin/launchctl", "kickstart", "gui/%d/com.apple.GamePolicyAgent" % os.getuid()], capture_output=True)
     return app, home

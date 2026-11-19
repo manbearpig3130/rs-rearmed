@@ -1517,8 +1517,8 @@ class TestApp(BuildBase):
         self.assertFalse(any(f.endswith(".ico") for f in os.listdir(os.path.join(self.app, "Contents", "Resources"))))
 
     def test_game_mode(self):
-        """RS_GAME_MODE=1 in options.env (its first line counts): the games category, which macOS turns Game Mode on
-        for; anything else, music and LSSupportsGameMode false, as before."""
+        """RS_GAME_MODE=1 in options.env (its first line counts): the music games category, which macOS turns Game Mode
+        on for, and Spotlight reads the app again; anything else, music and LSSupportsGameMode false, as before."""
         import plistlib
         self.built()
         options = os.path.join(self.home, "options.env")
@@ -1530,14 +1530,15 @@ class TestApp(BuildBase):
         self.assertFalse(lp_build.game_mode_set(self.home))
         p = lp_build.info_plist("1.0", False, True)
         self.assertEqual((p["LSApplicationCategoryType"], p["LSSupportsGameMode"]),
-                         ("public.app-category.games", True))
+                         ("public.app-category.music-games", True))
         p = lp_build.info_plist("1.0", False)
         self.assertEqual((p["LSApplicationCategoryType"], p["LSSupportsGameMode"]),
                          ("public.app-category.music", False))
         write(options, b"RS_GAME_MODE=1\n")
         self.install()
+        self.assertIn(["/usr/bin/mdimport", "-i", self.app], self.run_.calls)
         with open(os.path.join(self.app, "Contents", "Info.plist"), "rb") as f:
-            self.assertEqual(plistlib.load(f)["LSApplicationCategoryType"], "public.app-category.games")
+            self.assertEqual(plistlib.load(f)["LSApplicationCategoryType"], "public.app-category.music-games")
 
 
 class TestHarvest(unittest.TestCase):

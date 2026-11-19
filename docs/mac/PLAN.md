@@ -30,8 +30,8 @@ What the edition does today. What has not been tested is under [Open issues](#op
   than under Rosetta; every channel in the input list, input channel and gain, calibration that can boost.
 - **Output**: follows the system's default.
 - **Game Mode**: off by default: the app's category is music, so macOS leaves Game Mode off, which made a plug-in host
-  crackle. `RS_GAME_MODE=1` (the installer's Game Mode, not released) makes it games, and Game Mode comes on in full
-  screen ([INSTALL.md](INSTALL.md#settings-and-switches)).
+  crackle. `RS_GAME_MODE=1` (the installer's Game Mode, not released) makes it music games, and Game Mode comes on in
+  full screen ([INSTALL.md](INSTALL.md#settings-and-switches)).
 
 **Picture**
 

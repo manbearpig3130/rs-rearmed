@@ -2532,16 +2532,18 @@ func saveOptions(_ game: String, _ values: [String: String]) throws {
     try text.write(toFile: path, atomically: true, encoding: .utf8)
 }
 
-// Game Mode (RS_GAME_MODE): macOS decides it from the app's Info.plist as the app starts, so the installed app's is
-// set here when the setting is saved (install.sh and lp_build.py set it at an install): the games category, which
-// macOS turns Game Mode on for in full screen, or music, which it leaves off; then the app is signed again as its
-// install signs it, and LaunchServices is told. nil when done, or nothing is installed; else what failed.
+// Game Mode (RS_GAME_MODE): macOS turns it on in full screen for an app in its library of games, which its Game Mode
+// agent (GamePolicyAgent) makes from Spotlight's category of each app. So when the setting is saved (install.sh and
+// lp_build.py set it at an install) the installed app's Info.plist gets the music games category (the one the game had
+// when Game Mode came on for it), or music, which keeps it out; then the app is signed again as its install signs it,
+// LaunchServices is told, Spotlight reads the app again (it doesn't by itself after a plist's change) and the agent is
+// started, which makes its library again. nil when done, or nothing is installed; else what failed.
 func applyGameMode(_ game: String, _ on: Bool) -> String? {
     let lp = game == "learnplay"
     let app = lp ? lpApp : nativeHome + "/game/Rocksmith2014.app"
     let plist = app + "/Contents/Info.plist"
     guard let info = NSMutableDictionary(contentsOfFile: plist) else { return nil }
-    let category = on ? "public.app-category.games" : "public.app-category.music"
+    let category = on ? "public.app-category.music-games" : "public.app-category.music"
     if info["LSApplicationCategoryType"] as? String == category && info["LSSupportsGameMode"] as? Bool == on {
         return nil
     }
@@ -2551,7 +2553,10 @@ func applyGameMode(_ game: String, _ on: Bool) -> String? {
     let signed = lp ? app : app + "/Contents/MacOS/Rocksmith2014"
     for (tool, args) in [("/usr/bin/codesign", ["--force", "--sign", "-", signed]),
                          ("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/"
-                             + "Support/lsregister", ["-f", app])] {
+                             + "Support/lsregister", ["-f", app]),
+                         ("/usr/bin/touch", [app, app + "/Contents", plist]),
+                         ("/usr/bin/mdimport", ["-i", app]),
+                         ("/bin/launchctl", ["kickstart", "gui/\(getuid())/com.apple.GamePolicyAgent"])] {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args

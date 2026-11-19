@@ -32,7 +32,7 @@ edition" is described there. What has not been tested is under [Open issues](#op
 - **Guitar input**: a Real Tone cable device (a virtual one named like the cable), the microphone and other interfaces
   through Direct Connect; every channel in the input list, input channel and gain, calibration that can boost.
 - **Output**: follows the system's default.
-- **Game Mode**: off by default, the app's category being music; `RS_GAME_MODE=1` makes it games, as the Mac edition.
+- **Game Mode**: off by default, as the Mac edition: the app's category is music; `RS_GAME_MODE=1` makes it music games.
 
 **Picture**
 
