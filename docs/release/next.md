@@ -15,5 +15,5 @@ notes and empties this file. -->
 - **Low-latency presentation:** RS_METAL_DRAWABLES=2, Low-latency presentation in the installer (under Advanced), queues
   two frames for the screen instead of three, so each is shown a refresh sooner. Before, only the Mac edition read it,
   and the installer didn't offer it.
-- **Sharpening:** RS_METAL_SHARPEN=N (0-100), Sharpening in the installer, sharpens the picture on the screen after any
-  upscaling. Before, there was none.
+- **Sharpening:** RS_METAL_SHARPEN=N (0-100), Sharpening in the installer and SHARPENING in the game's ADV DISPLAY
+  SETTINGS (Mac), sharpens the picture on the screen after any upscaling. Before, there was none.
