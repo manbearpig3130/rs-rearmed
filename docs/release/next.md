@@ -10,3 +10,6 @@ notes and empties this file. -->
   saves them, for the next start. The other renderer's rows are greyed, as are those a switch set with `launchctl
   setenv` holds (SET FOR THIS SESSION), and the longer list scrolls, with a scroll bar that can be dragged. Before,
   they could be set in the installer only.
+- **Game Mode can be turned on:** RS_GAME_MODE=1, Game Mode in the installer's Settings and switches, makes the game's
+  app a game for macOS, which then turns Game Mode on in full screen: the game first for the CPU and GPU, and lower
+  Bluetooth latency. It stays off by default, as before, since a plug-in host beside the game can crackle with it.

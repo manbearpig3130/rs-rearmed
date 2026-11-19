@@ -730,7 +730,8 @@ def make_icns(exe, dest, run=subprocess.run):
         os.remove(tmp)
 
 
-def info_plist(version, icon):
+def info_plist(version, icon, game_mode=False):
+    """The app's Info.plist; GAME_MODE (RS_GAME_MODE, the installer's Settings and switches): the games category."""
     p = {
         "CFBundleExecutable": EXE,
         "CFBundleIdentifier": BUNDLE_ID,
@@ -740,16 +741,29 @@ def info_plist(version, icon):
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,
         "LSMinimumSystemVersion": "11.0",
-        # Not a game category: macOS turns Game Mode on for one in full screen, whatever LSSupportsGameMode says, and
-        # the audio of a plug-in host (rs-tonehost) then crackles while the game has focus
-        "LSApplicationCategoryType": "public.app-category.music",
-        "LSSupportsGameMode": False,
+        # Not a game category unless asked for: macOS turns Game Mode on for one in full screen, whatever
+        # LSSupportsGameMode says, and the audio of a plug-in host (rs-tonehost) then crackles while the game has focus
+        "LSApplicationCategoryType": "public.app-category." + ("games" if game_mode else "music"),
+        "LSSupportsGameMode": bool(game_mode),
         "NSHighResolutionCapable": True,
         "NSMicrophoneUsageDescription": "Rocksmith listens to your guitar through the Real Tone cable or another input.",
     }
     if icon:
         p["CFBundleIconFile"] = "RS2014.icns"
     return p
+
+
+def game_mode_set(home):
+    """RS_GAME_MODE=1 in HOME/options.env (its first line for the key counts, as the app reads it)."""
+    try:
+        with open(os.path.join(home, "options.env"), encoding="utf-8", errors="replace") as f:
+            for line in f:
+                k, eq, v = line.strip().partition("=")
+                if eq and k.strip() == "RS_GAME_MODE":
+                    return v.strip() == "1"
+    except OSError:
+        pass
+    return False
 
 
 def running(app):
@@ -798,7 +812,7 @@ def install_app(work, game, app=None, home=None, run=subprocess.run, say=None):
     with open(os.path.join(ROOT, "VERSION")) as f:
         version = f.readline().strip()
     with open(os.path.join(new, "Contents", "Info.plist"), "wb") as f:
-        plistlib.dump(info_plist(version, icon), f)
+        plistlib.dump(info_plist(version, icon, game_mode_set(home)), f)
     # From a drive without extended attributes, cp leaves "._" files that break the seal.
     for d, _, files in os.walk(new):
         for f in files:

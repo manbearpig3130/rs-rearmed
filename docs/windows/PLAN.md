@@ -32,7 +32,7 @@ edition" is described there. What has not been tested is under [Open issues](#op
 - **Guitar input**: a Real Tone cable device (a virtual one named like the cable), the microphone and other interfaces
   through Direct Connect; every channel in the input list, input channel and gain, calibration that can boost.
 - **Output**: follows the system's default.
-- **Game Mode**: the app's category is music, as the Mac edition.
+- **Game Mode**: off by default, the app's category being music; `RS_GAME_MODE=1` makes it games, as the Mac edition.
 
 **Picture**
 
@@ -231,7 +231,8 @@ edition" is described there. What has not been tested is under [Open issues](#op
 - **Rocksmith 1 DLC found as owned** (new in 1.17.1): as in the [Mac edition](../mac/PLAN.md#open-issues): no account
   that owns one has been at hand; in the game the DLC was named by hand (`test_steam32` covers the face's answers,
   `test_settings.py` the AppIDs set by hand).
-- **Game Mode**: that macOS leaves it off for this app.
+- **Game Mode**: that macOS leaves it off for this app by default, and turns it on with `RS_GAME_MODE=1` (not
+  released; tried in the Mac edition).
 - **Present but not tested**: the Workshop's other screens, the DLC preview, and the prebuilt harvester
   (`win-x86/harvest/rsharvest2.exe`).
 - D3DX paths not exercised yet: `D3DXCreateEffectCompiler`, `D3DXCreateTextureFromFileExA`, the cube and

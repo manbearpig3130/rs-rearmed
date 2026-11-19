@@ -111,6 +111,15 @@ plist="$home/game/Rocksmith2014.app.new/Contents/Info.plist"
 if ! /usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$plist" >/dev/null 2>&1; then
     plutil -insert CFBundleIconFile -string RS2014.icns "$plist"
 fi
+# Game Mode (RS_GAME_MODE=1 in options.env, the installer's Settings and switches): the games category, which macOS
+# turns Game Mode on for in full screen, else the build's music, which it leaves off (a plug-in host beside the game
+# crackled with it). The installer sets it again when the setting is saved.
+game_mode=$(awk -F= '{k = $1; gsub(/[[:space:]]/, "", k)}
+    k == "RS_GAME_MODE" {v = $2; gsub(/[[:space:]]/, "", v); print v; exit}' "$home/options.env" 2>/dev/null)
+if [[ $game_mode == 1 ]]; then
+    /usr/libexec/PlistBuddy -c 'Set :LSApplicationCategoryType public.app-category.games' \
+        -c 'Set :LSSupportsGameMode true' "$plist"
+fi
 # Re-sign: the files added above are outside the build's signature, which broke the bundle's seal.
 codesign --force -s - "$home/game/Rocksmith2014.app.new/Contents/MacOS/Rocksmith2014" 2>/dev/null || true
 find "$home/game/Rocksmith2014.app.new" -name '._*' -delete
