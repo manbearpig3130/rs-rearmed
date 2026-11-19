@@ -10,3 +10,8 @@ notes and empties this file. -->
   saves them, for the next start. The other renderer's rows are greyed, as are those a switch set with `launchctl
   setenv` holds (SET FOR THIS SESSION), and the longer list scrolls, with a scroll bar that can be dragged. Before,
   they could be set in the installer only.
+- **A performance overlay:** RS_METAL_HUD=1, Performance overlay in the installer, shows Apple's Metal HUD over the
+  game: its frame rate, frame times and GPU memory. Before, there was none.
+- **Low-latency presentation:** RS_METAL_DRAWABLES=2, Low-latency presentation in the installer (under Advanced), queues
+  two frames for the screen instead of three, so each is shown a refresh sooner. Before, only the Mac edition read it,
+  and the installer didn't offer it.
