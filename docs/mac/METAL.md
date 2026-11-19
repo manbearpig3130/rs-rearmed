@@ -184,7 +184,10 @@ Objective-C (`-fobjc-arc`), one context object per `rs_gfx_context`, current per
   linked) from the default colour texture into a texture of the drawable's size, which it then draws flipped. Without
   MetalFX, or with `RS_METAL_UPSCALE=0`, the frame is drawn bilinearly into the larger drawable. `RS_METAL_RETINA=1`
   makes the framebuffer itself the backing size, and nothing is scaled. `RS_METAL_SCALE=N` makes the framebuffer N% of
-  the size it would have, and it is scaled up to the backing size the same way. Layer contexts are tagged sRGB
+  the size it would have, and it is scaled up to the backing size the same way. Above the backing size (supersampling,
+  up to 200%) the frame is scaled down instead: `rsm_downscale_fs` draws it into a texture of the drawable's size, each
+  pixel the mean of its footprint in linear light from four bilinear samples (at 2:1 exactly its four pixels), and the
+  present draws that, sharpened after the scale as an upscaled frame is. Layer contexts are tagged sRGB
   (`CAMetalLayer.colorspace`), so macOS colour-matches the game's sRGB colours to the display;
   `RS_METAL_COLORS=vivid` leaves the layer untagged.
 - **Sharpening** (`RS_METAL_SHARPEN=N`, 0-100; 0 or unset: none): the present draws the frame with `rsm_sharpen_fs` in

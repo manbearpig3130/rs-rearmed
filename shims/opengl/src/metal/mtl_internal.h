@@ -428,10 +428,12 @@ typedef struct {
     rsm_map clear_pipelines;  // formats + mask -> pipeline
     id<MTLRenderPipelineState> present_pipeline;
     id<MTLSamplerState> present_sampler;
-    // Upscaling at present (rsmtl_gfx_set_output_size): the drawable's size when larger than w x h
+    // Scaling at present (rsmtl_gfx_set_output_size): the drawable's size when larger than w x h (upscaled), or
+    // smaller (downscaled: supersampling)
     int out_w, out_h;
     id fx_scaler;                 // id<MTLFXSpatialScaler> for w x h -> out_w x out_h, nil: bilinear
-    id<MTLTexture> fx_out;        // its output, drawn into the drawable
+    id<MTLTexture> fx_out;        // its output, or the downscaled frame, drawn into the drawable
+    id<MTLRenderPipelineState> down_pipeline;  // rsm_downscale_fs
     id<MTLSamplerState> linear_sampler;
     bool fx_tried;
     unsigned colors_gen;           // rsm_colors_g when the layer's colours were last set
@@ -550,6 +552,8 @@ MTLRenderPipelineDescriptor *rsm_pipeline_desc(id<MTLFunction> vs, id<MTLFunctio
 // Draws (mtl_draw.m).
 void rsm_draw_init(RSMContext *ctx);
 void rsm_present_draw(RSMContext *ctx, id<MTLTexture> drawable, id<MTLTexture> src, id<MTLSamplerState> smp);
+// The frame SRC scaled down into DST (supersampling, rsm_downscale_fs, with a linear SMP); false without its pipeline.
+bool rsm_downscale_draw(RSMContext *ctx, id<MTLTexture> dst, id<MTLTexture> src, id<MTLSamplerState> smp);
 // Switches that change while the game runs (rsmtl_gfx_set_switch; "" is the default): mtl_draw.m's and mtl_objects.m's.
 void rsm_set_sharpen(const char *v);
 void rsm_set_msaa(const char *v);

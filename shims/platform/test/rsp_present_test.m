@@ -60,6 +60,77 @@ static double frame(float r, float g, float b, int w, int h, unsigned char px[4]
   return now_s() - t;
 }
 
+// A layer whose drawables can be read back (framebufferOnly stays NO, whatever it is set to), keeping the last one it
+// handed out: what the screen got, for test_presented.
+@interface RSPTapLayer : CAMetalLayer
+@property(nonatomic, retain) id<CAMetalDrawable> last;
+@end
+@implementation RSPTapLayer
+- (void)setFramebufferOnly:(BOOL)only {
+  (void)only;
+  [super setFramebufferOnly:NO];
+}
+- (id<CAMetalDrawable>)nextDrawable {
+  id<CAMetalDrawable> d = [super nextDrawable];
+  self.last = d;
+  return d;
+}
+- (void)dealloc {
+  [_last release];
+  [super dealloc];
+}
+@end
+
+// The last presented frame's pixels, w x h BGRA with row 0 at the top of the screen, once the GPU is done with it
+// (glFinish waits for the frame's command buffer). 0: no drawable of that size, or the copy failed.
+static int read_presented(RSPTapLayer *layer, int w, int h, unsigned char *out) {
+  id<CAMetalDrawable> d = layer.last;
+  if (!d || (int)d.texture.width != w || (int)d.texture.height != h) return 0;
+  glFinish();
+  id<MTLCommandQueue> q = [layer.device newCommandQueue];
+  id<MTLBuffer> b = [layer.device newBufferWithLength:(NSUInteger)w * h * 4 options:MTLResourceStorageModeShared];
+  id<MTLCommandBuffer> cb = [q commandBuffer];
+  id<MTLBlitCommandEncoder> e = [cb blitCommandEncoder];
+  [e copyFromTexture:d.texture
+             sourceSlice:0
+             sourceLevel:0
+            sourceOrigin:MTLOriginMake(0, 0, 0)
+              sourceSize:MTLSizeMake((NSUInteger)w, (NSUInteger)h, 1)
+                toBuffer:b
+       destinationOffset:0
+  destinationBytesPerRow:(NSUInteger)w * 4
+destinationBytesPerImage:(NSUInteger)w * h * 4];
+  [e endEncoding];
+  [cb commit];
+  [cb waitUntilCompleted];
+  int ok = cb.status == MTLCommandBufferStatusCompleted;
+  if (ok) memcpy(out, b.contents, (size_t)w * h * 4);
+  [b release];
+  [q release];
+  return ok;
+}
+
+// The frame test_presented checks, in GL's coordinates (y up): on the left one-pixel white columns on black (x even
+// white), on the right red over green.
+static void draw_pattern(int w, int h) {
+  glDisable(GL_SCISSOR_TEST);
+  glClearColor(0, 0, 0, 1);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+  glEnable(GL_SCISSOR_TEST);
+  glClearColor(1, 1, 1, 1);
+  for (int x = 0; x < w / 2; x += 2) {
+    glScissor(x, 0, 1, h);
+    glClear(GL_COLOR_BUFFER_BIT);
+  }
+  glClearColor(1, 0, 0, 1);
+  glScissor(w / 2, h / 2, w - w / 2, h - h / 2);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glClearColor(0, 1, 0, 1);
+  glScissor(w / 2, 0, w - w / 2, h / 2);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glDisable(GL_SCISSOR_TEST);
+}
+
 static int test_gl(void) {
   CHECK(!rsp_mtl_selected(), "RS_GL_BACKEND=gl: the shell must stay on GL");
   CAMetalLayer *layer = [CAMetalLayer layer];
@@ -180,6 +251,15 @@ static int test_metal(void) {
     CHECK(px[0] == 0 && px[1] == 255 && px[2] == 0, "frame while upscaling %d %d %d", px[0], px[1], px[2]);
     rsp_mtl_size(g_m, &w, &h);
     CHECK(w == 128 && h == 96, "framebuffer still %dx%d", w, h);
+    // Downscaling (supersampling): a smaller output makes the drawable that size, and frames present the same way.
+    rsp_mtl_lock(g_m);
+    set_out(rsp_mtl_context(g_m), 64, 48);
+    CHECK(layer.drawableSize.width == 64 && layer.drawableSize.height == 48, "downscaled drawableSize %gx%g",
+          layer.drawableSize.width, layer.drawableSize.height);
+    for (int i = 0; i < 5; i++) frame(0, 0, 1, w, h, px);
+    rsp_mtl_unlock(g_m);
+    CHECK(px[0] == 0 && px[1] == 0 && px[2] == 255, "frame while downscaling %d %d %d", px[0], px[1], px[2]);
+    CHECK(glGetError() == GL_NO_ERROR, "no GL errors while downscaling");
     rsp_mtl_lock(g_m);
     set_out(rsp_mtl_context(g_m), 0, 0);
     rsp_mtl_unlock(g_m);
@@ -233,6 +313,68 @@ static int test_metal(void) {
   CHECK(called && rc_seen == 0, "prepare_async completed (rc %d)", rc_seen);
   CHECK(rsp_mtl_status_layer(g_m) == NULL && layer.sublayers.count == before, "no status line after the completion");
   return 0;
+}
+
+// What the screen gets, read back from the drawables (RSPTapLayer): the frame as drawn, scaled up (MetalFX, or
+// bilinear) and scaled down (supersampling), its rows in their places each time. Scaled down 2:1 a pixel is the mean of
+// its four in linear light, so one-pixel black and white columns give 186, where a mean of the stored values gives 128.
+static void test_presented(void) {
+  enum { FW = 128, FH = 96 };
+  RSPTapLayer *layer = [RSPTapLayer layer];
+  layer.device = MTLCreateSystemDefaultDevice();
+  [layer.device release];
+  rsp_mtl *m = rsp_mtl_create(layer, FW, FH, 1);
+  CHECK(m != NULL, "a context on the test layer");
+  if (!m) return;
+  CHECK(!layer.framebufferOnly, "the test layer's drawables can be read back");
+  void (*set_out)(void *, int, int);
+  void (*set_switch)(const char *, const char *);
+  *(void **)&set_out = dlsym(RTLD_DEFAULT, "rs_gfx_set_output_size");
+  *(void **)&set_switch = dlsym(RTLD_DEFAULT, "rs_gfx_set_switch");
+  CHECK(set_out && set_switch, "rs_gfx_set_output_size and rs_gfx_set_switch exported");
+  if (!set_out || !set_switch) return;
+  set_switch("RS_METAL_SHARPEN", "");  // the pixels as scaled, not sharpened
+  static unsigned char px[256 * 192 * 4];
+  static const struct {
+    int w, h;
+    const char *what;
+  } runs[] = {{0, 0, "as drawn"}, {256, 192, "scaled up"}, {64, 48, "scaled down"}};
+  for (int r = 0; r < 3; r++) {
+    const char *what = runs[r].what;
+    int dw = runs[r].w ? runs[r].w : FW, dh = runs[r].h ? runs[r].h : FH;
+    rsp_mtl_lock(m);
+    rsp_mtl_make_current(m);
+    set_out(rsp_mtl_context(m), runs[r].w, runs[r].h);
+    for (int i = 0; i < 3; i++) {
+      @autoreleasepool {
+        draw_pattern(FW, FH);
+        rsp_mtl_present(m);
+      }
+    }
+    int ok = read_presented(layer, dw, dh, px);
+    CHECK(glGetError() == GL_NO_ERROR, "%s: no GL errors", what);
+    rsp_mtl_unlock(m);
+    CHECK(ok, "%s: a %dx%d drawable read back", what, dw, dh);
+    if (!ok) continue;
+    const unsigned char *top = px + ((size_t)(dh / 8) * dw + dw * 3 / 4) * 4;  // B, G, R, A
+    const unsigned char *bottom = px + ((size_t)(dh * 7 / 8) * dw + dw * 3 / 4) * 4;
+    CHECK(top[2] > 250 && top[1] < 5 && top[0] < 5, "%s: red at the top, %d %d %d", what, top[2], top[1], top[0]);
+    CHECK(bottom[2] < 5 && bottom[1] > 250 && bottom[0] < 5, "%s: green at the bottom, %d %d %d", what, bottom[2],
+          bottom[1], bottom[0]);
+    const unsigned char *a = px + ((size_t)(dh / 2) * dw + dw / 8) * 4, *b = a + 4;  // left, an even x and the next
+    if (r == 0)
+      CHECK(a[0] == 255 && a[1] == 255 && a[2] == 255 && b[0] == 0 && b[1] == 0 && b[2] == 0,
+            "as drawn: a white column beside a black one, %d and %d", a[0], b[0]);
+    if (r == 2) {
+      int even = 1;
+      for (int k = 0; k < 3; k++) even = even && abs(a[k] - 186) <= 3 && abs(b[k] - 186) <= 3;
+      CHECK(even, "scaled down: the columns' mean in linear light, 186: %d %d %d, %d %d %d", a[2], a[1], a[0], b[2],
+            b[1], b[0]);
+    }
+  }
+  rsp_mtl_lock(m);
+  set_out(rsp_mtl_context(m), 0, 0);
+  rsp_mtl_unlock(m);
 }
 
 // The cache.psarc check (rsp_psarc_check / rsp_mtl_safe_load) on files made here.
@@ -291,8 +433,12 @@ static void test_safe_load(void) {
 
 int main(void) {
   @autoreleasepool {
-    if (rsp_mtl_loaded_backend() == 1) test_metal();  // libRSOpenGL's backend: RS_GL_BACKEND, default metal
-    else test_gl();
+    if (rsp_mtl_loaded_backend() == 1) {  // libRSOpenGL's backend: RS_GL_BACKEND, default metal
+      test_metal();
+      test_presented();
+    } else {
+      test_gl();
+    }
     test_safe_load();
   }
   printf("%d passed, %d failed\n", g_pass, g_fail);

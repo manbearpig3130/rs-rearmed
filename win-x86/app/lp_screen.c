@@ -59,8 +59,10 @@ int lp_output_size(int w, int h, double backing, double game_scale, double sw, d
   if (w <= 0 || h <= 0 || backing <= 0 || game_scale <= 0) return 0;
   double up = backing / game_scale;
   if (sw > 0 && sh > 0) up = fmin(up, fmin(sw * backing / w, sh * backing / h));
-  if (up <= 1) return 0;
-  *ow = (int)(w * up + 0.5);
-  *oh = (int)(h * up + 0.5);
+  if (fabs(up - 1) < 1e-9) return 0;
+  int dw = (int)(w * up + 0.5), dh = (int)(h * up + 0.5);
+  if (dw < 1 || dh < 1 || (dw == w && dh == h)) return 0;
+  *ow = dw;
+  *oh = dh;
   return 1;
 }

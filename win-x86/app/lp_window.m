@@ -41,7 +41,7 @@
 // env: LP_OFFSCREEN=1     no window: the device renders offscreen
 //      RS_FPS=N           a fixed frame rate, with vsync off (1-1000; unset or 0: the display's rate)
 //      RS_METAL_RETINA=1  the desktop, and so the game's resolution, in backing pixels
-//      RS_METAL_SCALE=N   the desktop and a followed window at N% (50-100), scaled up to the screen's pixels
+//      RS_METAL_SCALE=N   the desktop and a followed window at N% (50-200), scaled to the screen's pixels
 //      RS_FULLSCREEN=1|0  always full screen / always a window, whatever the game's setting
 //      RS_WINDOW_ANY_SHAPE=0  16:9 with the game's bars, and a resized window keeps the resolution
 //      LP_WINDOW_SCRIPT   window resizes and full-screen toggles for unattended checks
@@ -228,14 +228,17 @@ void d3d9_platform_windowed(int windowed) { g_windowed = windowed; }
 // The game reset its device (d3d9_device.c's Reset) to a w x h back buffer.
 // Game pixels fewer than the screen's (the game in points on a Retina screen, or RS_METAL_SCALE below 100):
 // libRSOpenGL scales each frame up to the screen's backing pixels (MetalFX) before the layer fits it to the window,
-// as the Mac edition does (rsp_present_metal.m), to no more than the screen has. The backing pixels already: nothing.
+// as the Mac edition does (rsp_present_metal.m), to no more than the screen has. More (supersampling: RS_METAL_SCALE
+// above 100 on a 1x screen or with RS_METAL_RETINA=1, or a back buffer larger than the screen): it scales each frame
+// down to them. The backing pixels already: nothing.
 static rs_gfx_context *g_ctx;
 static void set_output(int w, int h) {
   CGFloat s = g_win ? g_win.backingScaleFactor : 1;
   NSSize pts = g_win && g_win.screen ? g_win.screen.frame.size : NSZeroSize;
   int ow, oh;
-  if (g_ctx && lp_output_size(w, h, s, game_scale(s), pts.width, pts.height, &ow, &oh))
-    rs_gfx_set_output_size(g_ctx, ow, oh);
+  if (!g_ctx) return;
+  if (lp_output_size(w, h, s, game_scale(s), pts.width, pts.height, &ow, &oh)) rs_gfx_set_output_size(g_ctx, ow, oh);
+  else rs_gfx_set_output_size(g_ctx, 0, 0);  // (not an earlier back buffer's output)
 }
 
 void d3d9_platform_resize(uint32_t hwnd, int w, int h) {

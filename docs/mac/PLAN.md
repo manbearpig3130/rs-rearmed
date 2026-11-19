@@ -56,10 +56,14 @@ What the edition does today. What has not been tested is under [Open issues](#op
   peg stayed grey; now it gets a copy of what was drawn before it
   ([METAL.md](METAL.md#metal-core-shimsopenglsrcmetal)). Learn & Play's tuner turned purple from the same cause
   at some sizes; this edition's was not seen to (one run at 1103x717 before the rule).
-- **Render scale** (new in 1.18.0): `RS_METAL_SCALE=N`, the installer's Render scale (under Advanced), renders at N%
-  (50-100) and scales up with MetalFX. Played at 75% and 50% on an M1 MacBook Air: on its own Retina screen 50% took
-  0.5 W off the GPU's 6.1 W, where `RS_METAL_UPSCALE=0` takes 2.7 W off; on a 1x external display nothing measurable
-  ([PERFORMANCE.md](PERFORMANCE.md#measured-runs)).
+- **Render scale** (new in 1.18.0; above 100%, not released): `RS_METAL_SCALE=N`, the installer's Render scale (under
+  Advanced), renders at N% (50-200): below the screen's pixels scaled up with MetalFX, above them scaled down
+  (supersampling: on a 1x screen, or with `RS_METAL_RETINA=1`). Played at 75% and 50% on an M1 MacBook Air: on its own
+  Retina screen 50% took 0.5 W off the GPU's 6.1 W, where `RS_METAL_UPSCALE=0` takes 2.7 W off; on a 1x external
+  display nothing measurable ([PERFORMANCE.md](PERFORMANCE.md#measured-runs)). On that display 200% (3360x2100 scaled
+  to 1680x1050) and 150% hold 60 fps on the tuner, the strings' winding drawn evenly. On the Air's own screen 200%
+  with `RS_METAL_RETINA=1` (6720x4200 scaled to 3360x2100, MSAA 4x) plays a song with much more detail, at a frame
+  rate that drops but stays playable. Not measured: the frame rates and what they cost in GPU power.
 - **In the game's menu** (new in 1.19.0; LOW LATENCY and PERFORMANCE OVERLAY new in 1.20.0; SHARPENING and the rows
   taking effect at once not released): OPTIONS → ADV DISPLAY SETTINGS lists thirteen of the picture switches after the
   game's own rows, saved where the installer saves them, five of them taking effect at once (PERFORMANCE OVERLAY too, in

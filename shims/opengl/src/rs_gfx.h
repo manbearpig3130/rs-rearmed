@@ -30,8 +30,9 @@ rs_gfx_context *rs_gfx_current(void);
 void rs_gfx_resize(rs_gfx_context *ctx, int w, int h);
 // Metal layer contexts: the drawable's size, when it is larger than the default framebuffer (a Retina
 // screen's backing pixels while the game renders in points). Present scales the frame up to it with
-// MetalFX's spatial scaler (macOS 13+; RS_METAL_UPSCALE=0, or without MetalFX: bilinear). 0 x 0, or a
-// size not larger than the framebuffer: the drawable is the framebuffer's size, as before. GL: no-op.
+// MetalFX's spatial scaler (macOS 13+; RS_METAL_UPSCALE=0, or without MetalFX: bilinear). Smaller in
+// both directions (supersampling: RS_METAL_SCALE above the screen's pixels): present scales it down (rsm_downscale_fs).
+// 0 x 0, or neither: the drawable is the framebuffer's size, as before. GL: no-op.
 void rs_gfx_set_output_size(rs_gfx_context *ctx, int w, int h);
 // A switch changed while the game runs (Adv Display Settings): RS_METAL_SHARPEN, RS_METAL_MSAA,
 // RS_METAL_ANISO and RS_METAL_COLORS take VALUE ("" for their default) from the next frame on, for every context.

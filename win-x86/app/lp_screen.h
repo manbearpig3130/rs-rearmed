@@ -33,8 +33,10 @@ int lp_any_shape(const char *env);
 // buffer the game has now (bw x bh).
 int lp_follow_size(double cw, double ch, double scale, int bw, int bh, int *w, int *h);
 
-// The output libRSOpenGL scales a w x h back buffer up to (rs_gfx_set_output_size): the back buffer times the screen's
+// The output libRSOpenGL scales a w x h back buffer to (rs_gfx_set_output_size): the back buffer times the screen's
 // backing scale over the game's pixels per point (game_scale: 1, or the backing scale with RS_METAL_RETINA=1, at
-// RS_METAL_SCALE), and never more than a screen of sw x sh points has pixels (none given: no cap); 0 when that is no
-// upscale (the back buffer has the pixels already, or more), *ow x *oh the back buffer's own then.
+// RS_METAL_SCALE), and never more than a screen of sw x sh points has pixels (none given: no cap). Fewer pixels than
+// that: scaled up (MetalFX); more (supersampling: RS_METAL_SCALE above 100 on a 1x screen or with RS_METAL_RETINA=1,
+// or a back buffer larger than the screen): scaled down. 0 when the back buffer has the pixels already, *ow x *oh the
+// back buffer's own then.
 int lp_output_size(int w, int h, double backing, double game_scale, double sw, double sh, int *ow, int *oh);

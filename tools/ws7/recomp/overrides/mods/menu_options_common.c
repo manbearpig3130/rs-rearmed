@@ -28,7 +28,8 @@ rs_menu_option rs_menu_opts[] = {
     {"rsLowLatency", "RS_METAL_DRAWABLES", 0, METAL, 2, 0, {"", "2"}, {"$[31679]", "$[31678]"}, 0},
     {"rsMetalFXUpscaling", "RS_METAL_UPSCALE", 0, METAL, 2, 1, OFF_ON, 0},
     {"rsFullRetina", "RS_METAL_RETINA", 0, METAL, 2, 0, OFF_ON, 0},
-    {"rsRenderScale", "RS_METAL_SCALE", 1, METAL, 4, 3, {"50", "75", "90", ""}, {"50%", "75%", "90%", "100%"}, 0},
+    {"rsRenderScale", "RS_METAL_SCALE", 1, METAL, 6, 3, {"50", "75", "90", "", "150", "200"},
+     {"50%", "75%", "90%", "100%", "150%", "200%"}, 0},
     {"rsSharpening", "RS_METAL_SHARPEN", 1, METAL, 4, 0, {"", "30", "60", "100"}, {"OFF", "LOW", "MEDIUM", "HIGH"}, 0},
     {"rsAntiAliasing", "RS_METAL_MSAA", 1, METAL, 4, 2, {"1", "2", "4", "8"}, {"OFF", "2X", "4X", "8X"}, 0},
     {"rsTextureFiltering", "RS_METAL_ANISO", 1, METAL, 5, 4, {"1", "2", "4", "8", "16"},
@@ -262,7 +263,8 @@ static int upscaled(const option *scale) {
 // Why an option can't be changed now, as its row says it (NULL: it can), by the choices the game starts with next:
 // an option of one renderer while the other is chosen (Learn & Play: Metal); Low Latency with a fixed frame rate,
 // whose presents are not held for the display and have the two drawables already; MetalFX upscaling with nothing
-// upscaled (Full Retina at a render scale of 100%); a switch the session sets (session_set).
+// upscaled (Full Retina at a render scale of 100% or more: the frame has the screen's pixels, or more, scaled down); a
+// switch the session sets (session_set).
 const char RS_MENU_SESSION[] = "SET FOR THIS SESSION";
 const char *rs_menu_locked(const option *o) {
   const option *renderer = rs_menu_opt_of_id("rsRenderer"), *fps = rs_menu_opt_of_id("rsFrameRate");

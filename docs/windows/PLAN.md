@@ -52,9 +52,10 @@ edition" is described there. What has not been tested is under [Open issues](#op
   own target ([DESIGN.md](DESIGN.md#direct3d-9)). Before it the tuner also turned purple with a back buffer of
   1102x717 or 1104x718, in 9 of 10 runs at those sizes; with the rule five runs at 1102x717 and one at 1470x956
   show the tuner as it should be.
-- **Render scale** (new in 1.18.0): `RS_METAL_SCALE=N`, as the Mac edition, from the same header: the desktop the game
-  sees and a resized window at N%. Played full screen on a 1470x956 Retina screen to a song's note highway: 50% (a
-  735x478 frame) is fine.
+- **Render scale** (new in 1.18.0; above 100%, not released): `RS_METAL_SCALE=N`, as the Mac edition, from the same
+  header: the desktop the game sees and a resized window at N%. Played full screen on a 1470x956 Retina screen to a
+  song's note highway: 50% (a 735x478 frame) is fine. Above 100 (more pixels, scaled down to the screen's when there
+  are more than it has): not yet run in this game.
 - **In the game's menu** (new in 1.20.0; SHARPENING not released): OPTIONS → ADV DISPLAY SETTINGS lists eleven of the
   picture switches after the game's own rows, as the Mac edition's thirteen without RENDERER and MULTITHREADED GL ENGINE
   (this edition has Metal only), saved to `options.env`: SHARPENING, ANTI-ALIASING, TEXTURE FILTERING and COLOR taking
