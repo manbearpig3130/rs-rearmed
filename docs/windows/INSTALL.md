@@ -378,6 +378,7 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_AUDIO_FRAMES=N` | 256 | the output device's buffer, in frames; 0 leaves the device's ([Audio latency](#audio-latency)) |
 | `RS_AUDIO_RT=0` | on | the audio thread is not a real-time thread |
 | `RS_AUDIO_INPUT_TRIM=0` | on | stale guitar audio is not dropped |
+| `RS_GAME_MODE=1` | off | the app's category is games, so macOS turns Game Mode on in full screen: the game first for the CPU and GPU, and lower Bluetooth latency; a plug-in host beside the game can crackle with it. The installer changes the installed app when the setting is saved (and signs it again, so macOS may ask for the microphone again) |
 | `RS_AUDIO_SET_RATE=0` | on | a device is not switched to 48 kHz |
 | `RS_AUDIO_RS_NAMES=0` | on | keep CoreAudio's device names (by default only the cable is called "Rocksmith") |
 | `RS_AUDIO_INPUT…`, `RS_AUDIO_CHANNEL_ENTRIES=N` | | the guitar input's channel, gain, level and list: [Guitar input](../mac/INSTALL.md#guitar-input) |

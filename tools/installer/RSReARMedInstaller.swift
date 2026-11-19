@@ -2431,6 +2431,8 @@ let optionSpecs: [OptionSpec] = [
                kind: .toggle(defaultOn: true), editions: "mac", group: "Audio and guitar input", advanced: true),
     OptionSpec(key: "RS_AUDIO_INPUTS_FIRST", title: "Inputs listed first", detail: "An unreadable output-only device can't end the device scan. Off: as the original.",
                kind: .toggle(defaultOn: true), editions: "mac", group: "Audio and guitar input", advanced: true),
+    OptionSpec(key: "RS_GAME_MODE", title: "Game Mode", detail: "macOS's Game Mode in full screen: the game first for the CPU and GPU, lower Bluetooth latency. A plug-in host beside the game can crackle.",
+               kind: .toggle(defaultOn: false), editions: "both", group: "Audio and guitar input", advanced: false),
     OptionSpec(key: "RS_FPS", title: "Frame rate", detail: "Frames per second; a fixed rate turns vsync off. Empty: follows the display.",
                kind: .text(check: intRange(1, 1000), hint: "60"), editions: "both", group: "Picture", advanced: false),
     OptionSpec(key: "RS_WINDOW_ANY_SHAPE", title: "Window takes any shape", detail: "Off: 16:9 with bars, as on Windows.",
@@ -2532,6 +2534,38 @@ func saveOptions(_ game: String, _ values: [String: String]) throws {
 
         """ + optionSpecs.filter { values[$0.key] != nil }.map { "\($0.key)=\(values[$0.key]!)\n" }.joined()
     try text.write(toFile: path, atomically: true, encoding: .utf8)
+}
+
+// Game Mode (RS_GAME_MODE): macOS decides it from the app's Info.plist as the app starts, so the installed app's is
+// set here when the setting is saved (install.sh and lp_build.py set it at an install): the games category, which
+// macOS turns Game Mode on for in full screen, or music, which it leaves off; then the app is signed again as its
+// install signs it, and LaunchServices is told. nil when done, or nothing is installed; else what failed.
+func applyGameMode(_ game: String, _ on: Bool) -> String? {
+    let lp = game == "learnplay"
+    let app = lp ? lpApp : nativeHome + "/game/Rocksmith2014.app"
+    let plist = app + "/Contents/Info.plist"
+    guard let info = NSMutableDictionary(contentsOfFile: plist) else { return nil }
+    let category = on ? "public.app-category.games" : "public.app-category.music"
+    if info["LSApplicationCategoryType"] as? String == category && info["LSSupportsGameMode"] as? Bool == on {
+        return nil
+    }
+    info["LSApplicationCategoryType"] = category
+    info["LSSupportsGameMode"] = on
+    guard info.write(toFile: plist, atomically: true) else { return "\(plist) could not be written." }
+    let signed = lp ? app : app + "/Contents/MacOS/Rocksmith2014"
+    for (tool, args) in [("/usr/bin/codesign", ["--force", "--sign", "-", signed]),
+                         ("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/"
+                             + "Support/lsregister", ["-f", app])] {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: tool)
+        p.arguments = args
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return "\(tool) could not be run." }
+        p.waitUntilExit()
+        if p.terminationStatus != 0 && tool.hasSuffix("codesign") { return "\(signed) could not be signed." }
+    }
+    return nil
 }
 
 // A value `launchctl setenv` gives every app started from now on: it wins over the file.
@@ -2948,6 +2982,9 @@ final class OptionsSheet: NSObject {
                               + error.localizedDescription,
                           buttons: ["OK"])
             return
+        }
+        if let failed = applyGameMode(game, cur.opts["RS_GAME_MODE"] == "1") {
+            _ = showAlert(title: "Game Mode could not be set", message: failed, buttons: ["OK"])
         }
         sheet.sheetParent?.endSheet(sheet, returnCode: .OK)
     }

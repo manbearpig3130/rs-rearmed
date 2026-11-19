@@ -1516,6 +1516,29 @@ class TestApp(BuildBase):
         self.assertTrue(os.path.isfile(os.path.join(self.app, "Contents", "Resources", "RS2014.icns")))
         self.assertFalse(any(f.endswith(".ico") for f in os.listdir(os.path.join(self.app, "Contents", "Resources"))))
 
+    def test_game_mode(self):
+        """RS_GAME_MODE=1 in options.env (its first line counts): the games category, which macOS turns Game Mode on
+        for; anything else, music and LSSupportsGameMode false, as before."""
+        import plistlib
+        self.built()
+        options = os.path.join(self.home, "options.env")
+        for text, on in (("", False), ("RS_GAME_MODE=0\n", False),
+                         ("# x\n RS_GAME_MODE = 1 \nRS_GAME_MODE=0\n", True)):
+            write(options, text.encode())
+            self.assertEqual(lp_build.game_mode_set(self.home), on, text)
+        os.remove(options)
+        self.assertFalse(lp_build.game_mode_set(self.home))
+        p = lp_build.info_plist("1.0", False, True)
+        self.assertEqual((p["LSApplicationCategoryType"], p["LSSupportsGameMode"]),
+                         ("public.app-category.games", True))
+        p = lp_build.info_plist("1.0", False)
+        self.assertEqual((p["LSApplicationCategoryType"], p["LSSupportsGameMode"]),
+                         ("public.app-category.music", False))
+        write(options, b"RS_GAME_MODE=1\n")
+        self.install()
+        with open(os.path.join(self.app, "Contents", "Info.plist"), "rb") as f:
+            self.assertEqual(plistlib.load(f)["LSApplicationCategoryType"], "public.app-category.games")
+
 
 class TestHarvest(unittest.TestCase):
     """The prebuilt harvester: the committed exe is the one README.md names, and harvest-export copies it
