@@ -397,9 +397,9 @@ What each does:
   `mods_shared.c`, one rule for both editions). A movie the overlay doesn't hold opens as before, through a mod's
   own hook too (rearmed-mods serves three).
 - **RS Re-ARMed's options in ADV DISPLAY SETTINGS** (this edition's; `RS_MODS_OVERLAY=0` leaves the menu as it is).
-  The overlay adds a button for each of ten switches to the menu's definition
+  The overlay adds a button for each of twelve switches to the menu's definition
   (`manifests/ui_menu_pillar_options.database.json`), with their labels and descriptions as new rows of the game's
-  text table (38901-38920, the English in every language), and the game lists, sorts and shows them with its own. The
+  text table (38901-38924, the English in every language), and the game lists, sorts and shows them with its own. The
   menu's code knows only the game's settings, so `tools/ws7/recomp/overrides/mods/menu_options.c` puts a native
   function in front of five of its methods, in the classes' vtables at the first frame: the list's refresh (each row's
   current value, and the other renderer's rows locked, as are those the session sets: a switch whose value in the

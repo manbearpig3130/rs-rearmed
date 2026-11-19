@@ -170,6 +170,7 @@ static option g_opts[] = {
     {"rsAnyWindowShape", "RS_WINDOW_ANY_SHAPE", 0, 0, 2, 1, OFF_ON, NULL, NULL, 0},
     {"rsRenderer", NULL, 1, 0, 2, 0, {"metal", "opengl"}, {"METAL", "OPENGL"}, NULL, NULL, 0},
     {"rsMultithreadedGL", "RS_GL_MTENGINE", 0, OPENGL, 2, 0, OFF_ON, NULL, NULL, 0},
+    {"rsLowLatency", "RS_METAL_DRAWABLES", 0, METAL, 2, 0, {"", "2"}, {"$[31679]", "$[31678]"}, NULL, NULL, 0},
     {"rsMetalFXUpscaling", "RS_METAL_UPSCALE", 0, METAL, 2, 1, OFF_ON, NULL, NULL, 0},
     {"rsFullRetina", "RS_METAL_RETINA", 0, METAL, 2, 0, OFF_ON, NULL, NULL, 0},
     {"rsRenderScale", "RS_METAL_SCALE", 1, METAL, 4, 3, {"50", "75", "90", ""}, {"50%", "75%", "90%", "100%"}, NULL,
@@ -179,6 +180,7 @@ static option g_opts[] = {
     {"rsTextureFiltering", "RS_METAL_ANISO", 1, METAL, 5, 4, {"1", "2", "4", "8", "16"},
      {"1X", "2X", "4X", "8X", "16X"}, NULL, NULL, 0},
     {"rsColor", "RS_METAL_COLORS", 1, METAL, 2, 0, {"", "vivid"}, {"SRGB", "VIVID"}, NULL, NULL, 0},
+    {"rsPerformanceOverlay", "RS_METAL_HUD", 0, METAL, 2, 0, OFF_ON, NULL, NULL, 0},
 };
 #define NOPTS (sizeof g_opts / sizeof *g_opts)
 
@@ -201,10 +203,11 @@ static const char *home(void) {
 }
 
 // The choice a value of the option's switch is: a checkbox's off when it starts with 0, n, N, f or F (as the
-// launchers read toggles), a slider's by its value in any case; the default without one, -1 for another value.
+// launchers read toggles; one of other values, Low Latency's, by its value), a slider's by its value in any case;
+// the default without one, -1 for another value.
 static int choice_of(const option *o, const char *v) {
   if (!v || !*v) return o->dflt;
-  if (!o->slider) return !strchr("0nNfF", v[0]);
+  if (!o->slider && !strcmp(o->value[1], "1")) return !strchr("0nNfF", v[0]);
   for (int i = 0; i < o->n; i++)
     if (!strcasecmp(v, o->value[i])) return i;
   return -1;
