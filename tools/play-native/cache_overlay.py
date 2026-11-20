@@ -717,7 +717,7 @@ MENU_OPTIONS = [
      "starts.", 13),
     ("rsLowLatency", "38921", "LOW LATENCY", "38922",
      "Queues two frames for the screen instead of three: each one shows a refresh sooner{C} and a late one as a "
-     "repeat. Takes effect the next time the game starts.", 14),
+     "repeat. Takes effect at once.", 14),
     ("rsMetalFXUpscaling", "38901", "METALFX UPSCALING", "38902",
      "Scales the picture up to a Retina screen's pixels with MetalFX. Disabling this uses a plain scale{C} improving "
      "performance. Takes effect the next time the game starts.", 15),
@@ -728,19 +728,18 @@ MENU_OPTIONS = [
      "Draws the game at a lower resolution and scales it up to the screen{C} for less graphics work and a softer "
      "picture. Takes effect the next time the game starts.", 17),
     ("rsSharpening", "38925", "SHARPENING", "38926",
-     "Sharpens the picture on the screen{C} after any upscaling. Takes effect the next time the game starts.", 18),
+     "Sharpens the picture on the screen{C} after any upscaling. Takes effect at once.", 18),
     ("rsAntiAliasing", "38905", "ANTI-ALIASING", "38906",
-     "Smooths the edges of the 3D scene with MSAA. Lower settings improve performance. Takes effect the next time "
-     "the game starts.", 19),
+     "Smooths the edges of the 3D scene with MSAA. Lower settings improve performance. Takes effect at once.", 19),
     ("rsTextureFiltering", "38907", "TEXTURE FILTERING", "38908",
-     "Keeps textures sharp when seen at an angle. 1X is the game's own. Takes effect the next time the game starts.",
+     "Keeps textures sharp when seen at an angle. 1X is the game's own. Takes effect at once.",
      20),
     ("rsColor", "38909", "COLOR", "38910",
      "SRGB shows the game's colors as it made them. VIVID leaves them unmatched{C} more saturated on a wide-color "
-     "screen. Takes effect the next time the game starts.", 21),
+     "screen. Takes effect at once.", 21),
     ("rsPerformanceOverlay", "38923", "PERFORMANCE OVERLAY", "38924",
-     "Shows Apple's Metal performance HUD over the game: its frame rate{C} frame times and memory. Takes effect the "
-     "next time the game starts.", 22),
+     "Shows Apple's Metal performance HUD over the game: its frame rate{C} frame times and memory. Takes effect at "
+     "once.", 22),
 ]
 TEXT_COLUMNS = 8  # the table's languages after a row's id
 

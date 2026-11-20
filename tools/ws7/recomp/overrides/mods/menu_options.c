@@ -344,12 +344,17 @@ static int session_set(const option *o) {
   return strcmp(v, line) != 0;
 }
 
+// The Mac shell's (shims/platform/src/rsp_present.h): a switch changed as the game runs, taken from the next frame
+// on where it can be (Low Latency, Sharpening, Anti-Aliasing, Texture Filtering, Color, Performance Overlay).
+extern int rsp_live_switch(const char *name, const char *value) __attribute__((weak_import));
+
 static void set_choice(option *o, int c) {
   o->now = c;
   const char *v = o->value[c];
   int r = o->env ? save_switch(o->env, c == o->dflt || !*v ? NULL : v) : save_renderer(v);
-  rs_mods_logf("menu options: %s %s%s", o->env ? o->env : "renderer", *v ? v : "(default)",
-               r ? " (not written)" : "");
+  int now = o->env && rsp_live_switch && rsp_live_switch(o->env, v);
+  rs_mods_logf("menu options: %s %s%s%s", o->env ? o->env : "renderer", *v ? v : "(default)",
+               r ? " (not written)" : "", now ? ", at once" : "");
 }
 
 // --- the methods in front of the game's ---------------------------------------------------------------------------

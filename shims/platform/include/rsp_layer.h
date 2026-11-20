@@ -5,8 +5,10 @@
 //                           display, so a third only adds latency). 2 with vsync is low-latency presentation: a
 //                           frame is on the screen a refresh sooner, and one that is late shows as a repeated one.
 //   RS_METAL_HUD=1          Apple's Metal Performance HUD over the game: its frame rate, frame times and GPU
-//                           memory. MTL_HUD_ENABLED=1 before Metal starts (rsp_layer_env, first in each main) and
-//                           the layer's developerHUDProperties (rsp_layer_hud, macOS 13 and later).
+//                           memory. On macOS 13 and later the HUD is enabled before Metal starts (MTL_HUD_ENABLED,
+//                           rsp_layer_env, first in each main) and the layer's developerHUDProperties show or hide
+//                           it (rsp_layer_show_hud), so it can be turned on and off as the game runs; before 13,
+//                           only MTL_HUD_ENABLED, with RS_METAL_HUD=1.
 //
 // Each edition's presenter applies them to its CAMetalLayer: the Mac's src/rsp_present_metal.m, Learn & Play's
 // win-x86/app/lp_window.m.
@@ -41,18 +43,19 @@ static inline int rsp_layer_hud(void) {
   return on;
 }
 
-// First in main, before anything starts Metal: the HUD's own switch for RS_METAL_HUD.
+// First in main, before anything starts Metal: the HUD's own switch (for the layer to show it or not, from 13 on).
 static inline void rsp_layer_env(void) {
-  if (rsp_layer_hud()) setenv("MTL_HUD_ENABLED", "1", 1);
+  if (__builtin_available(macOS 13.0, *)) setenv("MTL_HUD_ENABLED", "1", 1);
+  else if (rsp_layer_hud()) setenv("MTL_HUD_ENABLED", "1", 1);
 }
 
 #ifdef __OBJC__
 #import <QuartzCore/CAMetalLayer.h>
 
-// The HUD shown on LAYER when RS_METAL_HUD asks for it.
-static inline void rsp_layer_show_hud(CAMetalLayer *layer) {
-  if (!rsp_layer_hud()) return;
-  if (@available(macOS 13.0, *)) layer.developerHUDProperties = @{@"mode" : @"default", @"logging" : @"disabled"};
+// The HUD on LAYER shown, or hidden.
+static inline void rsp_layer_show_hud(CAMetalLayer *layer, int on) {
+  if (@available(macOS 13.0, *))
+    layer.developerHUDProperties = @{@"mode" : on ? @"default" : @"disabled", @"logging" : @"disabled"};
 }
 #endif
 
