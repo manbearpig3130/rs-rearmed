@@ -310,7 +310,7 @@ libSystem	___memcpy_chk	call	same
 libSystem	___memmove_chk	call	same	
 libSystem	___memset_chk	call	same	
 libSystem	___sincosf_stret	call	emulate	sinf and cosf, returned as Darwin's pair
-libSystem	___sprintf_chk	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	___sprintf_chk	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	___stack_chk_fail	call	same	
 libSystem	___stack_chk_guard	data	emulate	a variable of ours
 libSystem	___stderrp	data	emulate	a variable holding glibc's stderr
@@ -328,7 +328,7 @@ libSystem	_acos	call	same
 libSystem	_acosf	call	same	
 libSystem	_asin	call	same	
 libSystem	_asinf	call	same	
-libSystem	_asprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_asprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_atan	call	same	
 libSystem	_atan2	call	same	
 libSystem	_atan2f	call	same	
@@ -367,7 +367,7 @@ libSystem	_floorf	call	same
 libSystem	_fmod	call	same	
 libSystem	_fmodf	call	same	
 libSystem	_fopen	call	runtime	rc_file_fopen (funopen becomes fopencookie)
-libSystem	_fprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_fprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_fputc	call	same	
 libSystem	_fputs	call	same	
 libSystem	_fread	call	same	
@@ -406,7 +406,7 @@ libSystem	_log	call	same
 libSystem	_log10	call	same	
 libSystem	_log10f	call	same	
 libSystem	_logf	call	same	
-libSystem	_longjmp	call	runtime	rc_setjmp
+libSystem	_longjmp	call	runtime	rc_setjmp when translated; run directly on x86-64: glibc's longjmp
 libSystem	_mach_absolute_time	call	emulate	CLOCK_MONOTONIC in nanoseconds
 libSystem	_mach_port_type	call	emulate	
 libSystem	_mach_task_self_	data	emulate	a variable, any port number
@@ -428,11 +428,11 @@ libSystem	_opendir$INODE64	call	runtime	rc_file_opendir
 libSystem	_poll	call	adapt	POLLWRNORM and the band bits
 libSystem	_pow	call	same	
 libSystem	_powf	call	same	
-libSystem	_printf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_printf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_pthread_attr_destroy	call	same	
 libSystem	_pthread_attr_getinheritsched	call	adapt	the constants
 libSystem	_pthread_attr_getschedparam	call	same	
-libSystem	_pthread_attr_init	call	same	64 bytes in both
+libSystem	_pthread_attr_init	call	same	glibc's 64 bytes on arm64 and 56 on x86-64, in Darwin's 64
 libSystem	_pthread_attr_setdetachstate	call	adapt	PTHREAD_CREATE_DETACHED is 2 on Darwin, 1 here
 libSystem	_pthread_attr_setinheritsched	call	adapt	the constants
 libSystem	_pthread_attr_setschedparam	call	same	
@@ -457,7 +457,7 @@ libSystem	_pthread_key_create	call	adapt	pthread_key_t is 8 bytes on Darwin, 4 h
 libSystem	_pthread_key_delete	call	same	
 libSystem	_pthread_mach_thread_np	call	emulate	the thread's id as a port number
 libSystem	_pthread_mutex_destroy	call	adapt	see pthread_mutex_lock
-libSystem	_pthread_mutex_init	call	same	glibc's 48 bytes in Darwin's 64
+libSystem	_pthread_mutex_init	call	same	glibc's 48 bytes on arm64 and 40 on x86-64, in Darwin's 64
 libSystem	_pthread_mutex_lock	call	adapt	a mutex with Darwin's static initializer (its signature) is made on first use
 libSystem	_pthread_mutex_trylock	call	adapt	see pthread_mutex_lock
 libSystem	_pthread_mutex_unlock	call	adapt	see pthread_mutex_lock
@@ -492,7 +492,7 @@ libSystem	_semaphore_signal	call	emulate	see semaphore_create
 libSystem	_semaphore_wait	call	emulate	see semaphore_create
 libSystem	_send	call	refuse	
 libSystem	_sendto	call	refuse	
-libSystem	_setjmp	call	runtime	rc_setjmp
+libSystem	_setjmp	call	runtime	rc_setjmp when translated; run directly on x86-64: glibc's _setjmp, whose 68 bytes fit Darwin's 148 (with the signal mask it would write 200)
 libSystem	_setlocale	call	adapt	the LC_ category numbers
 libSystem	_setsockopt	call	refuse	
 libSystem	_setvbuf	call	same	
@@ -502,11 +502,11 @@ libSystem	_signal	call	adapt	the signal numbers
 libSystem	_sin	call	same	
 libSystem	_sinf	call	same	
 libSystem	_sinh	call	same	
-libSystem	_snprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_snprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_socket	call	refuse	no socket is made: EAFNOSUPPORT. If a run shows the game needs a local one, adapters for sockaddr (sa_len) and the constants with the guard's rule instead
-libSystem	_sprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_sprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_srand	call	same	see rand
-libSystem	_sscanf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_sscanf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_stat$INODE64	call	runtime	rc_file_stat, which then fills Darwin's struct stat (144 bytes)
 libSystem	_strcasecmp	call	same	
 libSystem	_strcat	call	same	
@@ -546,9 +546,9 @@ libSystem	_timegm	call	same
 libSystem	_tmpnam	call	same	
 libSystem	_unlink	call	same	
 libSystem	_usleep	call	same	
-libSystem	_vfprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
-libSystem	_vsnprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
-libSystem	_vsprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_vfprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
+libSystem	_vsnprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
+libSystem	_vsprintf	call	same	translated: through the v function, rc_va laying the arguments out as the host's va_list; run directly on x86-64: the host's own
 libSystem	_wctomb	call	same	
 libSystem	_write	call	same	
 libSystem	dyld_stub_binder	data	stub	never called: the stubs are thunks

@@ -1,15 +1,17 @@
-# Linux on arm64 (investigated, not built)
+# Linux, arm64 and x86-64 (investigated, not built)
 
-A port of RS Re-ARMed to arm64 Linux: the same translated game, linked as an ELF program, with Linux in the place of
-macOS underneath. The first machine in mind is an Apple silicon Mac running Fedora Asahi Remix, where the game would
-otherwise need an x86 emulator inside a virtual machine.
+A port of RS Re-ARMed to Linux, with Linux in the place of macOS underneath the Mac game. Two machines are in mind:
+an Apple silicon Mac running Fedora Asahi Remix, where the game would otherwise need an x86 emulator inside a
+virtual machine and gets the same translated code as on macOS; and an x86-64 desktop, where the game's own code can
+run as it is.
 
 **Nothing here builds or runs yet.** This folder holds the investigation of what the port takes, the plan, and one
-tool. The work is on the branch `port/linux-arm64`.
+tool. The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
 |---|---|
-| [FINDINGS.md](FINDINGS.md) | what each part of the project takes from macOS today, and what Linux has in its place |
+| [FINDINGS.md](FINDINGS.md) | what each part of the project takes from macOS today, and what Linux has in its place, for arm64 |
+| [X86-64.md](X86-64.md) | what differs on x86-64: the game's code runs as it is, and what that takes |
 | [PLAN.md](PLAN.md) | the steps, what each proves and needs, the open questions, the risks, and a log of what was done |
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
 
@@ -44,6 +46,11 @@ tool. The work is on the branch `port/linux-arm64`.
   so of macOS it has one window file, one audio engine and the renderer. Upstream's iPhone port started with it for
   that reason. This port starts with the Mac game all the same, the game it can be run with here; the pieces under
   both (shell, renderer, audio, install) are meant to be written once.
+- **On x86-64 the game's code needs no translating**: it is an x86-64 program with the calling convention Linux
+  has too, and it makes no system call of its own. A loader the project's tests already have, and the same answers
+  to the same imports, bound directly. What the recompiler gives besides translation (hook points, mid points,
+  edits) needs a second form there as patches, or the game is translated there too: the C passes for x86-64 as
+  well. Proposed to come first, as the proving ground for what both ports share ([X86-64.md](X86-64.md)).
 - **A good part can be done before a Linux machine is at hand**: counting which imports a real session reaches
   (on the Mac), and everything up to the game's 3,487 static initializers running, which needs no window and no
   sound (any arm64 Linux, a virtual machine included).

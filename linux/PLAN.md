@@ -1,7 +1,7 @@
-# Linux on arm64: status and plan
+# Linux: status and plan
 
-What the port needs and why is in [FINDINGS.md](FINDINGS.md); this page is what to do about it, in what order, and
-what has been done. The editions' own plans: [Mac](../docs/mac/PLAN.md), [Learn & Play](../docs/windows/PLAN.md).
+What the port needs and why is in [FINDINGS.md](FINDINGS.md) for arm64 and [X86-64.md](X86-64.md) for x86-64; this
+page is what to do about it, in what order, and what has been done. The editions' own plans: [Mac](../docs/mac/PLAN.md), [Learn & Play](../docs/windows/PLAN.md).
 
 ## Status
 
@@ -14,12 +14,84 @@ what has been done. The editions' own plans: [Mac](../docs/mac/PLAN.md), [Learn 
   ([how](FINDINGS.md#how-this-was-found)).
 - **The game**: the Mac game first. Learn & Play is step 6, and would be written without a run: it is not owned
   where this work is done.
-- **The machine in mind**: an Apple silicon Mac with Fedora Asahi Remix. Not at hand yet; steps 0 and 1 do not need it.
+- **The machines in mind**: for arm64 an Apple silicon Mac with Fedora Asahi Remix, not at hand yet (steps 0 and 1
+  do not need it); for x86-64 a desktop with Arch Linux and an NVIDIA card. Neither is driven from where this is
+  written: each step comes with a script that builds, runs its check and says what it found.
+- **x86-64** (2026-11-26): the Mac game's code can run there as it is, and the translated C also passes a compile
+  check for it ([X86-64.md](X86-64.md)). Proposed to come first ([below](#two-hosts-one-order)).
 
-## The steps
+## Two hosts, one order
+
+Both ports need the same four pieces around the game: the Darwin layer that answers its imports, the shell, the
+renderer's OpenGL path and the audio layer, with the install. They differ in what runs the game's code: on x86-64
+the code itself, on arm64 its translation with the thunks and the runtime in front of the layer.
+
+Proposed: **x86-64 first, running the original code**, then arm64.
+
+- It needs the least to boot: a loader the project already has in its test harness, and the layer. No recompiler
+  work, no thunks.
+- It proves the shared pieces with code known to be right. A fault on arm64 could be the layer's, the thunks' or
+  the translation's; on x86-64 run directly it can only be the layer's or the shell's.
+- Its machine needs no reinstall, and its OpenGL driver is not a question.
+- What arm64 then adds is [its step 1](#1-the-tree-builds-on-linux-and-the-games-initializers-run) without the
+  layer, and the questions that are Asahi's own.
+
+The cost is the second mechanism for hooks, mid points and edits ([x86-64, step 5](#x5-fixes-and-mods)), which can
+be put off, or avoided by translating there too.
+
+## x86-64
+
+[What differs](X86-64.md). Each step ends in something that runs.
+
+### X1. The game's initializers run
+
+- **The loader**, from `shims/game/harness/rsimage.c`: the image mapped at its own address, rebased, bound, its
+  3,487 initializers run, an unanswered import named. About 400 lines.
+- **The Darwin layer, first cut**, as in [arm64's step 1](#1-the-tree-builds-on-linux-and-the-games-initializers-run),
+  bound by name with no thunks: the `same` rows, the `adapt` and `emulate` rows the initializers reach, and
+  a function that names itself for every other row.
+- **Tests without the game**: small programs built as x86-64 Mach-O (clang's Darwin target, LLVM's Mach-O linker;
+  to check) that call the imports with Darwin's layouts and numbers and are run through the loader. The same
+  programs serve arm64 through the translator.
+- **`shims/libstdcxx`'s ABI test** against the system's library.
+
+Done when: `--init-only` runs all 3,487 on an x86-64 Linux machine.
+
+### X2. A picture
+
+As [arm64's step 2](#2-a-picture) on a desktop GPU: the OpenGL path on EGL, the shims built as x86-64 libraries,
+the shell, a silent audio layer. The seam's calls into the game are plain calls. The three functions in the place
+of the engine's Objective-C and the online stub's nine go in as jumps at their functions' entries, the first of
+[the patches](X86-64.md#running-the-original-code).
+
+Done when: the title screen, the menus, and a song's note highway without sound.
+
+### X3. Sound and the guitar
+
+[arm64's step 3](#3-sound-and-the-guitar) as it is: the audio layer on PipeWire, the FFT, latency measured, here
+against the same machine's Proton route as well.
+
+### X4. Install and play
+
+[arm64's step 4](#4-install-and-play-from-a-clean-machine), with Steam at hand: the depot through its console or
+`steamcmd`. No build of the game: the install decrypts the image and builds the small native part.
+
+### X5. Fixes and mods
+
+The built-in fixes and mods are written against the runtime's hook points, mid points and edits. Two ways, decided
+here with figures:
+
+- **Patches**: entry jumps for the 21 hook points and the overrides, the 459 in-place edits as byte patches, and a
+  plan made at build time for the 136 mid points and the 161 edits that replace a range. First the built-in fixes'
+  share (13 mid points), then the mods'.
+- **Translate on x86-64 too**: the arm64 mechanism as it is, once arm64's step 1 exists. Measure its speed against
+  the original first.
+
+## arm64: the steps
 
 Each step ends in something that runs, so a wrong turn shows early. Sizes are of new or changed code and are
-estimates from the Mac's counterparts.
+estimates from the Mac's counterparts. If x86-64 goes first, the Darwin layer, the shell, the OpenGL path, the audio
+layer and the install arrive from it, and steps 1 to 4 here are what is left of each.
 
 ### 0. Count what a session reaches (on the Mac)
 
@@ -120,30 +192,36 @@ about 50 lines of small replacements ([Learn & Play](FINDINGS.md#learn--play)). 
 To find out:
 
 1. **Mesa on the Apple GPU**: is there a compatibility profile, and with the ARB programs? Without a compatibility
-   profile the stream would need its alpha test and legacy calls rewritten for a core context, a much larger step 2.
+   profile the stream would need its alpha test and legacy calls rewritten for a core context, a much larger step 2
+   (or Zink under it).
 2. **The Mac game's files on Asahi**: does `download_depot` work in the Steam that runs there, and where do its
    files land on the host? Else which other route.
-3. **128 frames through PipeWire** on this machine with a USB interface: clean, or is a direct ALSA device needed?
+3. **128 frames through PipeWire** with a USB interface: clean, or is a direct ALSA device needed?
 4. **Which imports a session reaches** (step 0), and whether the two locale calls and the Ethernet address read
    are among them.
 5. **The cable's name** as ALSA gives it, against the name the game looks for.
+6. **x86-64**: is 0x100000000 free in a Linux process as expected; can LLVM's Mach-O linker make the test programs
+   with no macOS SDK; how fast is the translated game there against the original.
 
 To decide:
 
-6. **Where the Linux code lives.** Upstream's iPhone port has a folder of its own (`ios/app`, `ios/compat`) and
-   compiled-out changes in the shared code. The same here: `linux/` for the build, the shell and the Darwin layer.
-7. **SDL 3, or Wayland and EGL by hand**, for the shell. SDL 3 is proposed: it is the smaller shell and brings X11.
-8. **PipeWire's own API or its JACK face** for the audio layer.
-9. **Whether the Mac edition takes any of it**: the three native functions in the place of the engine's
-   Objective-C, and the game's socket imports refused at the import as Learn & Play's are, would each work on the
-   Mac as well. AGENTS.md asks that the editions stay alike; that is the maintainer's call.
-10. **Whether upstream wants a Linux port**, and when to ask. Until then the branch keeps its changes to shared
+7. **Which host first.** Proposed: x86-64 ([above](#two-hosts-one-order)).
+8. **On x86-64, patches or translation** for the fixes and mods ([X5](#x5-fixes-and-mods)).
+9. **Where the Linux code lives.** Upstream's iPhone port has a folder of its own (`ios/app`, `ios/compat`) and
+   compiled-out changes in the shared code. The same here: `linux/` for the build, the loader, the shell and the
+   Darwin layer.
+10. **SDL 3, or Wayland and EGL by hand**, for the shell. SDL 3 is proposed: it is the smaller shell and brings X11.
+11. **PipeWire's own API or its JACK face** for the audio layer.
+12. **Whether the Mac edition takes any of it**: the three native functions in the place of the engine's
+    Objective-C, and the game's socket imports refused at the import as Learn & Play's are, would each work on the
+    Mac as well. AGENTS.md asks that the editions stay alike; that is the maintainer's call.
+13. **Whether upstream wants a Linux port**, and when to ask. Until then the branch keeps its changes to shared
     code small and compiled out on the Mac.
 
 ## Risks
 
-1. **The OpenGL driver** (question 1). The Cg shim's `glsl` mode already covers a driver without ARB programs; a
-   driver without a compatibility profile is the expensive case.
+1. **The OpenGL driver** on arm64 (question 1). The Cg shim's `glsl` mode already covers a driver without ARB
+   programs; a driver without a compatibility profile is the expensive case. Not a question on a desktop GPU.
 2. **Audio latency**: a desktop sound server where the Mac app talks to the device. Measured in step 3; ALSA is the
    way out.
 3. **A stub that is reached** through a pointer the call graph did not show. It names itself in the log and stops,
@@ -159,6 +237,12 @@ To decide:
    editions. The port's answer is a small footprint: the Darwin layer and the shell in their own folder.
 9. **Steam updating the Mac build**: as for the Mac edition; `import_census.py --check` says at once when the
    imports changed.
+10. **x86-64: moved instructions.** A patch over a short instruction takes its neighbours along; one that is a
+    branch target, or misplaces a `rip`-relative operand, is a silent fault. The plan is made and checked at build
+    time from the translator's own knowledge of each function, and a site that cannot take a jump gets a
+    breakpoint; translating on x86-64 avoids the question.
+11. **x86-64: a second mechanism.** Running the original code is not how the other hosts work, so a change to
+    hooks, mid points or edits would have two forms to keep alike. The `rc_*` interface is the line between them.
 
 ## Decisions
 
@@ -182,6 +266,10 @@ Proposed; none is final before the step that tests it.
 - **Built on the player's machine from their own copy**, with Fedora's clang, lld and Python; nothing of the game
   is shipped, and nothing of Apple's headers is copied.
 - **The Mac edition unchanged**: what Linux needs in shared code is compiled out on the Mac.
+- **On x86-64 the game's code runs as it is**, behind the same `rc_*` interface, so overrides, fixes and mods stay
+  one source; translation there stays possible and is checked to compile.
+- **x86-64 before arm64**, as the proving ground for what both share.
+- **No Vulkan backend on either CPU**; Zink is the way out where a driver lacks the compatibility profile.
 
 ## For the maintainer
 
@@ -199,3 +287,8 @@ Proposed; none is final before the step that tests it.
   classed every import (`darwin-imports.tsv`) from the names, the sources and the call sites in a 1.20.0 build's
   generated C; checked the generated C for arm64 Linux (243 parts, no diagnostics); wrote the findings and this
   plan. Next: step 0's counting switch.
+- **2026-11-26, x86-64.** Branch `port/linux-x86_64` on top of the arm64 one. Checked the generated C for x86-64
+  Linux (243 parts, no diagnostics, through the runtime's per-lane helpers); read the image's load commands and
+  counted its instructions (no system call, segment register or AVX; 4 KB segments; DWARF unwind tables); read the
+  harness's loader; counted the edits and mid points by form and the overrides by purpose. Wrote `X86-64.md` and
+  the x86-64 steps here. Next, if x86-64 goes first: X1's loader and the layer's first cut, with a script to run it.

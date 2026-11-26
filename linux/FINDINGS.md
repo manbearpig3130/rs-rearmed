@@ -2,7 +2,8 @@
 
 What each part of RS Re-ARMed takes from macOS today, and what arm64 Linux has in its place. Read from the tree at
 1.20.0 on 2026-11-26. The headings follow [how the Mac port works](../docs/mac/DESIGN.md), so the two can be read side
-by side; the steps that come out of it are in [PLAN.md](PLAN.md).
+by side; the steps that come out of it are in [PLAN.md](PLAN.md). It is written for arm64, where the game's code is
+translated; what differs on x86-64, where it can run as it is, is in [X86-64.md](X86-64.md).
 
 Nothing in this file has run on Linux. What was measured, and how, is [at the end](#how-this-was-found); a statement
 that rests on general knowledge of Linux and not on this tree says "to check".
