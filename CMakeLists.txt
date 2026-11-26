@@ -91,4 +91,7 @@ if(Python3_FOUND)
   add_test(NAME installer.update COMMAND ${CMAKE_SOURCE_DIR}/tools/installer/test_update.sh)
   # The measuring tools (tools/perf): frame-time statistics, the settings file's pins, the report.
   add_test(NAME perf.tools COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/perf/test_perf.py)
+  # The Linux port's table of what the Mac game imports from macOS (linux/darwin-imports.tsv): the census on a
+  # made-up Mach-O, and the table against the decrypted image when there is one.
+  add_test(NAME linux.imports COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/test_import_census.py)
 endif()

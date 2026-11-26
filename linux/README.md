@@ -1,0 +1,62 @@
+# Linux on arm64 (investigated, not built)
+
+A port of RS Re-ARMed to arm64 Linux: the same translated game, linked as an ELF program, with Linux in the place of
+macOS underneath. The first machine in mind is an Apple silicon Mac running Fedora Asahi Remix, where the game would
+otherwise need an x86 emulator inside a virtual machine.
+
+**Nothing here builds or runs yet.** This folder holds the investigation of what the port takes, the plan, and one
+tool. The work is on the branch `port/linux-arm64`.
+
+| Read | For |
+|---|---|
+| [FINDINGS.md](FINDINGS.md) | what each part of the project takes from macOS today, and what Linux has in its place |
+| [PLAN.md](PLAN.md) | the steps, what each proves and needs, the open questions, the risks, and a log of what was done |
+| [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
+
+## In short
+
+- **The translated game is not the obstacle.** The C the recompiler writes for the Mac game (243 files, 617 MB)
+  passes a compile check for `aarch64-linux-gnu` as it is. Of the system it includes four headers, none of them
+  Apple's.
+- **What the game calls is.** The Mac game's image imports 681 symbols from 19 macOS libraries, and the Mac app
+  binds them to the real arm64 libraries of macOS. On Linux each needs an answer:
+
+  | What a Linux build does | Imports | |
+  |---|---|---|
+  | The host's own function of that name (glibc, libm, GNU libstdc++) | 259 | no code |
+  | The project's shims (the renderer, Cg, Bink, Steam), built for Linux | 162 | a build, and the renderer's OpenGL path on Mesa |
+  | The runtime's own (`rc_file`, `rc_setjmp`) | 11 | small changes |
+  | A function of ours over the host's (flags, struct layouts, `errno`) | 30 | new, a few lines each |
+  | A Darwin-only facility written anew (Mach, `OSAtomic`, vDSP, a small CoreFoundation) | 75 | new |
+  | A stand-in for a macOS service (CoreAudio's devices, the display's modes) | 31 | new: the audio layer is the large one |
+  | The network, refused | 15 | new, a few lines each |
+  | Nothing the app runs calls it (the game's own `main`, Cocoa shell and ARC support code did) | 98 | a stub each |
+
+- **GNU libstdc++ is the good news.** The game was built against Apple's copy of GNU libstdc++ 4.2.1, and Linux's
+  `libstdc++.so.6` still exports that ABI: all 93 of those imports bind to the system's library.
+- **No Objective-C runtime is needed.** With the shell rewritten, the engine's own Objective-C is four functions (the
+  clipboard, an alert, one folder listing), which become native ones.
+- **Around the game**, three pieces are written for macOS and need a Linux twin: the window shell (AppKit, 1,400
+  lines), the renderer's context and presentation (Metal by default; its OpenGL path is thin and close to
+  portable), and the audio devices (CoreAudio, which nothing replaces today). The build and install scripts are
+  Apple's tools throughout.
+- **Learn & Play needs far less of this than the Mac game**: its game talks only to the project's own Win32 seam,
+  so of macOS it has one window file, one audio engine and the renderer. Upstream's iPhone port started with it for
+  that reason. This port starts with the Mac game all the same, the game it can be run with here; the pieces under
+  both (shell, renderer, audio, install) are meant to be written once.
+- **A good part can be done before a Linux machine is at hand**: counting which imports a real session reaches
+  (on the Mac), and everything up to the game's 3,487 static initializers running, which needs no window and no
+  sound (any arm64 Linux, a virtual machine included).
+
+## The census
+
+```sh
+python3 linux/import_census.py            # the table above, by library, from your own decrypted image
+python3 linux/import_census.py --check    # fails when the table and the image name different imports
+python3 linux/import_census.py --list     # every import with its class
+python3 linux/test_import_census.py       # its test (ctest: linux.imports)
+```
+
+It reads the Mach-O itself, with no Apple tool, so it runs on Linux too. The image is the one
+`tools/steamless/decrypt.py` makes (`build/steamless/Rocksmith2014_x64_decrypted`, or `RC_IMAGE`); without one it
+counts the table alone.

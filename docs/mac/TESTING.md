@@ -39,6 +39,7 @@ game is in the repository.
 | Game libraries | `game.offline.no_network`, `game.difftest.x86_64`, `game.native.arm64` (`shims/game/test`) | the online stub and crypto import nothing that talks to a network; the rewritten crypto, efd, hash and Lua functions against the original x86-64 code (under Rosetta, which writes a golden file), then the arm64 build against that file |
 | libstdc++ | `libstdcxx.*` | the system library provides the GNU ABI the game needs |
 | Shims | `shim.<name>.macho` | each built shim has the expected architectures and install name (`tools/check-shim.sh`) |
+| Linux port | `linux.imports` (`linux/test_import_census.py`) | the table of what this game imports from macOS and what a Linux build does about each ([linux](../../linux/README.md)): the census on a made-up Mach-O, the table's form, and with the decrypted image at `RC_IMAGE` or `build/steamless` that the table names exactly its imports |
 
 `win-x86.install` and `win-x86.shaders` are in the same CTest run:
 [Windows testing](../windows/TESTING.md#tests-in-the-repository).

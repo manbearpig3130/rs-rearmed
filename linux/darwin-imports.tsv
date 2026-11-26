@@ -1,0 +1,701 @@
+# What the Mac game imports from macOS, and what a Linux build does about each. One row per import of the image
+# (tools/targets/mac-x64/target.toml pins it): library, symbol, kind, class, how. Tab-separated.
+#
+# kind   call: the game calls it through a stub (the build makes a thunk for it); data: only a pointer is bound
+#        (a variable, a class, a vtable, or a function kept as a pointer)
+# class  same     the host's own function or object of that name: glibc, libm, libgcc, GNU libstdc++
+#        adapt    a function of ours with the Darwin prototype over the host's: constants, struct layouts, errno
+#        emulate  a Darwin-only facility written anew
+#        runtime  already the recompiler runtime's own, which has to build on Linux
+#        shim     one of the project's replacement libraries, built for Linux
+#        layer    part of a stand-in for a macOS service, over the Linux shell or audio backend
+#        refuse   the network: answered as with no network at all
+#        stub     nothing the app runs calls it: logs its name and fails
+# how    what the row needs, in a few words; empty when the class says it all
+#
+# The classes are a reading of the import list, the sources and the translated game's call graph, made before any
+# Linux build exists: nothing here has run. A `stub` says who the only callers are (the game's own main, its Cocoa
+# shell classes, the ARC support code linked into it), from the call sites in a build's generated C; a call through a
+# pointer would not show there, so a run of the Mac app with its imports counted is still the proof (linux/PLAN.md,
+# step 0). linux/import_census.py checks this file against an image and counts it.
+Accelerate	_vDSP_create_fftsetup	call	emulate	see vDSP_fft_zop (the built-in fix keeps one setup a size)
+Accelerate	_vDSP_destroy_fftsetup	call	emulate	see vDSP_fft_zop
+Accelerate	_vDSP_fft_zop	call	emulate	an FFT with vDSP's scaling and split-complex layout
+Accelerate	_vcosf	call	emulate	four cosf
+Accelerate	_vpowf	call	emulate	four powf
+AppKit	_NSApplicationMain	call	stub	called only by the game's own main, which the app's main replaces
+AppKit	_NSPasteboardTypeString	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_NSViewGlobalFrameDidChangeNotification	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSAlert	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSOpenGLContext	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSOpenGLPixelFormat	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSPasteboard	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSResponder	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSScreen	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSTrackingArea	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_CLASS_$_NSView	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_IVAR_$_NSView._window	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_METACLASS_$_NSResponder	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+AppKit	_OBJC_METACLASS_$_NSView	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+ApplicationServices	_CGDisplayBounds	call	stub	no call site in the translated game
+ApplicationServices	_CGDisplayCopyAllDisplayModes	call	layer	the renderer lists the display's modes at every start: answered by the Linux shell
+ApplicationServices	_CGDisplayHideCursor	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+ApplicationServices	_CGDisplayIDToOpenGLDisplayMask	call	layer	the renderer lists the display's modes at every start: answered by the Linux shell
+ApplicationServices	_CGDisplayModeCopyPixelEncoding	call	layer	the renderer lists the display's modes at every start: answered by the Linux shell
+ApplicationServices	_CGDisplayModeGetHeight	call	layer	the renderer lists the display's modes at every start: answered by the Linux shell
+ApplicationServices	_CGDisplayModeGetWidth	call	layer	the renderer lists the display's modes at every start: answered by the Linux shell
+ApplicationServices	_CGDisplayShowCursor	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+ApplicationServices	_CGGetActiveDisplayList	call	stub	no call site in the translated game
+ApplicationServices	_CGMainDisplayID	call	layer	the renderer lists the display's modes at every start: answered by the Linux shell
+ApplicationServices	_CGRectGetHeight	call	stub	no call site in the translated game
+ApplicationServices	_CGRectGetWidth	call	stub	no call site in the translated game
+ApplicationServices	_CGWindowLevelForKey	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+AudioToolbox	_AUGraphAddNode	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphClose	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphConnectNodeInput	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphInitialize	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphNodeInfo	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphOpen	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphSetNodeInputCallback	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphStart	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_AUGraphStop	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_DisposeAUGraph	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioToolbox	_NewAUGraph	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioUnit	_AudioOutputUnitStop	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioUnit	_AudioUnitSetParameter	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioUnit	_AudioUnitSetProperty	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+AudioUnit	_AudioUnitUninitialize	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+Carbon	_CreateStandardAlert	call	stub	called only by the game's own main, which the app's main replaces
+Carbon	_RunStandardAlert	call	stub	called only by the game's own main, which the app's main replaces
+Cg	_cgCreateContext	call	shim	shims/cg
+Cg	_cgCreateProgram	call	shim	shims/cg
+Cg	_cgDestroyContext	call	shim	shims/cg
+Cg	_cgDestroyProgram	call	shim	shims/cg
+Cg	_cgGLBindProgram	call	shim	shims/cg
+Cg	_cgGLDisableClientState	call	shim	shims/cg
+Cg	_cgGLDisableTextureParameter	call	shim	shims/cg
+Cg	_cgGLEnableClientState	call	shim	shims/cg
+Cg	_cgGLEnableProfile	call	shim	shims/cg
+Cg	_cgGLEnableTextureParameter	call	shim	shims/cg
+Cg	_cgGLGetTextureEnum	call	shim	shims/cg
+Cg	_cgGLLoadProgram	call	shim	shims/cg
+Cg	_cgGLSetContextOptimalOptions	call	shim	shims/cg
+Cg	_cgGLSetMatrixParameterfr	call	shim	shims/cg
+Cg	_cgGLSetParameter4fv	call	shim	shims/cg
+Cg	_cgGLSetParameterPointer	call	shim	shims/cg
+Cg	_cgGLSetTextureParameter	call	shim	shims/cg
+Cg	_cgGLSetupSampler	call	shim	shims/cg
+Cg	_cgGetFirstLeafParameter	call	shim	shims/cg
+Cg	_cgGetNamedParameter	call	shim	shims/cg
+Cg	_cgGetNextLeafParameter	call	shim	shims/cg
+Cg	_cgGetParameterDirection	call	shim	shims/cg
+Cg	_cgGetParameterName	call	shim	shims/cg
+Cg	_cgGetParameterResourceIndex	call	shim	shims/cg
+Cg	_cgGetParameterSemantic	call	shim	shims/cg
+Cg	_cgGetParameterType	call	shim	shims/cg
+Cg	_cgGetParameterVariability	call	shim	shims/cg
+Cg	_cgGetProgramString	call	shim	shims/cg
+Cg	_cgIsParameterUsed	call	shim	shims/cg
+CoreAudio	_AudioDeviceCreateIOProcID	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioDeviceDestroyIOProcID	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioDeviceStart	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioDeviceStop	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioObjectAddPropertyListener	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioObjectGetPropertyData	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioObjectGetPropertyDataSize	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioObjectHasProperty	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioObjectRemovePropertyListener	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreAudio	_AudioObjectSetPropertyData	call	layer	the CoreAudio-shaped layer over the Linux audio backend
+CoreFoundation	_CFAbsoluteTimeGetCurrent	call	emulate	
+CoreFoundation	_CFArrayGetCount	call	emulate	the display modes
+CoreFoundation	_CFArrayGetValueAtIndex	call	emulate	the display modes
+CoreFoundation	_CFDataGetBytes	call	stub	the Ethernet address read, past a service that is never found (see IOKit)
+CoreFoundation	_CFDictionaryCreateMutable	call	emulate	the Ethernet address read's matching dictionary (see IOKit)
+CoreFoundation	_CFDictionarySetValue	call	emulate	see CFDictionaryCreateMutable
+CoreFoundation	_CFLocaleCopyCurrent	call	emulate	the locale, asked in the online library's area: a run has to say if at all
+CoreFoundation	_CFLocaleGetValue	call	emulate	see CFLocaleCopyCurrent
+CoreFoundation	_CFRelease	call	emulate	
+CoreFoundation	_CFShow	call	emulate	to the log
+CoreFoundation	_CFStringCompare	call	emulate	the display modes' pixel encoding; audio device UIDs
+CoreFoundation	_CFStringCreateWithBytes	call	emulate	Wwise's string conversion
+CoreFoundation	_CFStringGetBytes	call	emulate	Wwise's string conversion
+CoreFoundation	_CFStringGetCString	call	emulate	audio device names
+CoreFoundation	_CFStringGetCStringPtr	call	emulate	efd's UUIDs
+CoreFoundation	_CFStringGetFastestEncoding	call	emulate	efd's UUIDs
+CoreFoundation	_CFStringGetLength	call	emulate	audio device names
+CoreFoundation	_CFStringGetMaximumSizeForEncoding	call	emulate	
+CoreFoundation	_CFStringGetSystemEncoding	call	emulate	audio device names
+CoreFoundation	_CFUUIDCreateString	call	emulate	efd's UUIDs
+CoreFoundation	_CFUUIDCreateWithBytes	call	emulate	efd's UUIDs
+CoreFoundation	_NSDefaultRunLoopMode	data	stub	a placeholder: the dead shell's
+CoreFoundation	_OBJC_CLASS_$_NSLocale	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+CoreFoundation	_OBJC_CLASS_$_NSObject	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+CoreFoundation	_OBJC_CLASS_$_NSRunLoop	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+CoreFoundation	_OBJC_CLASS_$_NSTimer	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+CoreFoundation	_OBJC_CLASS_$_NSUserDefaults	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+CoreFoundation	_OBJC_METACLASS_$_NSObject	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+CoreFoundation	___CFConstantStringClassReference	data	emulate	the class of the image's 39 constant strings
+CoreFoundation	_kCFAllocatorDefault	data	emulate	a constant
+CoreFoundation	_kCFBooleanTrue	data	emulate	a constant
+CoreFoundation	_kCFCoreFoundationVersionNumber	data	emulate	a constant
+CoreFoundation	_kCFLocaleCountryCode	data	emulate	a constant
+CoreFoundation	_kCFLocaleIdentifier	data	emulate	a constant
+CoreFoundation	_kCFLocaleLanguageCode	data	emulate	a constant
+CoreFoundation	_kCFTypeDictionaryKeyCallBacks	data	emulate	a constant
+CoreFoundation	_kCFTypeDictionaryValueCallBacks	data	emulate	a constant
+CoreServices	_Gestalt	call	stub	called only by the game's own main, which the app's main replaces
+CoreVideo	_CVDisplayLinkCreateWithActiveCGDisplays	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+CoreVideo	_CVDisplayLinkIsRunning	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+CoreVideo	_CVDisplayLinkRelease	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+CoreVideo	_CVDisplayLinkSetCurrentCGDisplayFromOpenGLContext	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+CoreVideo	_CVDisplayLinkSetOutputCallback	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+CoreVideo	_CVDisplayLinkStart	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+CoreVideo	_CVDisplayLinkStop	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+Foundation	_NSLog	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+Foundation	_OBJC_CLASS_$_NSAutoreleasePool	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+Foundation	_OBJC_CLASS_$_NSBundle	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+Foundation	_OBJC_CLASS_$_NSFileManager	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+Foundation	_OBJC_CLASS_$_NSNotificationCenter	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+Foundation	_OBJC_CLASS_$_NSString	data	stub	a placeholder: named by the game's main, its shell classes and the overridden functions alone
+IOKit	_IOIteratorNext	call	emulate	nothing next
+IOKit	_IOObjectRelease	call	emulate	
+IOKit	_IOPMAssertionCreateWithName	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+IOKit	_IOPMAssertionRelease	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+IOKit	_IORegistryEntryCreateCFProperty	call	stub	past a service that is never found
+IOKit	_IORegistryEntryGetParentEntry	call	stub	past a service that is never found
+IOKit	_IOServiceGetMatchingServices	call	emulate	one game function reads the Ethernet address through the registry: there is no such service; an empty iterator
+IOKit	_IOServiceMatching	call	emulate	one game function reads the Ethernet address through the registry: there is no such service; a dictionary
+IOKit	_kIOMasterPortDefault	data	emulate	a constant
+OpenGL	_CGLLockContext	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+OpenGL	_CGLUnlockContext	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+OpenGL	_glActiveTexture	call	shim	libRSOpenGL
+OpenGL	_glAlphaFunc	call	shim	libRSOpenGL
+OpenGL	_glAttachShader	call	shim	libRSOpenGL
+OpenGL	_glBindAttribLocation	call	shim	libRSOpenGL
+OpenGL	_glBindBuffer	call	shim	libRSOpenGL
+OpenGL	_glBindFragDataLocation	call	shim	libRSOpenGL
+OpenGL	_glBindFramebuffer	call	shim	libRSOpenGL
+OpenGL	_glBindRenderbuffer	call	shim	libRSOpenGL
+OpenGL	_glBindTexture	call	shim	libRSOpenGL
+OpenGL	_glBindVertexArray	call	shim	libRSOpenGL
+OpenGL	_glBlendColor	call	shim	libRSOpenGL
+OpenGL	_glBlendEquation	call	shim	libRSOpenGL
+OpenGL	_glBlendFunc	call	shim	libRSOpenGL
+OpenGL	_glBlendFuncSeparate	call	shim	libRSOpenGL
+OpenGL	_glBufferData	call	shim	libRSOpenGL
+OpenGL	_glBufferSubData	call	shim	libRSOpenGL
+OpenGL	_glCheckFramebufferStatus	call	shim	libRSOpenGL
+OpenGL	_glClear	call	shim	libRSOpenGL
+OpenGL	_glClearColor	call	shim	libRSOpenGL
+OpenGL	_glClearDepth	call	shim	libRSOpenGL
+OpenGL	_glClearStencil	call	shim	libRSOpenGL
+OpenGL	_glColorMask	call	shim	libRSOpenGL
+OpenGL	_glCompileShader	call	shim	libRSOpenGL
+OpenGL	_glCompressedTexImage2D	call	shim	libRSOpenGL
+OpenGL	_glCreateProgram	call	shim	libRSOpenGL
+OpenGL	_glCreateShader	call	shim	libRSOpenGL
+OpenGL	_glCullFace	call	shim	libRSOpenGL
+OpenGL	_glDeleteBuffers	call	shim	libRSOpenGL
+OpenGL	_glDeleteFramebuffers	call	shim	libRSOpenGL
+OpenGL	_glDeleteProgram	call	shim	libRSOpenGL
+OpenGL	_glDeleteRenderbuffers	call	shim	libRSOpenGL
+OpenGL	_glDeleteShader	call	shim	libRSOpenGL
+OpenGL	_glDeleteTextures	call	shim	libRSOpenGL
+OpenGL	_glDeleteVertexArrays	call	shim	libRSOpenGL
+OpenGL	_glDepthFunc	call	shim	libRSOpenGL
+OpenGL	_glDepthMask	call	shim	libRSOpenGL
+OpenGL	_glDisable	call	shim	libRSOpenGL
+OpenGL	_glDisableVertexAttribArray	call	shim	libRSOpenGL
+OpenGL	_glDrawArrays	call	shim	libRSOpenGL
+OpenGL	_glDrawArraysInstancedARB	call	shim	libRSOpenGL
+OpenGL	_glDrawElements	call	shim	libRSOpenGL
+OpenGL	_glDrawElementsInstanced	call	shim	libRSOpenGL
+OpenGL	_glDrawElementsInstancedARB	call	shim	libRSOpenGL
+OpenGL	_glEnable	call	shim	libRSOpenGL
+OpenGL	_glEnableVertexAttribArray	call	shim	libRSOpenGL
+OpenGL	_glFramebufferRenderbuffer	call	shim	libRSOpenGL
+OpenGL	_glFramebufferTexture2D	call	shim	libRSOpenGL
+OpenGL	_glFrontFace	call	shim	libRSOpenGL
+OpenGL	_glGenBuffers	call	shim	libRSOpenGL
+OpenGL	_glGenFramebuffers	call	shim	libRSOpenGL
+OpenGL	_glGenRenderbuffers	call	shim	libRSOpenGL
+OpenGL	_glGenTextures	call	shim	libRSOpenGL
+OpenGL	_glGenVertexArrays	call	shim	libRSOpenGL
+OpenGL	_glGenerateMipmap	call	shim	libRSOpenGL
+OpenGL	_glGetBooleanv	call	shim	libRSOpenGL
+OpenGL	_glGetError	call	shim	libRSOpenGL
+OpenGL	_glGetFloatv	call	shim	libRSOpenGL
+OpenGL	_glGetFramebufferAttachmentParameteriv	call	shim	libRSOpenGL
+OpenGL	_glGetIntegerv	call	shim	libRSOpenGL
+OpenGL	_glGetProgramBinary	call	shim	libRSOpenGL
+OpenGL	_glGetProgramInfoLog	call	shim	libRSOpenGL
+OpenGL	_glGetProgramiv	call	shim	libRSOpenGL
+OpenGL	_glGetRenderbufferParameteriv	call	shim	libRSOpenGL
+OpenGL	_glGetShaderInfoLog	call	shim	libRSOpenGL
+OpenGL	_glGetShaderiv	call	shim	libRSOpenGL
+OpenGL	_glGetString	call	shim	libRSOpenGL
+OpenGL	_glGetStringi	call	shim	libRSOpenGL
+OpenGL	_glGetTexImage	call	shim	libRSOpenGL
+OpenGL	_glGetTexLevelParameteriv	call	shim	libRSOpenGL
+OpenGL	_glGetTexParameteriv	call	shim	libRSOpenGL
+OpenGL	_glGetUniformLocation	call	shim	libRSOpenGL
+OpenGL	_glIsFramebuffer	call	shim	libRSOpenGL
+OpenGL	_glIsRenderbuffer	call	shim	libRSOpenGL
+OpenGL	_glLinkProgram	call	shim	libRSOpenGL
+OpenGL	_glMapBuffer	call	shim	libRSOpenGL
+OpenGL	_glPixelStorei	call	shim	libRSOpenGL
+OpenGL	_glPolygonMode	call	shim	libRSOpenGL
+OpenGL	_glProgramBinary	call	shim	libRSOpenGL
+OpenGL	_glProgramParameteri	call	shim	libRSOpenGL
+OpenGL	_glReadPixels	call	shim	libRSOpenGL
+OpenGL	_glRenderbufferStorage	call	shim	libRSOpenGL
+OpenGL	_glScissor	call	shim	libRSOpenGL
+OpenGL	_glShaderSource	call	shim	libRSOpenGL
+OpenGL	_glStencilFunc	call	shim	libRSOpenGL
+OpenGL	_glStencilFuncSeparate	call	shim	libRSOpenGL
+OpenGL	_glStencilMask	call	shim	libRSOpenGL
+OpenGL	_glStencilOp	call	shim	libRSOpenGL
+OpenGL	_glTexImage2D	call	shim	libRSOpenGL
+OpenGL	_glTexParameterf	call	shim	libRSOpenGL
+OpenGL	_glTexParameteri	call	shim	libRSOpenGL
+OpenGL	_glTexSubImage2D	call	shim	libRSOpenGL
+OpenGL	_glUniform1f	call	shim	libRSOpenGL
+OpenGL	_glUniform1fv	call	shim	libRSOpenGL
+OpenGL	_glUniform1i	call	shim	libRSOpenGL
+OpenGL	_glUniform1iv	call	shim	libRSOpenGL
+OpenGL	_glUniform2f	call	shim	libRSOpenGL
+OpenGL	_glUniform2fv	call	shim	libRSOpenGL
+OpenGL	_glUniform3fv	call	shim	libRSOpenGL
+OpenGL	_glUniform4fv	call	shim	libRSOpenGL
+OpenGL	_glUniformMatrix4fv	call	shim	libRSOpenGL
+OpenGL	_glUnmapBuffer	call	shim	libRSOpenGL
+OpenGL	_glUseProgram	call	shim	libRSOpenGL
+OpenGL	_glVertexAttribDivisorARB	call	shim	libRSOpenGL
+OpenGL	_glVertexAttribPointer	call	shim	libRSOpenGL
+OpenGL	_glViewport	call	shim	libRSOpenGL
+libBink2Macx64	_BinkClose	call	shim	shims/bink
+libBink2Macx64	_BinkCloseTrack	call	shim	shims/bink
+libBink2Macx64	_BinkDoFrame	call	shim	shims/bink
+libBink2Macx64	_BinkGetFrameBuffersInfo	call	shim	shims/bink
+libBink2Macx64	_BinkGetSummary	call	shim	shims/bink
+libBink2Macx64	_BinkGetTrackData	call	shim	shims/bink
+libBink2Macx64	_BinkGetTrackID	call	shim	shims/bink
+libBink2Macx64	_BinkNextFrame	call	shim	shims/bink
+libBink2Macx64	_BinkOpen	call	shim	shims/bink
+libBink2Macx64	_BinkOpenTrack	call	shim	shims/bink
+libBink2Macx64	_BinkRegisterFrameBuffers	call	shim	shims/bink
+libBink2Macx64	_BinkSetIO	call	shim	shims/bink
+libBink2Macx64	_BinkSetIOSize	call	shim	shims/bink
+libBink2Macx64	_BinkSetSoundTrack	call	shim	shims/bink
+libBink2Macx64	_BinkShouldSkip	call	shim	shims/bink
+libBink2Macx64	_BinkWait	call	shim	shims/bink
+libSystem	_OSAtomicAdd32	call	emulate	C atomics
+libSystem	_OSAtomicCompareAndSwap32	call	emulate	C atomics
+libSystem	_OSAtomicCompareAndSwap64	call	emulate	C atomics
+libSystem	_OSAtomicDecrement32	call	emulate	C atomics
+libSystem	_OSAtomicIncrement32	call	emulate	C atomics
+libSystem	__Block_copy	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libSystem	__DefaultRuneLocale	data	emulate	the C locale's rune table in Darwin's layout: isalpha and the like read it inline
+libSystem	__Exit	call	same	
+libSystem	__Unwind_Resume	call	same	libgcc_s
+libSystem	____mb_cur_max	call	emulate	1
+libSystem	___bzero	call	emulate	bzero
+libSystem	___cxa_atexit	call	same	
+libSystem	___error	call	emulate	a Darwin-numbered errno per thread: the host's errno, when set, is moved into it at each look
+libSystem	___exp10	call	emulate	glibc's exp10
+libSystem	___exp10f	call	emulate	glibc's exp10f
+libSystem	___invert_f4	call	emulate	a 4x4 float inverse (the thunk is the runtime's own, rc_simd_invert_f4)
+libSystem	___maskrune	call	emulate	the C locale's rune table in Darwin's layout
+libSystem	___memcpy_chk	call	same	
+libSystem	___memmove_chk	call	same	
+libSystem	___memset_chk	call	same	
+libSystem	___sincosf_stret	call	emulate	sinf and cosf, returned as Darwin's pair
+libSystem	___sprintf_chk	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	___stack_chk_fail	call	same	
+libSystem	___stack_chk_guard	data	emulate	a variable of ours
+libSystem	___stderrp	data	emulate	a variable holding glibc's stderr
+libSystem	___stdinp	data	emulate	a variable holding glibc's stdin
+libSystem	___stdoutp	data	emulate	a variable holding glibc's stdout
+libSystem	___strcat_chk	call	same	
+libSystem	___strcpy_chk	call	same	
+libSystem	___tolower	call	emulate	the C locale
+libSystem	___toupper	call	emulate	the C locale
+libSystem	___udivti3	call	same	libgcc or compiler-rt
+libSystem	___umodti3	call	same	libgcc or compiler-rt
+libSystem	__dyld_register_func_for_add_image	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libSystem	_abort	call	same	
+libSystem	_acos	call	same	
+libSystem	_acosf	call	same	
+libSystem	_asin	call	same	
+libSystem	_asinf	call	same	
+libSystem	_asprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_atan	call	same	
+libSystem	_atan2	call	same	
+libSystem	_atan2f	call	same	
+libSystem	_atanf	call	same	
+libSystem	_atof	call	same	
+libSystem	_atoi	call	same	
+libSystem	_atoll	call	same	
+libSystem	_bind	call	refuse	
+libSystem	_bzero	call	same	
+libSystem	_calloc	call	same	
+libSystem	_ceil	call	same	
+libSystem	_ceilf	call	same	
+libSystem	_chdir	call	same	
+libSystem	_clock	call	same	
+libSystem	_close	call	runtime	rc_file_close
+libSystem	_closedir	call	runtime	rc_file_closedir
+libSystem	_connect	call	refuse	
+libSystem	_cos	call	same	
+libSystem	_cosf	call	same	
+libSystem	_cosh	call	same	
+libSystem	_difftime	call	same	
+libSystem	_exit	call	same	
+libSystem	_exp	call	same	
+libSystem	_exp2	call	same	
+libSystem	_exp2f	call	same	
+libSystem	_expf	call	same	
+libSystem	_fclose	call	same	
+libSystem	_fcntl	call	adapt	the F_ commands and O_ flags
+libSystem	_feof	call	same	
+libSystem	_ferror	call	same	
+libSystem	_fflush	call	same	
+libSystem	_fgets	call	same	
+libSystem	_fileno	call	same	
+libSystem	_floor	call	same	
+libSystem	_floorf	call	same	
+libSystem	_fmod	call	same	
+libSystem	_fmodf	call	same	
+libSystem	_fopen	call	runtime	rc_file_fopen (funopen becomes fopencookie)
+libSystem	_fprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_fputc	call	same	
+libSystem	_fputs	call	same	
+libSystem	_fread	call	same	
+libSystem	_free	call	same	
+libSystem	_freeifaddrs	call	refuse	
+libSystem	_frexp	call	same	
+libSystem	_fseek	call	same	
+libSystem	_fseeko	call	same	
+libSystem	_fstat$INODE64	call	runtime	rc_file_fstat, which then fills Darwin's struct stat (144 bytes)
+libSystem	_ftell	call	same	
+libSystem	_ftello	call	same	
+libSystem	_fwrite	call	same	
+libSystem	_getcwd	call	same	
+libSystem	_getegid	call	same	
+libSystem	_getenv	call	same	
+libSystem	_geteuid	call	same	
+libSystem	_getgid	call	same	
+libSystem	_gethostbyname	call	refuse	
+libSystem	_getifaddrs	call	refuse	an empty list
+libSystem	_getpeername	call	refuse	
+libSystem	_getpid	call	same	
+libSystem	_getsockname	call	refuse	
+libSystem	_getsockopt	call	refuse	
+libSystem	_gettimeofday	call	same	glibc writes tv_usec as 8 bytes where Darwin has 4 and padding: the same 16 bytes
+libSystem	_getuid	call	same	
+libSystem	_gmtime	call	same	
+libSystem	_hash_create	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libSystem	_hash_search	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libSystem	_inet_addr	call	same	
+libSystem	_inet_ntoa	call	same	
+libSystem	_ldexp	call	same	
+libSystem	_localeconv	call	same	the ten pointers both layouts start with are what a caller reads
+libSystem	_localtime	call	same	
+libSystem	_localtime_r	call	same	
+libSystem	_log	call	same	
+libSystem	_log10	call	same	
+libSystem	_log10f	call	same	
+libSystem	_logf	call	same	
+libSystem	_longjmp	call	runtime	rc_setjmp
+libSystem	_mach_absolute_time	call	emulate	CLOCK_MONOTONIC in nanoseconds
+libSystem	_mach_port_type	call	emulate	
+libSystem	_mach_task_self_	data	emulate	a variable, any port number
+libSystem	_mach_timebase_info	call	emulate	1/1
+libSystem	_malloc	call	same	
+libSystem	_matrix_identity_float4x4	data	emulate	a constant
+libSystem	_mbtowc	call	same	
+libSystem	_memchr	call	same	
+libSystem	_memcmp	call	same	
+libSystem	_memcpy	call	same	
+libSystem	_memmove	call	same	
+libSystem	_memset	call	same	
+libSystem	_memset_pattern16	call	emulate	
+libSystem	_mkdir	call	same	
+libSystem	_mktime	call	same	
+libSystem	_modf	call	same	
+libSystem	_open	call	runtime	rc_file_open, which then takes Darwin's O_ flags
+libSystem	_opendir$INODE64	call	runtime	rc_file_opendir
+libSystem	_poll	call	adapt	POLLWRNORM and the band bits
+libSystem	_pow	call	same	
+libSystem	_powf	call	same	
+libSystem	_printf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_pthread_attr_destroy	call	same	
+libSystem	_pthread_attr_getinheritsched	call	adapt	the constants
+libSystem	_pthread_attr_getschedparam	call	same	
+libSystem	_pthread_attr_init	call	same	64 bytes in both
+libSystem	_pthread_attr_setdetachstate	call	adapt	PTHREAD_CREATE_DETACHED is 2 on Darwin, 1 here
+libSystem	_pthread_attr_setinheritsched	call	adapt	the constants
+libSystem	_pthread_attr_setschedparam	call	same	
+libSystem	_pthread_attr_setschedpolicy	call	adapt	SCHED_OTHER is 1 and SCHED_FIFO 4 on Darwin
+libSystem	_pthread_attr_setscope	call	adapt	the constants
+libSystem	_pthread_attr_setstacksize	call	same	
+libSystem	_pthread_cond_broadcast	call	adapt	see pthread_cond_wait
+libSystem	_pthread_cond_destroy	call	same	
+libSystem	_pthread_cond_init	call	same	48 bytes in both
+libSystem	_pthread_cond_signal	call	adapt	see pthread_cond_wait
+libSystem	_pthread_cond_timedwait	call	adapt	see pthread_cond_wait; ETIMEDOUT is 60 on Darwin, 110 here
+libSystem	_pthread_cond_wait	call	adapt	a condition with Darwin's static initializer is made on first use
+libSystem	_pthread_condattr_destroy	call	same	
+libSystem	_pthread_condattr_init	call	same	
+libSystem	_pthread_create	call	adapt	the error numbers; the thunk's larger stack stays
+libSystem	_pthread_detach	call	same	
+libSystem	_pthread_exit	call	same	
+libSystem	_pthread_getschedparam	call	adapt	the policy numbers and the priority range
+libSystem	_pthread_getspecific	call	same	
+libSystem	_pthread_join	call	same	
+libSystem	_pthread_key_create	call	adapt	pthread_key_t is 8 bytes on Darwin, 4 here: the game's 8 are all written
+libSystem	_pthread_key_delete	call	same	
+libSystem	_pthread_mach_thread_np	call	emulate	the thread's id as a port number
+libSystem	_pthread_mutex_destroy	call	adapt	see pthread_mutex_lock
+libSystem	_pthread_mutex_init	call	same	glibc's 48 bytes in Darwin's 64
+libSystem	_pthread_mutex_lock	call	adapt	a mutex with Darwin's static initializer (its signature) is made on first use
+libSystem	_pthread_mutex_trylock	call	adapt	see pthread_mutex_lock
+libSystem	_pthread_mutex_unlock	call	adapt	see pthread_mutex_lock
+libSystem	_pthread_mutexattr_destroy	call	same	
+libSystem	_pthread_mutexattr_init	call	same	
+libSystem	_pthread_mutexattr_settype	call	adapt	PTHREAD_MUTEX_RECURSIVE is 2 on Darwin, 1 here
+libSystem	_pthread_self	call	same	
+libSystem	_pthread_setname_np	call	adapt	one argument on Darwin, the calling thread; 15 characters here
+libSystem	_pthread_setschedparam	call	adapt	the policy numbers and the priority range (the Mac's thread-priority fix has the rule)
+libSystem	_pthread_setspecific	call	same	
+libSystem	_pthread_yield_np	call	emulate	sched_yield
+libSystem	_putchar	call	same	
+libSystem	_puts	call	same	
+libSystem	_qsort	call	same	the comparator is a trampoline, as on the Mac
+libSystem	_rand	call	same	another generator than Darwin's: the same range, another sequence
+libSystem	_read	call	runtime	rc_file_read
+libSystem	_readdir$INODE64	call	runtime	rc_file_readdir, which then fills Darwin's struct dirent (d_namlen, a 1024-byte name)
+libSystem	_realloc	call	same	
+libSystem	_recv	call	refuse	
+libSystem	_recvfrom	call	refuse	
+libSystem	_remove	call	same	
+libSystem	_rename	call	same	
+libSystem	_rewind	call	same	
+libSystem	_sched_get_priority_max	call	adapt	the policy numbers
+libSystem	_sched_get_priority_min	call	adapt	the policy numbers
+libSystem	_select$1050	call	adapt	timeval: tv_usec is 4 bytes and padding on Darwin
+libSystem	_sem_close	call	same	
+libSystem	_sem_open	call	adapt	the O_ flags
+libSystem	_semaphore_create	call	emulate	POSIX semaphores behind port numbers
+libSystem	_semaphore_destroy	call	emulate	see semaphore_create
+libSystem	_semaphore_signal	call	emulate	see semaphore_create
+libSystem	_semaphore_wait	call	emulate	see semaphore_create
+libSystem	_send	call	refuse	
+libSystem	_sendto	call	refuse	
+libSystem	_setjmp	call	runtime	rc_setjmp
+libSystem	_setlocale	call	adapt	the LC_ category numbers
+libSystem	_setsockopt	call	refuse	
+libSystem	_setvbuf	call	same	
+libSystem	_shutdown	call	refuse	
+libSystem	_sigaction	call	adapt	the struct's layout, the SA_ flags, the signal numbers
+libSystem	_signal	call	adapt	the signal numbers
+libSystem	_sin	call	same	
+libSystem	_sinf	call	same	
+libSystem	_sinh	call	same	
+libSystem	_snprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_socket	call	refuse	no socket is made: EAFNOSUPPORT. If a run shows the game needs a local one, adapters for sockaddr (sa_len) and the constants with the guard's rule instead
+libSystem	_sprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_srand	call	same	see rand
+libSystem	_sscanf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_stat$INODE64	call	runtime	rc_file_stat, which then fills Darwin's struct stat (144 bytes)
+libSystem	_strcasecmp	call	same	
+libSystem	_strcat	call	same	
+libSystem	_strchr	call	same	
+libSystem	_strcmp	call	same	
+libSystem	_strcoll	call	same	
+libSystem	_strcpy	call	same	
+libSystem	_strcspn	call	same	
+libSystem	_strdup	data	same	a function kept as a pointer
+libSystem	_strerror	call	adapt	takes a Darwin errno
+libSystem	_strftime	call	same	
+libSystem	_strlen	call	same	
+libSystem	_strncasecmp	call	same	
+libSystem	_strncat	call	same	
+libSystem	_strncmp	call	same	
+libSystem	_strncpy	call	same	
+libSystem	_strpbrk	call	same	
+libSystem	_strrchr	call	same	
+libSystem	_strspn	call	same	
+libSystem	_strstr	call	same	
+libSystem	_strtod	call	same	
+libSystem	_strtok_r	call	same	
+libSystem	_strtol	call	same	
+libSystem	_strtoll	call	same	
+libSystem	_strtoul	call	same	
+libSystem	_strtoull	call	same	
+libSystem	_sysctl	call	emulate	the names in the image (hw.memsize, hw.logicalcpu, hw.physicalcpu, hw.cachelinesize, hw.l2cachesize, hw.cpufrequency, hw.machine, hw.optional.mmx and four sse, kern.ostype, kern.osrelease), each as an Apple silicon Mac answers it
+libSystem	_sysctlbyname	call	emulate	see sysctl
+libSystem	_system	call	adapt	never runs a command: logs it and fails (the network guard's rule for a URL, for any command)
+libSystem	_tan	call	same	
+libSystem	_tanf	call	same	
+libSystem	_tanh	call	same	
+libSystem	_tcgetattr	call	emulate	ENOTTY: there is no terminal
+libSystem	_tcsetattr	call	emulate	ENOTTY: there is no terminal
+libSystem	_time	call	same	
+libSystem	_timegm	call	same	
+libSystem	_tmpnam	call	same	
+libSystem	_unlink	call	same	
+libSystem	_usleep	call	same	
+libSystem	_vfprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_vsnprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_vsprintf	call	same	through the v function: rc_va lays the arguments out as an AAPCS64 va_list (Darwin's is a plain pointer)
+libSystem	_wctomb	call	same	
+libSystem	_write	call	same	
+libSystem	dyld_stub_binder	data	stub	never called: the stubs are thunks
+libobjc	__objc_empty_cache	data	stub	a placeholder: the image's own class structures point at it
+libobjc	__objc_empty_vtable	data	stub	a placeholder: the image's own class structures point at it
+libobjc	_class_addMethod	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_addProperty	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_addProtocol	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_getInstanceMethod	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_getInstanceSize	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_getInstanceVariable	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_getIvarLayout	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_getName	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_class_getSuperclass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_isMetaClass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_replaceMethod	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_class_respondsToSelector	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_ivar_getName	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_ivar_getOffset	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_method_setImplementation	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_allocateClassPair	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_objc_autoreleasePoolPush	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_objc_collectingEnabled	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_constructInstance	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_copyClassNamesForImage	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_objc_getClass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_getMetaClass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_getProtocol	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_getRequiredClass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_initializeClassPair	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_lookUpClass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_msgSend	data	stub	a placeholder: the four game functions that send messages are overridden
+libobjc	_objc_msgSendSuper2	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+libobjc	_objc_msgSend_stret	call	stub	called only by the game's Cocoa shell classes, which the platform shell replaces
+libobjc	_objc_readClassPair	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_objc_registerClassPair	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_objc_retain	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_object_getClass	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_object_getIndexedIvars	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_object_getIvar	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_object_setIvar	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_property_copyAttributeList	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_protocol_getMethodDescription	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libobjc	_protocol_getName	data	stub	a placeholder: held by the game's ARC support code
+libobjc	_sel_getUid	call	stub	called only by the ARC support code linked into the game, which nothing starts
+libstdc++	__ZNKSs17find_first_not_ofEPKcmm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNKSt15basic_stringbufIcSt11char_traitsIcESaIcEE3strEv	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNKSt9basic_iosIcSt11char_traitsIcEE5widenEc	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSbIwSt11char_traitsIwESaIwEE4_Rep10_M_destroyERKS1_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSbIwSt11char_traitsIwESaIwEE4_Rep11_S_terminalE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSbIwSt11char_traitsIwESaIwEE4_Rep20_S_empty_rep_storageE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSbIwSt11char_traitsIwESaIwEE7reserveEm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSi10_M_extractIjEERSiRT_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSi10_M_extractItEERSiRT_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSi10_M_extractIyEERSiRT_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSo3putEc	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSo5writeEPKcl	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSo9_M_insertIdEERSoT_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSo9_M_insertImEERSoT_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs12_M_leak_hardEv	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs4_Rep10_M_destroyERKSaIcE	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs4_Rep20_S_empty_rep_storageE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs6appendEPKcm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs6appendERKSs	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs6appendEmc	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs6assignEPKcm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs6assignERKSs	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs7replaceEmmPKcm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs7reserveEm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs9_M_mutateEmmm	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSs9push_backEc	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSsC1EPKcRKSaIcE	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSsC1ERKSs	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSsD1Ev	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt15_List_node_base4hookEPS_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt15_List_node_base4swapERS_S0_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt15_List_node_base6unhookEv	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt15_List_node_base8transferEPS_S0_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt6localeC1Ev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt6localeD1Ev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt8ios_base4InitC1Ev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt8ios_base4InitD1Ev	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt8ios_baseC2Ev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt8ios_baseD2Ev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt9bad_allocD1Ev	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt9basic_iosIcSt11char_traitsIcEE4initEPSt15basic_streambufIcS1_E	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt9basic_iosIcSt11char_traitsIcEE5clearESt12_Ios_Iostate	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZNSt9exceptionD2Ev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt15set_new_handlerPFvvE	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt16__ostream_insertIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_PKS3_l	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt17__throw_bad_allocv	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt18_Rb_tree_decrementPSt18_Rb_tree_node_base	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt18_Rb_tree_incrementPKSt18_Rb_tree_node_base	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt18_Rb_tree_incrementPSt18_Rb_tree_node_base	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt18uncaught_exceptionv	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt20__throw_length_errorPKc	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt28_Rb_tree_rebalance_for_erasePSt18_Rb_tree_node_baseRS_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt29_Rb_tree_insert_and_rebalancebPSt18_Rb_tree_node_baseS0_RS_	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt7nothrow	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZSt9terminatev	call	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTIPKh	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTIPKi	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTISt9bad_alloc	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTISt9exception	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTIb	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTIi	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTIj	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTTSt18basic_stringstreamIcSt11char_traitsIcESaIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTTSt19basic_ostringstreamIcSt11char_traitsIcESaIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTVN10__cxxabiv116__enum_type_infoE	data	same	a type_info vtable of the C++ runtime: the game's own type_info objects point at it
+libstdc++	__ZTVN10__cxxabiv117__class_type_infoE	data	same	a type_info vtable of the C++ runtime: the game's own type_info objects point at it
+libstdc++	__ZTVN10__cxxabiv119__pointer_type_infoE	data	same	a type_info vtable of the C++ runtime: the game's own type_info objects point at it
+libstdc++	__ZTVN10__cxxabiv120__si_class_type_infoE	data	same	a type_info vtable of the C++ runtime: the game's own type_info objects point at it
+libstdc++	__ZTVN10__cxxabiv121__vmi_class_type_infoE	data	same	a type_info vtable of the C++ runtime: the game's own type_info objects point at it
+libstdc++	__ZTVSt15basic_streambufIcSt11char_traitsIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTVSt15basic_stringbufIcSt11char_traitsIcESaIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTVSt18basic_stringstreamIcSt11char_traitsIcESaIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTVSt19basic_ostringstreamIcSt11char_traitsIcESaIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTVSt9bad_alloc	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZTVSt9basic_iosIcSt11char_traitsIcEE	data	same	GNU libstdc++.so.6 still exports the old ABI (GLIBCXX_3.4): copy-on-write strings and all
+libstdc++	__ZdaPv	call	same	operator new and delete
+libstdc++	__ZdlPv	call	same	operator new and delete
+libstdc++	__ZdlPvRKSt9nothrow_t	call	same	operator new and delete
+libstdc++	__Znam	call	same	operator new and delete
+libstdc++	__Znwm	call	same	operator new and delete
+libstdc++	__ZnwmRKSt9nothrow_t	call	same	operator new and delete
+libstdc++	___cxa_allocate_exception	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_begin_catch	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_end_catch	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_free_exception	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_guard_abort	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_guard_acquire	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_guard_release	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_pure_virtual	data	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_rethrow	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___cxa_throw	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___dynamic_cast	call	same	the C++ runtime inside GNU libstdc++
+libstdc++	___gxx_personality_v0	data	same	the C++ runtime inside GNU libstdc++
+libsteam_api	_SteamAPI_GetHSteamUser	call	shim	shims/steam
+libsteam_api	_SteamAPI_Init	call	shim	shims/steam
+libsteam_api	_SteamAPI_RegisterCallResult	call	shim	shims/steam
+libsteam_api	_SteamAPI_RegisterCallback	call	shim	shims/steam
+libsteam_api	_SteamAPI_RestartAppIfNecessary	call	shim	shims/steam
+libsteam_api	_SteamAPI_RunCallbacks	call	shim	shims/steam
+libsteam_api	_SteamAPI_Shutdown	call	shim	shims/steam
+libsteam_api	_SteamAPI_UnregisterCallResult	call	shim	shims/steam
+libsteam_api	_SteamAPI_UnregisterCallback	call	shim	shims/steam
+libsteam_api	_SteamInternal_ContextInit	call	shim	shims/steam
+libsteam_api	_SteamInternal_CreateInterface	call	shim	shims/steam
+libsteam_api	_SteamInternal_FindOrCreateUserInterface	call	shim	shims/steam

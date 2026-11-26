@@ -74,6 +74,7 @@ SUITES = {
     "ct.bink":       ("Bink", "ctest", r"^bink\."),
     "ct.game":       ("the game libraries", "ctest", r"^game\."),
     "ct.shims":      ("the shims' architectures and names", "ctest", r"^(shim|libstdcxx)\."),
+    "linux":         ("the Linux port's table of the Mac game's imports", "cmd", "{py} linux/test_import_census.py"),
 }
 
 RECOMP = ("hooks", "inner64", "inner32", "hand32")
@@ -101,6 +102,9 @@ RULES = {
     "tools/perf/": rule(suites=["perf"]),
     "tools/ws8/keyfifo/": NOTHING,
     "tools/loadscreen/": NOTHING,
+    # The Linux port, not built yet (linux/README.md): its notes, and the table of what the Mac game imports from
+    # macOS, which reaches neither edition's app.
+    "linux/": rule(suites=["linux"]),
 
     # The installer and the install scripts.
     # (its Settings and switches sheet has the launchers' keys: test_settings.py reads all three)
@@ -132,9 +136,11 @@ RULES = {
     "tools/targets/": rule(BOTH, build=BOTH, run=BOTH, suites=["targets", "hooks"]),
     "tools/targets/mac-x64/": rule([MAC], build=[MAC], run=[MAC], suites=["targets", "hooks", "inner64"]),
     "tools/targets/win-x86/": rule([LP], build=[LP], run=[LP], suites=["targets", "hooks", "inner32"]),
-    # (each game's figures are also its installer's: the depot Steam is asked for and the build that is accepted)
+    # (each game's figures are also its installer's: the depot Steam is asked for and the build that is accepted;
+    # another build of the Mac game has other imports: linux/darwin-imports.tsv)
     "tools/targets/mac-x64/target.toml": rule([MAC], build=[MAC], run=[MAC],
-                                              suites=["targets", "hooks", "inner64", "gamefiles"], installer=True),
+                                              suites=["targets", "hooks", "inner64", "gamefiles", "linux"],
+                                              installer=True),
     "tools/targets/win-x86/target.toml": rule([LP], build=[LP], run=[LP],
                                               suites=["targets", "hooks", "inner32", "lp.install"], installer=True),
     # (what Learn & Play's built-in fixes replace: its translation's skip file is made of it)

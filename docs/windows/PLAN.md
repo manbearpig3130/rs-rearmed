@@ -256,6 +256,10 @@ Being looked into, with no promise of if or when:
   or not safe to relax; the D3D9 layer's bookkeeping; zero-copy dynamic buffers; the index-range scan of the draw-time
   upload; memory (guest copies of D3D9 buffers).
 - **Measured runs**: what is left of `tools/perf` is in the [Mac plan](../mac/PLAN.md#next-work), for both editions.
+- **Linux on arm64**: investigated, not built ([linux](../../linux/README.md)). This game would be the smaller port
+  there, as on the iPhone: of macOS it has its window (`lp_window.m`), its audio engine (`wa_engine.c`) and the
+  renderer, which presents through Metal alone. The plan starts with the Mac game and writes the shell, the
+  OpenGL window and the audio layer for both ([its plan](../../linux/PLAN.md#6-learn--play)).
 - **One code base for both games**: what is shared and what is still written twice is in the
   [Mac plan](../mac/PLAN.md#next-work).
 
