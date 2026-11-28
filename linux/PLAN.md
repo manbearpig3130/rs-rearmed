@@ -7,9 +7,10 @@ page is what to do about it, in what order, and what has been done. The editions
 
 - **Investigated** (2026-11-26, from 1.20.0), **and begun on x86-64** (2026-11-28): a loader builds there and runs
   the game's 3,487 initializers and then the game itself, as it is, in a window: the intro, the title screen,
-  and, past the sign-in that the offline services replace, the profiles' menu
-  ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture)). No sound, no video and no install yet, no
-  song played, and nothing for arm64.
+  and, past the sign-in that the offline services replace, the menus, with sound out, the videos, and the Real
+  Tone Cable heard at the calibration screen ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture),
+  [X3](#x3-sound-and-the-guitar)). Every import but the 98 that nothing should call has an answer. No song
+  played yet, no install, none of the built-in fixes, and nothing for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -227,8 +228,11 @@ root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.ps
   thread's thread-local storage out of its stack, refused one once more libraries were loaded; the game then
   joined the thread it never got. A thread now has 1 MB at the least, and joining or detaching a handle of zero
   is `ESRCH`, as on macOS.
-- **Next**: a song started (the note highway); Bink for the videos; the three functions in the place of the
-  engine's Objective-C when a run reaches them; full screen; the render thread.
+- **Videos play**: the Bink library builds from `shims/bink/bink_shim.c` as `libBink2.so` (`make -C linux bink`),
+  over the same FFmpeg 7.1.2 with the same Bink 2 patch; `linux/bink/build-ffmpeg.sh` reads the version and
+  the checksum from the Mac's script. The calibration screen's tutorial video is drawn.
+- **Next**: a song started (the note highway); the three functions in the place of the engine's Objective-C
+  when a run reaches them; full screen; the render thread; hook points, for the built-in fixes.
 
 ### X3. Sound and the guitar
 
@@ -237,9 +241,21 @@ backend of `dw_audio.c`; the silent clock stays for a build or a machine without
 The stream asks for the game's buffer, 256 frames at 48,000 Hz, as its latency, and on the Bazzite PC PipeWire
 gives it: 256 frames a call, 5.3 ms. The game is asked in buffers of its own size and PipeWire's requests are
 met from a small queue between. The intro and the title play (the loudest sample of each five seconds is
-logged with `RS_AUDIO_LOG=1`). Not measured yet: the latency end to end, and underruns under load. Not there
-yet: an input device (the cable, a microphone, an interface), and the app's own device policy
-(`shims/coreaudio`).
+logged with `RS_AUDIO_LOG=1`). Not measured yet: the latency end to end, and underruns under load.
+
+**The Real Tone Cable is heard** (2026-11-28). The inputs are PipeWire's capture devices (`Audio/Source` nodes),
+each a CoreAudio device to the game: named as its ALSA card is, which for the cable is "Rocksmith USB Guitar
+Adapter", the name the game knows it by (open question 5: answered), with the maker the card's long name has
+in front of that ("Hercules") and a model of the name and the USB ids. The game lists them, reads each one's
+identifier, channels, name, maker, buffer range, rate and formats, sets a 128-frame buffer, makes an I/O
+procedure and starts it; that opens a capture stream on the node asking for 128 frames, and PipeWire gives 128
+(2.7 ms) on the Bazzite PC. The game opened the cable and the PC's own analog input, and at the calibration
+screen its meter follows the cable. The FFT its note detection runs is `dw_accelerate.c` (vDSP's
+`vDSP_fft_zop`, radix 2, vDSP's scaling). Not done: the input's level (`volm` is kept and read back, and the
+hardware's level is whatever the system has it at), devices coming and going while the game runs (the list is
+read again when the game asks, and no listener is told), each channel of an interface as an input of its own
+and the rest of the app's device policy (`shims/coreaudio`, the `audio` override module), and real-time
+scheduling for the game's audio thread.
 
 [arm64's step 3](#3-sound-and-the-guitar) as it is: the audio layer on PipeWire, the FFT, latency measured, here
 against the same machine's Proton route as well.
@@ -534,3 +550,7 @@ Proposed; none is final before the step that tests it.
   `linux/direct` of the step before are gone). Enter on the title screen opens the profiles' menu.
 - **2026-11-28, sound.** A profile made by script, and the menus after it. Threads get a stack of 1 MB at the
   least. The graph's sound to PipeWire, which grants the 256 frames asked for.
+- **2026-11-28, the cable, videos, the FFT.** With a Real Tone Cable plugged into the Bazzite PC: PipeWire's
+  capture devices as the game's inputs, the Bink library over FFmpeg built for Linux, and vDSP's FFT. The
+  scripted new-player flow reaches the calibration screen with its video playing and its meter live; 9,900
+  frames without a fault. The loader then answers 583 imports, and the 98 left are the stubs.

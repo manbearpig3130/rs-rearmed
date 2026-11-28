@@ -2,6 +2,7 @@
 // `make -C linux check` builds and runs it; it needs no game.
 #define _GNU_SOURCE
 #include <errno.h>
+#include <math.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -10,6 +11,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <xmmintrin.h>
 
 #include "dw.h"
 
@@ -447,6 +449,103 @@ static int render_tone(void *ref, uint32_t *flags, const void *when, uint32_t bu
   return 0;
 }
 
+// A backend with one input, as PipeWire lists the Real Tone Cable.
+static dw_audio_capture g_capture;
+static void *g_capture_ctx;
+static uint32_t g_capture_frames;
+static int g_capture_stopped;
+
+static int backend_inputs(dw_audio_input *list, int max) {
+  if (max < 1) return 0;
+  memset(&list[0], 0, sizeof list[0]);
+  strcpy(list[0].name, "Rocksmith USB Guitar Adapter");
+  strcpy(list[0].maker, "Hercules");
+  strcpy(list[0].uid, "alsa_input.test-cable");
+  strcpy(list[0].model, "Rocksmith USB Guitar Adapter:12BA:00FF");
+  list[0].channels = 1, list[0].usb = 1;
+  return 1;
+}
+static void *backend_capture_start(const dw_audio_input *input, double rate, uint32_t frames, dw_audio_capture capture, void *ctx) {
+  if (strcmp(input->uid, "alsa_input.test-cable") || rate != 48000.0) return NULL;
+  g_capture = capture, g_capture_ctx = ctx, g_capture_frames = frames;
+  return &g_capture;
+}
+static void backend_capture_stop(void *handle) { g_capture_stopped += handle == &g_capture; }
+
+// The game's I/O procedure on an input device: the input as a list of one buffer, no output.
+static int g_io_calls;
+static float g_io_first, g_io_last;
+static int io_proc(uint32_t device, const void *now, const void *input, const void *input_time, void *output, const void *output_time, void *client) {
+  const struct { uint32_t count; struct { uint32_t channels, bytes; void *data; } buffer; } *in = input, *out = output;
+  (void)now, (void)input_time, (void)output_time;
+  if (client == &g_io_calls && device != 0 && in->count == 1 && in->buffer.channels == 1 && in->buffer.bytes == 64 * 4 && out->count == 0) {
+    g_io_first = ((const float *)in->buffer.data)[0], g_io_last = ((const float *)in->buffer.data)[63];
+    g_io_calls++;
+  }
+  return 0;
+}
+
+static void test_audio_input(void) {
+  struct address { uint32_t selector, scope, element; };
+#define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
+  static const dw_audio_backend backend = {"test", backend_start, backend_stop, backend_inputs, backend_capture_start, backend_capture_stop};
+  dw_audio_set_backend(&backend);
+  int (*get)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *) =
+      FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *), "_AudioObjectGetPropertyData");
+  int (*set)(uint32_t, const struct address *, uint32_t, const void *, uint32_t, const void *) =
+      FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t, const void *), "_AudioObjectSetPropertyData");
+  struct address devices = {CC('d', 'e', 'v', '#'), CC('g', 'l', 'o', 'b'), 0}, in_device = {CC('d', 'I', 'n', ' '), CC('g', 'l', 'o', 'b'), 0};
+  uint32_t list[8], size = 0, cable = 0;
+  CHECK(FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *), "_AudioObjectGetPropertyDataSize")(1, &devices, 0, NULL, &size) == 0 && size == 8);
+  size = sizeof list;
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 8);  // the input, then the output
+  size = 4;
+  CHECK(get(1, &in_device, 0, NULL, &size, &cable) == 0 && cable == list[0] && cable != 0);
+  struct address name = {CC('l', 'n', 'a', 'm'), CC('i', 'n', 'p', 't'), 0}, maker = {CC('l', 'm', 'a', 'k'), CC('i', 'n', 'p', 't'), 0};
+  struct address in_layout = {CC('s', 'l', 'a', 'y'), CC('i', 'n', 'p', 't'), 0}, out_layout = {CC('s', 'l', 'a', 'y'), CC('o', 'u', 't', 'p'), 0};
+  struct address format = {CC('s', 'f', 'm', 't'), CC('i', 'n', 'p', 't'), 0}, buffer = {CC('f', 's', 'i', 'z'), CC('i', 'n', 'p', 't'), 0};
+  struct address level = {CC('v', 'o', 'l', 'm'), CC('i', 'n', 'p', 't'), 0}, transport = {CC('t', 'r', 'a', 'n'), CC('g', 'l', 'o', 'b'), 0};
+  void *string = NULL;
+  char text[64];
+  size = sizeof string;
+  CHECK(get(cable, &name, 0, NULL, &size, &string) == 0 && string);
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(string, text, sizeof text, 0x600) && strstr(text, "Rocksmith USB"));
+  FN(void (*)(void *), "_CFRelease")(string);
+  size = sizeof string;
+  CHECK(get(cable, &maker, 0, NULL, &size, &string) == 0 && string);
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(string, text, sizeof text, 0x600) && !strcmp(text, "Hercules"));
+  FN(void (*)(void *), "_CFRelease")(string);
+  struct { uint32_t count, pad, channels, bytes; void *data; } channels = {9, 9, 9, 9, NULL};  // a count, then the buffer at 8
+  size = sizeof channels;
+  CHECK(get(cable, &in_layout, 0, NULL, &size, &channels) == 0 && channels.count == 1 && channels.channels == 1);
+  size = sizeof channels;
+  CHECK(get(cable, &out_layout, 0, NULL, &size, &channels) == 0 && channels.count == 0);  // an input alone
+  struct { double rate; uint32_t id, flags, bpp, fpp, bpf, ch, bits, reserved; } f;
+  size = sizeof f;
+  CHECK(get(cable, &format, 0, NULL, &size, &f) == 0 && f.rate == 48000.0 && f.ch == 1 && f.bits == 32 && (f.flags & 1) && f.bpf == 4);
+  uint32_t tran = 0, frames = 64;
+  size = 4;
+  CHECK(get(cable, &transport, 0, NULL, &size, &tran) == 0 && tran == CC('u', 's', 'b', ' '));
+  CHECK(set(cable, &buffer, 0, NULL, 4, &frames) == 0);
+  float volume = 0.75f, read_back = 0;
+  size = 4;
+  CHECK(set(cable, &level, 0, NULL, 4, &volume) == 0 && get(cable, &level, 0, NULL, &size, &read_back) == 0 && read_back == 0.75f);
+
+  // the guitar's input: a procedure made on the device, started, and called with what the backend captures
+  void *proc_id = NULL;
+  CHECK(FN(int (*)(uint32_t, void *, void *, void **), "_AudioDeviceCreateIOProcID")(cable, (void *)io_proc, &g_io_calls, &proc_id) == 0 && proc_id);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(cable, proc_id) == 0 && g_capture && g_capture_frames == 64);
+  float samples[64];
+  for (int i = 0; i < 64; i++) samples[i] = (float)i / 64.0f;
+  if (g_capture) g_capture(g_capture_ctx, samples, 64);
+  CHECK(g_io_calls == 1 && g_io_first == 0.0f && g_io_last == 63.0f / 64.0f);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(cable, proc_id) == 0 && g_capture_stopped == 1);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceDestroyIOProcID")(cable, proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(0x999, proc_id) == (int)CC('!', 'o', 'b', 'j'));
+  dw_audio_set_backend(NULL);
+#undef CC
+}
+
 static void test_audio(void) {
   struct address { uint32_t selector, scope, element; };
 #define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
@@ -502,7 +601,7 @@ static void test_audio(void) {
   CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
 
   // with a backend: no clock thread; the backend asks for the sound and gets what the game's callback filled
-  static const dw_audio_backend backend = {"test", backend_start, backend_stop};
+  static const dw_audio_backend backend = {"test", backend_start, backend_stop, NULL, NULL, NULL};
   dw_audio_set_backend(&backend);
   CHECK(FN(int (*)(void **), "_NewAUGraph")(&graph) == 0);
   CHECK(add(graph, &out_desc, &out_node) == 0 && add(graph, &mixer_desc, &mixer_node) == 0);
@@ -522,6 +621,47 @@ static void test_audio(void) {
 #undef CC
 }
 
+// vDSP's FFT as the game calls it: split-complex arrays, no scaling either way.
+static void test_accelerate(void) {
+  struct split { float *real, *imag; };
+  void *(*create)(unsigned long, int) = FN(void *(*)(unsigned long, int), "_vDSP_create_fftsetup");
+  void (*fft)(const void *, const struct split *, long, const struct split *, long, unsigned long, int) =
+      FN(void (*)(const void *, const struct split *, long, const struct split *, long, unsigned long, int), "_vDSP_fft_zop");
+  void *setup = create(10, 0);  // up to 1,024 points
+  CHECK(setup != NULL && create(10, 1) == NULL);
+  enum { N = 256 };
+  static float xr[N], xi[N], yr[N], yi[N], zr[N], zi[N];
+  for (int i = 0; i < N; i++) xr[i] = cosf(2.0f * 3.14159265f * 5.0f * (float)i / N), xi[i] = 0;  // five cycles
+  struct split x = {xr, xi}, y = {yr, yi}, z = {zr, zi};
+  fft(setup, &x, 1, &y, 1, 8, 1);  // forward, on a setup made for a larger size
+  int peaks = 0;
+  for (int k = 0; k < N; k++) {
+    float mag = sqrtf(yr[k] * yr[k] + yi[k] * yi[k]);
+    if (k == 5 || k == N - 5) peaks += fabsf(mag - N / 2.0f) < 0.05f;  // half the points in each of the two bins
+    else CHECK(mag < 0.05f);
+  }
+  CHECK(peaks == 2);
+  fft(setup, &y, 1, &z, 1, 8, -1);  // and back: the input times the number of points
+  float worst = 0;
+  for (int i = 0; i < N; i++) {
+    float d = fabsf(zr[i] / N - xr[i]);
+    if (d > worst) worst = d;
+    if (fabsf(zi[i] / N) > worst) worst = fabsf(zi[i] / N);
+  }
+  CHECK(worst < 1e-4f);
+  // an impulse at point one: a turning phase, e^(-2 pi i k / N) forward
+  for (int i = 0; i < N; i++) xr[i] = i == 1, xi[i] = 0;
+  fft(setup, &x, 1, &y, 1, 8, 1);
+  CHECK(fabsf(yr[0] - 1) < 1e-5f && fabsf(yi[N / 4] + 1) < 1e-4f && fabsf(yr[N / 2] + 1) < 1e-4f);
+  FN(void (*)(void *), "_vDSP_destroy_fftsetup")(setup);
+
+  float four[4] = {0.0f, 1.0f, 2.0f, 3.0f}, two[4] = {2.0f, 2.0f, 2.0f, 2.0f}, out[4];
+  _mm_storeu_ps(out, FN(__m128 (*)(__m128, __m128), "_vpowf")(_mm_loadu_ps(four), _mm_loadu_ps(two)));
+  CHECK(out[0] == 0.0f && out[1] == 1.0f && out[2] == 4.0f && out[3] == 9.0f);
+  _mm_storeu_ps(out, FN(__m128 (*)(__m128), "_vcosf")(_mm_loadu_ps(four)));
+  CHECK(out[0] == 1.0f && fabsf(out[1] - cosf(1.0f)) < 1e-6f);
+}
+
 int main(void) {
   setenv("RS_DARWIN_LOG", "0", 1);  // what the layer refuses below is refused on purpose
   dw_init();
@@ -536,6 +676,8 @@ int main(void) {
   test_display();
   test_simd();
   test_audio();
+  test_audio_input();
+  test_accelerate();
   test_tables();
   test_errno();
   test_pthread();

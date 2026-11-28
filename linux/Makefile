@@ -143,6 +143,25 @@ OGL_SRC = $(OGL)/src/rsgl.c $(OGL)/src/gltrace.c $(OGL)/src/rs_gfx.c
 $(OUT)/libRSOpenGL.so: $(OGL_SRC) $(wildcard $(OGL)/src/*.h) $(GLDIR)/gl_api.inc $(GLDIR)/gl_enums.inc $(OUT)/shims/compat.o
 	$(CC) -std=gnu11 $(GL_CFLAGS) -shared -o $@ $(OGL_SRC) $(GLDIR)/rsmtl_stubs.c $(OUT)/shims/compat.o -ldl -lm -pthread
 
+# --- videos: the Bink library from its own source (shims/bink), over the same FFmpeg with the same patch ---
+# `make -C linux bink` downloads FFmpeg's source (checked against the Mac build's checksum) and builds it: a few
+# minutes the first time. It needs curl, patch and xz beside the compiler.
+BINK = ../shims/bink
+FFMPEG = $(OUT)/ffmpeg
+$(FFMPEG)/lib/libavcodec.a: bink/build-ffmpeg.sh $(BINK)/build-ffmpeg.sh $(BINK)/third_party/ffmpeg-bink2.patch
+	CC=$(CC) bink/build-ffmpeg.sh $(FFMPEG)
+
+$(GLDIR)/bink.map: $(BINK)/exports.txt
+	@mkdir -p $(GLDIR)
+	sed -n 's/^_\(.*\)/\1;/p' $< | { echo '{ global:'; cat; echo 'local: *; };'; } > $@
+
+$(OUT)/libBink2.so: $(BINK)/bink_shim.c $(BINK)/bink2_abi.h $(FFMPEG)/lib/libavcodec.a $(GLDIR)/bink.map $(COMPAT_H)
+	$(CC) -std=gnu11 -O2 -g -fPIC -fvisibility=hidden -Wall -Wextra -Wno-unused-parameter -Icompat -include compat/rs_linux.h \
+	    -I$(FFMPEG)/include -shared -o $@ $(BINK)/bink_shim.c -Wl,--version-script=$(GLDIR)/bink.map -Wl,-Bsymbolic \
+	    -Wl,--exclude-libs,ALL $(FFMPEG)/lib/libavformat.a $(FFMPEG)/lib/libavcodec.a $(FFMPEG)/lib/libavutil.a -lm -pthread
+
+bink: $(OUT)/libBink2.so
+
 # Only the Cg API is exported, as the Mac's library exports it (cg.exports: the same names with an underscore).
 $(GLDIR)/cg.map: $(CGS)/cg.exports
 	@mkdir -p $(GLDIR)
@@ -211,5 +230,5 @@ clean:
 	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/shell $(OUT)/native $(OUT)/shims $(OUT)/imports_table.inc $(OUT)/rs-rearmed \
 	    $(OUT)/layer_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
 
-.PHONY: all gl check check-steam check-gl clean
+.PHONY: all gl bink check check-steam check-gl clean
 -include $(OBJ:.o=.d) $(OUT)/test/layer_test.d

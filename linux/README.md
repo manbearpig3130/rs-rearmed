@@ -7,8 +7,9 @@ run as it is.
 
 **There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
 tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
-its intro, its title screen and its menus, with its sound through PipeWire (on Bazzite, 2026-11-28). No guitar
-input, no videos, no install; no song played yet.
+its intro, its title screen and its menus, with its sound and the guitar's input through PipeWire and its videos
+(on Bazzite, 2026-11-28, with a Real Tone Cable as far as the calibration screen). No song played yet, no
+install, and none of the Mac app's built-in fixes.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -87,6 +88,7 @@ make -C linux check                        # the Darwin layer's own test, the St
 # with SDL 3's, EGL's and OpenGL's headers (on Bazzite: in a distrobox), the renderer and the shell as well:
 make -C linux all gl                       # libRSSystemGL.so, libRSOpenGL.so, libCg.so; rs-rearmed with the shell
 make -C linux check-gl                     # the renderer's offscreen test and the Cg library's render test
+make -C linux bink                         # libBink2.so, for the videos: downloads and builds FFmpeg (curl, patch, xz)
 build/linux/rs-rearmed --run GAME          # the game in a window
 SDL_VIDEODRIVER=offscreen build/linux/rs-rearmed --run GAME --frames 600 --picture f --picture-every 60
                                            # with no display: ten seconds, a frame saved every second (f.<n>.ppm)

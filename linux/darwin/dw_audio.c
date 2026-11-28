@@ -3,7 +3,8 @@
 //
 // The game asks the hardware layer (AudioObject...) which devices there are and what they can do, builds a graph of
 // audio units (AUGraph: a mixer into a device output) with a callback that Wwise fills, and for the guitar opens
-// an input device with an I/O procedure. Here there is one output device, stereo at 48,000 Hz, and no input.
+// an input device with an I/O procedure. Here there is one output device, stereo at 48,000 Hz, and the inputs
+// the sound backend has (none without one), each a device with an I/O procedure fed from what it captures.
 // The graph is kept as the game made it, and while it runs a thread calls the game's callback once a buffer, on
 // the clock, and throws the sound away: so Wwise runs, and the game with it. Where the program has a sound
 // backend (dw_audio_set_backend: PipeWire, linux/src/audio_pipewire.c) that calls for the sound instead and
@@ -65,6 +66,56 @@ _Static_assert(sizeof(stream_format) == 40 && sizeof(time_stamp) == 64 && sizeof
 static double g_rate = 48000.0;
 static uint32_t g_frames = 256;  // the device's buffer: the Mac's default
 
+// The inputs: what the backend has, each a device of its own with one input stream. A device keeps its number for
+// the whole run, known by the backend's name for it, so one that goes and comes back is the same device.
+#define MAX_INPUTS 10  // the game opens ten at most
+#define DEVICE_IN(i) (0x110 + (uint32_t)(i))
+#define STREAM_IN(i) (0x210 + (uint32_t)(i))
+typedef int (*io_proc)(uint32_t device, const void *now, const void *input, const void *input_time, void *output,
+                       const void *output_time, void *client);
+typedef struct {
+  dw_audio_input info;
+  int present;
+  uint32_t frames;  // its buffer, as the game set it
+  float volume;     // 'volm', as the game set it
+  io_proc proc;
+  void *client;
+  void *capture;    // the backend's handle while it runs
+  double sample;
+} input_device;
+static input_device g_inputs[MAX_INPUTS];
+static int g_ninputs;
+static const dw_audio_backend *g_backend;
+static pthread_mutex_t g_inputs_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void refresh_inputs(void) {
+  if (!g_backend || !g_backend->inputs) return;
+  dw_audio_input list[MAX_INPUTS];
+  int n = g_backend->inputs(list, MAX_INPUTS);
+  pthread_mutex_lock(&g_inputs_lock);
+  for (int i = 0; i < g_ninputs; i++) g_inputs[i].present = 0;
+  for (int k = 0; k < n; k++) {
+    int at = -1;
+    for (int i = 0; i < g_ninputs; i++)
+      if (!strcmp(g_inputs[i].info.uid, list[k].uid)) at = i;
+    if (at < 0 && g_ninputs < MAX_INPUTS) {
+      at = g_ninputs++;
+      memset(&g_inputs[at], 0, sizeof g_inputs[at]);
+      g_inputs[at].frames = 128;     // an input's buffer on the Mac
+      g_inputs[at].volume = 0.375f;  // where the game starts a device
+    }
+    if (at < 0) continue;
+    g_inputs[at].info = list[k];
+    g_inputs[at].present = 1;
+  }
+  pthread_mutex_unlock(&g_inputs_lock);
+}
+
+static input_device *input_of(uint32_t obj) {
+  uint32_t i = obj - DEVICE_IN(0);
+  return i < (uint32_t)g_ninputs && g_inputs[i].present ? &g_inputs[i] : NULL;
+}
+
 static int audio_log(void) {
   static int on = -1;
   if (on < 0) {
@@ -115,14 +166,100 @@ static stream_format device_format(void) {
     return noErr;                                \
   } while (0)
 
+// An input device's answers. Its one stream is 32-bit float, the channels interleaved, as CoreAudio presents any
+// device; the backend converts what the hardware gives.
+static int get_input(input_device *d, uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
+  int input = a->scope != SCOPE_OUTPUT;  // nothing in the output scope
+  stream_format f = {g_rate, FOURCC('l', 'p', 'c', 'm'), 0x1 | 0x8, 4u * (uint32_t)d->info.channels, 1,
+                     4u * (uint32_t)d->info.channels, (uint32_t)d->info.channels, 32, 0};
+  switch (a->selector) {
+    case FOURCC('l', 'n', 'a', 'm'): PUT(void *, dw_cf_string(d->info.name));
+    case FOURCC('l', 'm', 'a', 'k'): PUT(void *, dw_cf_string(d->info.maker));
+    case FOURCC('u', 'i', 'd', ' '): PUT(void *, dw_cf_string(d->info.uid));
+    case FOURCC('m', 'u', 'i', 'd'):
+      if (!d->info.model[0]) return kUnknownProperty;
+      PUT(void *, dw_cf_string(d->info.model));
+    case FOURCC('t', 'r', 'a', 'n'): PUT(uint32_t, d->info.usb ? FOURCC('u', 's', 'b', ' ') : FOURCC('b', 'l', 't', 'n'));
+    case FOURCC('l', 'i', 'v', 'n'): PUT(uint32_t, 1);
+    case FOURCC('g', 'o', 'i', 'n'): PUT(uint32_t, d->capture != NULL);
+    case FOURCC('n', 's', 'r', 't'): PUT(double, g_rate);
+    case FOURCC('n', 's', 'r', '#'): {
+      struct { double lo, hi; } range = {g_rate, g_rate};
+      if (*size < sizeof range) return kBadPropertySize;
+      memcpy(out, &range, sizeof range);
+      *size = sizeof range;
+      return noErr;
+    }
+    case FOURCC('f', 's', 'i', 'z'): PUT(uint32_t, d->frames);
+    case FOURCC('f', 's', 'z', '#'): {
+      struct { double lo, hi; } range = {16, 4096};
+      if (*size < sizeof range) return kBadPropertySize;
+      memcpy(out, &range, sizeof range);
+      *size = sizeof range;
+      return noErr;
+    }
+    case FOURCC('s', 'a', 'f', 't'):
+    case FOURCC('l', 't', 'n', 'c'): PUT(uint32_t, 0);
+    case FOURCC('s', 't', 'm', '#'):
+      if (a->scope == SCOPE_OUTPUT) {
+        *size = 0;
+        return noErr;
+      }
+      PUT(uint32_t, STREAM_IN(obj - DEVICE_IN(0)));
+    case FOURCC('s', 'l', 'a', 'y'): {
+      if (*size < 24) return kBadPropertySize;
+      struct { uint32_t count; audio_buffer buffer; } list = {a->scope == SCOPE_INPUT ? 1u : 0u, {a->scope == SCOPE_INPUT ? (uint32_t)d->info.channels : 0u, 0, NULL}};
+      memcpy(out, &list, 24);
+      *size = 24;
+      return noErr;
+    }
+    case FOURCC('s', 'f', 'm', 't'):
+    case FOURCC('p', 'f', 't', ' '):  // the hardware's own format: the same, as far as the game is told
+      if (!input) return kUnknownProperty;
+      PUT(stream_format, f);
+    case FOURCC('v', 'o', 'l', 'm'):  // the input's level, as the game last set it
+      if (!input) return kUnknownProperty;
+      PUT(float, d->volume);
+  }
+  return kUnknownProperty;
+}
+
 static int get(uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
   uint32_t sel = a->selector;
   if (obj == SYSTEM) {
     switch (sel) {
-      case FOURCC('d', 'e', 'v', '#'): PUT(uint32_t, DEVICE_OUT);  // the devices: one
+      case FOURCC('d', 'e', 'v', '#'): {  // the devices: the inputs, then the output
+        refresh_inputs();
+        uint32_t list[MAX_INPUTS + 1], n = 0;
+        for (int i = 0; i < g_ninputs; i++)
+          if (g_inputs[i].present) list[n++] = DEVICE_IN(i);
+        list[n++] = DEVICE_OUT;
+        if (*size < n * 4) n = *size / 4;
+        memcpy(out, list, n * 4);
+        *size = n * 4;
+        return noErr;
+      }
       case FOURCC('d', 'O', 'u', 't'):                               // the default output
       case FOURCC('s', 'O', 'u', 't'): PUT(uint32_t, DEVICE_OUT);   // and the one for alerts
-      case FOURCC('d', 'I', 'n', ' '): PUT(uint32_t, 0);            // no input: kAudioObjectUnknown
+      case FOURCC('d', 'I', 'n', ' '):                               // the default input: the first, or none (kAudioObjectUnknown)
+        refresh_inputs();
+        for (int i = 0; i < g_ninputs; i++)
+          if (g_inputs[i].present) PUT(uint32_t, DEVICE_IN(i));
+        PUT(uint32_t, 0);
+    }
+    return kUnknownProperty;
+  }
+  if (input_of(obj)) return get_input(input_of(obj), obj, a, size, out);
+  if (obj >= STREAM_IN(0) && obj < STREAM_IN(MAX_INPUTS) && input_of(obj - STREAM_IN(0) + DEVICE_IN(0))) {
+    input_device *d = input_of(obj - STREAM_IN(0) + DEVICE_IN(0));
+    stream_format f = {g_rate, FOURCC('l', 'p', 'c', 'm'), 0x1 | 0x8, 4u * (uint32_t)d->info.channels, 1,
+                       4u * (uint32_t)d->info.channels, (uint32_t)d->info.channels, 32, 0};
+    switch (sel) {
+      case FOURCC('l', 't', 'n', 'c'): PUT(uint32_t, 0);
+      case FOURCC('s', 'd', 'i', 'r'): PUT(uint32_t, 1);  // an input stream
+      case FOURCC('s', 'c', 'h', 'n'): PUT(uint32_t, 1);
+      case FOURCC('s', 'f', 'm', 't'):
+      case FOURCC('p', 'f', 't', ' '): PUT(stream_format, f);
     }
     return kUnknownProperty;
   }
@@ -178,6 +315,7 @@ static int get(uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
       return noErr;
     }
     case FOURCC('s', 'f', 'm', 't'):
+    case FOURCC('p', 'f', 't', ' '):
       if (!output) return kUnknownProperty;
       PUT(stream_format, device_format());
     case FOURCC('d', 'c', 'h', '2'): {  // the two channels for stereo
@@ -206,7 +344,7 @@ int dw_AudioObjectGetPropertyDataSize(uint32_t obj, const prop_address *a, uint3
   uint8_t buf[256];
   uint32_t n = sizeof buf;
   int r = get(obj, a, &n, buf);
-  if (r == noErr && n == sizeof(void *) && (a->selector == FOURCC('l', 'n', 'a', 'm') || a->selector == FOURCC('l', 'm', 'a', 'k') || a->selector == FOURCC('u', 'i', 'd', ' ')))
+  if (r == noErr && n == sizeof(void *) && (a->selector == FOURCC('l', 'n', 'a', 'm') || a->selector == FOURCC('l', 'm', 'a', 'k') || a->selector == FOURCC('u', 'i', 'd', ' ') || a->selector == FOURCC('m', 'u', 'i', 'd')))
     dw_CFRelease(*(void **)buf);  // the string made for the size alone
   *size = r == noErr ? n : 0;
   note("size of", obj, a, r == noErr);
@@ -218,7 +356,7 @@ unsigned char dw_AudioObjectHasProperty(uint32_t obj, const prop_address *a) {
   uint8_t buf[256];
   uint32_t n = sizeof buf;
   int r = get(obj, a, &n, buf);
-  if (r == noErr && n == sizeof(void *) && (a->selector == FOURCC('l', 'n', 'a', 'm') || a->selector == FOURCC('l', 'm', 'a', 'k') || a->selector == FOURCC('u', 'i', 'd', ' ')))
+  if (r == noErr && n == sizeof(void *) && (a->selector == FOURCC('l', 'n', 'a', 'm') || a->selector == FOURCC('l', 'm', 'a', 'k') || a->selector == FOURCC('u', 'i', 'd', ' ') || a->selector == FOURCC('m', 'u', 'i', 'd')))
     dw_CFRelease(*(void **)buf);
   note("has", obj, a, 1);
   return r == noErr;
@@ -234,10 +372,18 @@ int dw_AudioObjectSetPropertyData(uint32_t obj, const prop_address *a, uint32_t 
     memcpy(&frames, in, 4);
     if (frames >= 16 && frames <= 4096) g_frames = frames, r = noErr;
     else r = kUnspecified;
-  } else if (obj == DEVICE_OUT && a->selector == FOURCC('n', 's', 'r', 't') && size == 8) {
+  } else if ((obj == DEVICE_OUT || input_of(obj)) && a->selector == FOURCC('n', 's', 'r', 't') && size == 8) {
     double rate;
     memcpy(&rate, in, 8);
     r = rate == g_rate ? noErr : kUnspecified;  // one rate
+  } else if (input_of(obj) && a->selector == FOURCC('f', 's', 'i', 'z') && size == 4) {
+    uint32_t frames;
+    memcpy(&frames, in, 4);
+    if (frames >= 16 && frames <= 4096) input_of(obj)->frames = frames, r = noErr;
+    else r = kUnspecified;
+  } else if (input_of(obj) && a->selector == FOURCC('v', 'o', 'l', 'm') && size == 4) {
+    memcpy(&input_of(obj)->volume, in, 4);  // kept for the game to read back; the hardware's level is the system's
+    r = noErr;
   }
   note("set", obj, a, r == noErr);
   return r;
@@ -258,22 +404,69 @@ int dw_AudioObjectRemovePropertyListener(uint32_t obj, const prop_address *a, vo
 }
 DW_FUNCTION("_AudioObjectRemovePropertyListener", dw_AudioObjectRemovePropertyListener);
 
-// A device's own I/O procedure (the guitar's input device on the Mac). The one device here is asked for by the
-// graph below; a procedure on it is taken and never called.
+// A device's own I/O procedure: the guitar's input. The game makes one on an input device and starts it; from then
+// it is called on the backend's audio thread with each buffer the device captured, as CoreAudio calls it: the
+// input as a list of one buffer, and no output. One on the output device is taken and never called: the game's
+// sound goes through the graph below.
+static void input_captured(void *ctx, const float *samples, uint32_t frames) {
+  input_device *d = ctx;
+  io_proc proc = d->proc;
+  if (!proc) return;
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  time_stamp when = {.sample_time = d->sample, .host_time = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec,
+                     .rate_scalar = 1.0, .flags = 1 | 2 | 4};
+  struct { uint32_t count; audio_buffer buffer; } input = {1, {(uint32_t)d->info.channels, frames * 4u * (uint32_t)d->info.channels, (void *)(uintptr_t)samples}};
+  struct { uint32_t count; audio_buffer buffer; } output = {0, {0, 0, NULL}};
+  proc(DEVICE_IN(d - g_inputs), &when, &input, &when, &output, &when, d->client);
+  d->sample += frames;
+}
+
 int dw_AudioDeviceCreateIOProcID(uint32_t device, void *proc, void *client, void **id) {
-  (void)client;
-  if (device != DEVICE_OUT) return kBadObject;
-  if (audio_log()) fprintf(stderr, "[audio] an I/O procedure on device 0x%x: taken, never called\n", device);
+  input_device *d = input_of(device);
+  if (!d && device != DEVICE_OUT) return kBadObject;
+  if (d) d->proc = (io_proc)proc, d->client = client;
+  if (audio_log()) fprintf(stderr, "[audio] an I/O procedure on device 0x%x%s\n", device, d ? "" : ": taken, never called");
   *id = proc;
   return noErr;
 }
 DW_FUNCTION("_AudioDeviceCreateIOProcID", dw_AudioDeviceCreateIOProcID);
 
-int dw_AudioDeviceDestroyIOProcID(uint32_t device, void *id) { return (void)id, device == DEVICE_OUT ? noErr : kBadObject; }
+int dw_AudioDeviceStop(uint32_t device, void *id);
+
+int dw_AudioDeviceDestroyIOProcID(uint32_t device, void *id) {
+  input_device *d = input_of(device);
+  if (!d) return device == DEVICE_OUT ? noErr : kBadObject;
+  dw_AudioDeviceStop(device, id);
+  d->proc = NULL;
+  return noErr;
+}
 DW_FUNCTION("_AudioDeviceDestroyIOProcID", dw_AudioDeviceDestroyIOProcID);
-int dw_AudioDeviceStart(uint32_t device, void *id) { return (void)id, device == DEVICE_OUT ? noErr : kBadObject; }
+
+int dw_AudioDeviceStart(uint32_t device, void *id) {
+  (void)id;
+  input_device *d = input_of(device);
+  if (!d) return device == DEVICE_OUT ? noErr : kBadObject;
+  if (d->capture) return noErr;
+  if (!d->proc || !g_backend || !g_backend->capture_start) return kIllegalOperation;
+  d->capture = g_backend->capture_start(&d->info, g_rate, d->frames, input_captured, d);
+  if (audio_log() || !d->capture)
+    fprintf(stderr, "[audio] input \"%s\": %s, %u frames a call\n", d->info.name, d->capture ? "started" : "could not be started", d->frames);
+  return d->capture ? noErr : kUnspecified;
+}
 DW_FUNCTION("_AudioDeviceStart", dw_AudioDeviceStart);
-int dw_AudioDeviceStop(uint32_t device, void *id) { return (void)id, device == DEVICE_OUT ? noErr : kBadObject; }
+
+int dw_AudioDeviceStop(uint32_t device, void *id) {
+  (void)id;
+  input_device *d = input_of(device);
+  if (!d) return device == DEVICE_OUT ? noErr : kBadObject;
+  if (d->capture) {
+    g_backend->capture_stop(d->capture);
+    d->capture = NULL;
+    if (audio_log()) fprintf(stderr, "[audio] input \"%s\": stopped\n", d->info.name);
+  }
+  return noErr;
+}
 DW_FUNCTION("_AudioDeviceStop", dw_AudioDeviceStop);
 
 // --- the graph ---
@@ -381,7 +574,6 @@ static void *graph_thread(void *arg) {
   return NULL;
 }
 
-static const dw_audio_backend *g_backend;
 void dw_audio_set_backend(const dw_audio_backend *backend) { g_backend = backend; }
 
 int dw_NewAUGraph(graph **out) {

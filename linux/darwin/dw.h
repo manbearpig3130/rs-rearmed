@@ -49,10 +49,24 @@ void dw_display_set_modes(const int (*modes)[2], int n);
 // then calls RENDER on its own audio thread whenever it wants FRAMES more frames (at most 4096), which fills the
 // two channels with what the game plays. Without one, a thread calls it on the clock and drops the sound.
 typedef void (*dw_audio_render)(void *ctx, float *left, float *right, uint32_t frames);
+// An input the backend has: a capture device as the game is to see it. The game knows the Real Tone Cable by
+// "Rocksmith USB" in its name or maker.
+typedef struct {
+  char name[128], maker[64];  // "Rocksmith USB Guitar Adapter", "Hercules"
+  char uid[192];              // the backend's own name for it, the same at every start
+  char model[192];            // name and USB ids, as CoreAudio's model identifier has them; or empty
+  int channels, usb;
+} dw_audio_input;
+// What an open input hears: FRAMES frames, the channels interleaved, on the backend's audio thread.
+typedef void (*dw_audio_capture)(void *ctx, const float *samples, uint32_t frames);
 typedef struct {
   const char *name;
   int (*start)(double rate, uint32_t frames, dw_audio_render render, void *ctx);  // 0, or the silent clock is used
   void (*stop)(void);
+  int (*inputs)(dw_audio_input *list, int max);  // the inputs there are now: how many (NULL: none ever)
+  // An input opened: CAPTURE is called with FRAMES frames at a time. A handle for capture_stop, or NULL.
+  void *(*capture_start)(const dw_audio_input *input, double rate, uint32_t frames, dw_audio_capture capture, void *ctx);
+  void (*capture_stop)(void *handle);
 } dw_audio_backend;
 void dw_audio_set_backend(const dw_audio_backend *backend);
 
