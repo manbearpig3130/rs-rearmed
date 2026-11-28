@@ -64,7 +64,8 @@ class Loader(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.out = os.path.join(cls.tmp.name, "out")
-        r = subprocess.run(["make", "-C", HERE, "OUT=" + cls.out, cls.out + "/rs-rearmed", cls.out + "/layer_test"],
+        r = subprocess.run(["make", "-C", HERE, "OUT=" + cls.out, cls.out + "/rs-rearmed", cls.out + "/layer_test",
+                            cls.out + "/libsteam_api.so"],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if r.returncode:
             raise AssertionError("make failed:\n" + r.stdout.decode())
@@ -96,7 +97,7 @@ class Loader(unittest.TestCase):
     def test_an_initializer_runs_and_its_import_is_counted(self):
         code, out, err = self.run_made_up(made_up.image(1, "_getpid"), "--init-only", "--count")
         self.assertEqual(code, 0, out + err)
-        self.assertIn("imports: 2 (1 called): 1 the host's own, 1 the Darwin layer's, 0 with no answer yet", out)
+        self.assertIn("imports: 2 (1 called): 1 the host's own, 1 the Darwin layer's, 0 the project's libraries', 0 with no answer yet", out)
         self.assertIn("1 of 1 initializers ran", out)
         self.assertRegex(out, r"imports called: 1\n +1  libSystem +_getpid +same +the host's own")
 
@@ -149,15 +150,28 @@ class Loader(unittest.TestCase):
         self.assertEqual(int(counts.group(3)), sum(1 for _, cls, _ in table.values() if cls == "same"))
 
     def test_the_games_start(self):
-        """GameBootstrap, whole: the game's root, Lua, its settings, the file system, the main service."""
+        """GameBootstrap, whole (the game's root, Lua, its settings, the file system, the main service), and the
+        first GameFrame as far as it goes."""
         if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
             self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
-        code, out, err = self.run_loader(REAL, "--boot", GAME)
-        self.assertEqual(code, 3, out + err)  # it ends at the first import with no answer yet
-        self.assertIn("GameBootstrap, with the game in", out)
-        self.assertNotIn("in initializer", err)
-        # every import of the C library, pthreads, Mach and the files has an answer: what stops it is a library's
+        home = os.path.join(self.tmp.name, "home")  # the port's folder for this run: its saves start empty here
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"))
+        r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--boot", GAME, "--frames", "1"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        out, err = r.stdout.decode(), r.stderr.decode()
+        self.assertIn("GameBootstrap returned: the Lua owner made, the main service made", out, out + err)
+        self.assertIn("12 the project's libraries'", out)  # the Steam library answers its twelve
+        # The first frame ends at the first import with no answer yet. Every import of the C library, pthreads,
+        # Mach, the files and Steam has one: what stops it is the audio or display layer's, or a library's.
+        self.assertEqual(r.returncode, 3, out + err)
         self.assertRegex(err, r"the game called \S+ \S+ \((shim|layer)\), which has no answer yet")
+
+    def test_the_steam_librarys_own_tests(self):
+        r = subprocess.run(["make", "-C", HERE, "OUT=" + self.out, "check-steam"], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
+        self.assertEqual(r.returncode, 0, r.stdout.decode())
+        self.assertIn("vtables: all slots match", r.stdout.decode())
+        self.assertIn("all checks passed", r.stdout.decode())
 
 
 if __name__ == "__main__":

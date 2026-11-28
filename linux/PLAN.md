@@ -162,8 +162,17 @@ root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.ps
   lists what a stage asks for. What follows such a call proves nothing; it is for making the list.
   `--frames N` then calls `GameFrame`. The first frame asks for the Steam library (`SteamAPI_Init`, its
   callbacks and contexts) and CoreAudio's devices; then the renderer.
-- **Next**: the Steam shim built for Linux; the audio layer's silent form; the shell and the renderer's OpenGL
-  path, which need a distrobox for their headers.
+- **The Steam library** (`shims/steam`, the Mac app's own sources) builds for Linux as `libsteam_api.so` beside the
+  program, and the loader binds a `shim` row to the library of its name. Its three tests pass there as on the
+  Mac (the vtable slots, the DLC folder, the library's behaviour). The game's interfaces are called straight
+  through their vtables, and its callbacks straight back. What it took: `linux/compat`, four headers and one file
+  with the macOS functions it calls (`copyfile`, `removefile`, `_NSGetExecutablePath`, the boot time), and one
+  `#if defined(__linux__)` in `shims/steam/src/shim.cpp` for where Steam keeps its files. The saves go to
+  `steam/` in the port's folder (`RS_NATIVE_HOME`, else `rs-rearmed` under XDG's data folder).
+- **With it, three frames run in a survey**, and ask for the display's modes (`CGMainDisplayID`,
+  `CGDisplayCopyAllDisplayModes`, CoreFoundation's arrays), CoreAudio's devices, and Cg: the renderer starts.
+- **Next**: the display's modes and the audio layer's silent form; then Cg, the renderer's OpenGL path and the
+  shell, which need a distrobox for their headers.
 
 ### X3. Sound and the guitar
 
@@ -402,8 +411,10 @@ Proposed; none is final before the step that tests it.
   Linux build none loads; each would need a Linux build from its own project. Nothing changes for a Mac player. What
   those builds would rest on is unchanged: the headers, the names, the `rc_ctx` layout, the folders and the process
   name ([mods](FINDINGS.md#built-in-fixes-and-mods)).
-- **Shared code.** Nothing of either edition is changed on this branch so far beyond a test's registration
-  (`CMakeLists.txt`, `tools/release/scope.py`, `docs/mac/TESTING.md`) and a line in each plan.
+- **Shared code.** Changed on this branch so far: a test's registration (`CMakeLists.txt`,
+  `tools/release/scope.py`, `docs/mac/TESTING.md`), a line in each plan, and one branch in
+  `shims/steam/src/shim.cpp`, inside `#if defined(__linux__)`, for the folder Steam for Linux keeps its files in.
+  The Mac's library compiles the same code as before.
 
 ## Log
 
@@ -443,3 +454,6 @@ Proposed; none is final before the step that tests it.
   name where the home folder is a link). Decrypted there: the same image as the Mac's. The layer grew from 9
   functions to 84 in one batch, led by a survey run, and `GameBootstrap` then ran whole on the first try with
   them, once paths were found in any letter case. `GameFrame` stops at the Steam library. Next: the Steam shim.
+- **2026-11-28, the Steam library.** `shims/steam` built for Linux from its own sources (`linux/compat` for four
+  macOS functions; one Linux branch in `shim.cpp`). Its tests pass on Bazzite. The game's first frames then
+  initialize Steam and go on to the display's modes, the audio devices and Cg.

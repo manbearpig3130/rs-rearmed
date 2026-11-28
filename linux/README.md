@@ -18,6 +18,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
+| `compat` | the few macOS functions the project's shared libraries call, for Linux, so that `shims/` builds from its own sources |
 
 ## In short
 
@@ -77,7 +78,9 @@ the decrypted image ([PLAN.md](PLAN.md#x0-the-first-run-with-nothing-built) says
 make -C linux                              # build/linux/rs-rearmed: a C compiler, make and Python
 build/linux/rs-rearmed --bind-only         # who answers each of the image's 681 imports
 build/linux/rs-rearmed --init-only --count # the initializers run, and the imports they called
-make -C linux check                        # the Darwin layer's own test, and --init-only
+build/linux/rs-rearmed --boot GAME         # and the game's start, with GAME the Mac depot's folder
+build/linux/rs-rearmed --boot GAME --frames 3 --survey   # what its first frames ask for that nothing answers yet
+make -C linux check                        # the Darwin layer's own test, the Steam library's, and --init-only
 python3 linux/test_loader.py               # its test (ctest: linux.loader)
 ```
 

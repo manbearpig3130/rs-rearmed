@@ -1,9 +1,11 @@
 // Who answers each of the image's imports. See rsl.h.
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include "dw.h"
 #include "rsl.h"
@@ -28,6 +30,37 @@ static uint32_t g_surveyed[MAX_IMPORTS];  // calls of each unanswered import, in
 
 // The host's libraries that the `same` rows are in, besides the C library.
 static const char *const k_libs[] = {"libm.so.6", "libstdc++.so.6", "libgcc_s.so.1"};
+
+// The project's replacement libraries, each built for Linux as a shared library beside this program and answering
+// the imports of one of the Mac game's libraries. One that is not there leaves its imports without an answer.
+static struct {
+  const char *library, *file;
+  void *handle;
+  int tried;
+} g_shims[] = {{"libsteam_api", "libsteam_api.so", NULL, 0},
+              {"OpenGL", "libRSOpenGL.so", NULL, 0},
+              {"Cg", "libCg.so", NULL, 0},
+              {"libBink2Macx64", "libBink2.so", NULL, 0}};
+
+static void *shim_symbol(const char *library, const char *symbol) {
+  for (size_t i = 0; i < sizeof g_shims / sizeof *g_shims; i++) {
+    if (strcmp(g_shims[i].library, library)) continue;
+    if (!g_shims[i].tried) {
+      g_shims[i].tried = 1;
+      char path[PATH_MAX];
+      ssize_t n = readlink("/proc/self/exe", path, sizeof path - 1);
+      if (n < 0) return NULL;
+      path[n] = 0;
+      char *slash = strrchr(path, '/');
+      if (!slash || (size_t)(slash - path) + 2 + strlen(g_shims[i].file) > sizeof path) return NULL;
+      strcpy(slash + 1, g_shims[i].file);
+      if (access(path, R_OK) == 0 && !(g_shims[i].handle = dlopen(path, RTLD_NOW | RTLD_LOCAL)))
+        fprintf(stderr, "[rs-rearmed] %s\n", dlerror());
+    }
+    return g_shims[i].handle ? dlsym(g_shims[i].handle, symbol + (symbol[0] == '_')) : NULL;
+  }
+  return NULL;
+}
 
 void rsl_imports_begin(int count_calls) {
   g_count = count_calls;
@@ -101,6 +134,8 @@ rsl_import *rsl_answer(const char *library, const char *symbol, int lazy) {
       im->how = RSL_LAYER;
     } else if (row && row->cls == RSL_CLASS_SAME && (p = dlsym(RTLD_DEFAULT, symbol + (symbol[0] == '_')))) {
       im->how = RSL_HOST;
+    } else if (row && row->cls == RSL_CLASS_SHIM && (p = shim_symbol(library, symbol))) {
+      im->how = RSL_SHIM;
     } else {
       im->how = RSL_NONE;
       p = g_traps + (size_t)g_nimports * TRAP_STRIDE;
@@ -145,7 +180,7 @@ const rsl_import *rsl_imports(int *n) {
 uint64_t rsl_import_calls(const rsl_import *im) { return g_counts ? g_counts[im - g_imports] : 0; }
 
 void rsl_report_binding(FILE *out) {
-  int called = 0, how[3] = {0, 0, 0}, by_class[RSL_NCLASSES + 1] = {0};
+  int called = 0, how[4] = {0, 0, 0, 0}, by_class[RSL_NCLASSES + 1] = {0};
   for (int i = 0; i < g_nimports; i++) {
     const rsl_import *im = &g_imports[i];
     called += im->called;
@@ -155,8 +190,9 @@ void rsl_report_binding(FILE *out) {
     while (c < RSL_NCLASSES && strcmp(rsl_classes[c], im->cls)) c++;
     by_class[c]++;
   }
-  fprintf(out, "imports: %d (%d called): %d the host's own, %d the Darwin layer's, %d with no answer yet\n", g_nimports,
-          called, how[RSL_HOST], how[RSL_LAYER], how[RSL_NONE]);
+  fprintf(out, "imports: %d (%d called): %d the host's own, %d the Darwin layer's, %d the project's libraries', %d with no "
+               "answer yet\n",
+          g_nimports, called, how[RSL_HOST], how[RSL_LAYER], how[RSL_SHIM], how[RSL_NONE]);
   if (!how[RSL_NONE]) return;
   fprintf(out, "  no answer yet, by class:");
   for (int c = 0; c <= RSL_NCLASSES; c++)
@@ -180,5 +216,6 @@ void rsl_report_calls(FILE *out) {
   fprintf(out, "imports called: %d\n", n);
   for (int i = 0; i < n; i++)
     fprintf(out, "%11llu  %-10s %-36s %-8s %s\n", (unsigned long long)rsl_import_calls(list[i]), list[i]->library,
-            list[i]->symbol, list[i]->cls, list[i]->how == RSL_LAYER ? "the layer's" : "the host's own");
+            list[i]->symbol, list[i]->cls,
+            list[i]->how == RSL_LAYER ? "the layer's" : list[i]->how == RSL_SHIM ? "the project's library" : "the host's own");
 }

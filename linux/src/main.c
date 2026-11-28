@@ -45,6 +45,25 @@ int main(int argc, char **argv, char **envp) {
   }
   if (!path || !*path) path = "build/steamless/Rocksmith2014_x64_decrypted";
 
+  // What the project's libraries read from the environment, before any of them loads: the game stays offline
+  // (the Steam library's stub mode, as the Mac app sets it), and the game's own program in the game's folder
+  // stands for this one where a library finds the game by the program's place (linux/compat).
+  setenv("RS_STEAM_MODE", "stub", 0);
+  // The port's own folder, laid out as the Mac app's home is (steam/ for the saves): RS_NATIVE_HOME, else
+  // rs-rearmed under XDG's data folder.
+  char home[2048], dir[2304];
+  const char *e = getenv("RS_NATIVE_HOME"), *xdg = getenv("XDG_DATA_HOME"), *user = getenv("HOME");
+  if (e && *e) snprintf(home, sizeof home, "%s", e);
+  else if (xdg && *xdg == '/') snprintf(home, sizeof home, "%s/rs-rearmed", xdg);
+  else snprintf(home, sizeof home, "%s/.local/share/rs-rearmed", user ? user : "");
+  snprintf(dir, sizeof dir, "%s/steam", home);
+  setenv("RS_STEAM_DATA_DIR", dir, 0);
+  if (boot) {
+    char exe[4096];
+    if (snprintf(exe, sizeof exe, "%s/Rocksmith2014.app/Contents/MacOS/Rocksmith2014", boot) < (int)sizeof exe)
+      setenv("RS_MAC_EXECUTABLE", exe, 0);
+  }
+
   rsl_info info;
   double t0 = now();
   if (rsl_load(path, count, &info)) return 1;

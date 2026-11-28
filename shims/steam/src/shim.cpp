@@ -144,10 +144,26 @@ static void appmanifest_dlc(const std::vector<std::string> &t, std::set<AppId_t>
         if (t[i] == "dlcappid") out->insert((AppId_t)strtoul(t[i + 1].c_str(), nullptr, 10));
 }
 
+#if defined(__linux__)
+// Steam for Linux keeps its files in ~/.local/share/Steam (~/.steam/steam links there); as a Flatpak, under the
+// Flatpak's own home. The first that is there; with none, the usual place.
+static std::string linux_steam_root(const std::string &home) {
+    const char *const places[] = {"/.local/share/Steam", "/.steam/steam",
+                                  "/.var/app/com.valvesoftware.Steam/.local/share/Steam"};
+    for (const char *p : places)
+        if (file_exists(home + p + "/steamapps")) return home + p;
+    return home + places[0];
+}
+#endif
+
 static void load_config() {
     ShimConfig &c = g_cfg;
     const char *home = getenv("HOME");
+#if defined(__linux__)
+    c.steam_root = linux_steam_root(home ? home : "");
+#else
     c.steam_root = std::string(home ? home : "") + "/Library/Application Support/Steam";
+#endif
 
     char exe[PATH_MAX];
     uint32_t sz = sizeof exe;

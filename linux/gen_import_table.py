@@ -21,6 +21,7 @@ def table(rows):
     out = ["// Made by linux/gen_import_table.py from linux/darwin-imports.tsv: edit that.",
            "#define RSL_NCLASSES %d" % len(classes),
            "#define RSL_CLASS_SAME %d" % classes.index("same"),
+           "#define RSL_CLASS_SHIM %d" % classes.index("shim"),
            "static const char *const rsl_classes[RSL_NCLASSES] = {%s};" % ", ".join(c_string(c) for c in classes),
            "static const struct rsl_row {",
            "  const char *symbol, *library;",

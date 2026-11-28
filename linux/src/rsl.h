@@ -6,6 +6,8 @@
 //
 //   - the host's own function or object of that name, where linux/darwin-imports.tsv says `same`;
 //   - the Darwin layer's (linux/darwin), where it has one;
+//   - one of the project's replacement libraries built for Linux (the Steam library, later the renderer, Cg and
+//     Bink), where the table says `shim` and the library is beside this program;
 //   - else an address in a region with no access, one per import, so that the first call or read of it stops the
 //     run and names it.
 //
@@ -16,12 +18,12 @@
 #include <stdint.h>
 #include <stdio.h>
 
-enum { RSL_HOST, RSL_LAYER, RSL_NONE };  // who answers an import
+enum { RSL_HOST, RSL_LAYER, RSL_SHIM, RSL_NONE };  // who answers an import
 
 typedef struct {
   const char *library, *symbol;  // `libSystem`, `_pthread_key_create`: as the table writes them
   const char *cls;               // the table's class, or "?" for an import the table lacks
-  int how;                       // RSL_HOST, RSL_LAYER or RSL_NONE
+  int how;                       // RSL_HOST, RSL_LAYER, RSL_SHIM or RSL_NONE
   int called;                    // the image calls it (a lazy pointer) as well as, or instead of, holding its address
   uint64_t at;                   // the answer
   uint64_t stub;                 // with counting on: what the lazy pointer holds instead, a few counting instructions
