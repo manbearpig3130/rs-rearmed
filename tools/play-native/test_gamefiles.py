@@ -1028,6 +1028,19 @@ class Account(Base):
         self.copier().run()
         self.assertIsNone(self.env_id())
 
+    def test_login_user_when_nothing_else_says(self):
+        # Steam on Linux: no ticket, no appmanifest; the account Steam last signed in, as the Steam layer plays as
+        self.mac_game()
+        config = os.path.join(self.steam, "config")
+        os.makedirs(config, exist_ok=True)
+        with open(os.path.join(config, "loginusers.vdf"), "w") as f:
+            f.write('"users"\n{\n\t"76561197960265738"\n\t{\n\t\t"AccountName"\t\t"a"\n\t\t"MostRecent"\t\t"0"\n\t}\n'
+                    '\t"76561197960265748"\n\t{\n\t\t"AccountName"\t\t"b"\n\t\t"MostRecent"\t\t"1"\n\t}\n}\n')
+        self.assertEqual(gamefiles.login_user(self.steam), 20)
+        self.assertEqual(gamefiles.steam_account("mac", self.steam, None), (20, gamefiles.HOW_LOGIN))
+        self.copier().run()
+        self.assertEqual(self.env_id(), 20)
+
 
 FRENCH = MANIFEST.replace('"german"', '"french"').replace('"258341" {', '"999999" { "dlcappid" "999999" } "258341" {')
 

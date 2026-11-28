@@ -422,7 +422,9 @@ def dlc_appids(dest, entries, readable=True):
 # app ownership ticket in userdata/<account>/config/localconfig.vdf (apptickets, the licenses = package ids)
 # and each package's depots in appcache/packageinfo.vdf. Several or no such accounts: the appmanifest's
 # LastOwner when it is one of them (or of the accounts with a ticket), else the one that played the game
-# longest through Steam. RS_STEAM_ID set when the copy is made (a SteamID64 or an account id) chooses it.
+# longest through Steam. RS_STEAM_ID set when the copy is made (a SteamID64 or an account id) chooses it. With
+# no ticket and no appmanifest at all (Steam on Linux keeps no apptickets, and the Mac game is not installed in
+# it), the account the offline Steam layer would play as anyway: loginusers.vdf's MostRecent, else its first.
 
 STEAMID64_BASE = 76561197960265728
 LP_DEPOT = 221683  # the Learn & Play (Windows) depot
@@ -645,7 +647,31 @@ def steam_account(edition, steam, appmanifest, override=None):
         return last, "the appmanifest's LastOwner"
     if pool:
         return max(pool, key=lambda a: accounts[a][1]), "the account that played the game longest"
+    login = login_user(steam)
+    if login:
+        return login, HOW_LOGIN
     return None, "no Steam account found"
+
+
+HOW_LOGIN = "the account Steam last signed in, which the game plays as"
+
+
+def login_user(steam):
+    """The account id the offline Steam layer plays as without RS_STEAM_ID (shims/steam/src/shim.cpp,
+    load_login_user): loginusers.vdf's account marked MostRecent, else its first; None without the file."""
+    try:
+        with open(os.path.join(steam, "config", "loginusers.vdf"), errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None
+    first = None
+    for m in re.finditer(r'"(7656\d{13})"\s*\{([^{}]*)\}', text):
+        account = account_of(m.group(1))
+        if first is None:
+            first = account
+        if re.search(r'"MostRecent"\s+"1"', m.group(2)):
+            return account
+    return first
 
 
 # --- where the copy is ------------------------------------------------------------------------------------
