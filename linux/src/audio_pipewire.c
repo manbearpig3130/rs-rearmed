@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dw.h"
@@ -264,6 +265,8 @@ static int inputs(dw_audio_input *list, int max) {
 // --- an open input: a capture stream on that node ---
 // As for the sound out: PipeWire hands over what it has, in counts of its own, and the game's input procedure is
 // called with buffers of the size the game set on the device, so the frames wait in a queue between.
+extern _Atomic int64_t rs_audio_input_arrived_ns;  // for the input queue's report (overrides/src/audio_in.c)
+
 struct capture {
   struct pw_thread_loop *loop;
   struct pw_stream *stream;
@@ -291,6 +294,9 @@ static void on_capture(void *data) {
       c->have += take, in += (size_t)take * c->channels, n -= take;
       uint32_t done = 0;
       while (c->have - done >= c->frames) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        atomic_store_explicit(&rs_audio_input_arrived_ns, (int64_t)now.tv_sec * 1000000000 + now.tv_nsec, memory_order_relaxed);
         c->capture(c->ctx, c->queue + (size_t)done * c->channels, c->frames);
         done += c->frames;
       }

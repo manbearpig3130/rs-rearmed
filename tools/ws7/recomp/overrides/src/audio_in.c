@@ -16,7 +16,12 @@
 // unknown or 512 frames and up the limit is 5 slots, and nothing is ever dropped (the original behaviour).
 // When the queue is full and the writer has overwritten the read slot, the order is already mixed up in
 // the original; the trim then drops from the read index as well.
+//
+// With RS_AUDIO_LOG the queue's level goes to the log about every five seconds when it changes, and once a
+// minute: the slots waiting when the engine reads, how long that sound had waited (where the platform's input
+// layer stamps each buffer's arrival, as Linux's does), and the trims and empty reads so far.
 #include <pthread.h>
+#include <time.h>
 
 #include "audio.h"
 
@@ -29,11 +34,11 @@
 #define Q_EMPTY(q) (*(uint8_t *)((q) + RC_OFF(siq_empty)))
 #define Q_LOCK(q) ((pthread_mutex_t *)((q) + RC_OFF(siq_lock)))
 
-static atomic_ulong g_trims, g_dropped;
-
 static inline int flag_ld(uint8_t *q, unsigned i) { return __atomic_load_n(Q_FLAG(q, i), __ATOMIC_ACQUIRE); }
 static inline void flag_clear(uint8_t *q, unsigned i) { __atomic_store_n(Q_FLAG(q, i), 0, __ATOMIC_RELEASE); }
 static inline uint16_t next_slot(uint16_t i) { return (uint16_t)((i + 1u) % Q_SLOTS); }
+
+static atomic_ulong g_trims, g_dropped, g_empty;
 
 // The most filled slots a read may find at a fresh slot before the oldest are dropped; >= Q_SLOTS: never.
 static unsigned trim_limit(unsigned slot_bytes, unsigned out_frames) {
@@ -67,13 +72,69 @@ static void trim(uint8_t *q, unsigned limit) {
                  limit, t, d);
 }
 
+// When the input's last buffer was handed to the game (CLOCK_MONOTONIC, ns), where the platform's input layer is
+// ours and says (linux/src/audio_pipewire.c); 0 where it does not.
+_Atomic int64_t rs_audio_input_arrived_ns;
+
+// For the log: the slots waiting when the engine comes for a block's worth (the first read at a fresh slot after
+// a pause), and how long the sound it reads has waited, over five seconds at a time; told when it changes, and
+// once a minute.
+static void waiting_report(uint8_t *q) {
+  static struct timespec last_read, last_told;
+  static unsigned lo = Q_SLOTS, hi, count, told_lo, told_hi, told_tenths;
+  static unsigned long sum;
+  static double wait_sum, wait_lo = 1e9, wait_hi;
+  static unsigned waits;
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  double since = (double)(now.tv_sec - last_read.tv_sec) + (double)(now.tv_nsec - last_read.tv_nsec) / 1e9;
+  last_read = now;
+  if (since < 0.001) return;  // the same burst's next slot
+  unsigned n = 0;
+  uint16_t rd = Q_RD(q);
+  while (n < Q_SLOTS && flag_ld(q, (rd + n) % Q_SLOTS) == 1) n++;
+  if (n < lo) lo = n;
+  if (n > hi) hi = n;
+  sum += n, count++;
+  int64_t arrived = atomic_load_explicit(&rs_audio_input_arrived_ns, memory_order_relaxed);
+  unsigned need = (AK_REFILL_FRAMES * 4 + Q_SIZE(q) - 1) / (Q_SIZE(q) ? Q_SIZE(q) : 1);
+  if (arrived && n >= need) {  // the newest slot came `age` ago, and the last one this block takes n - need slots before
+    double age = ((double)now.tv_sec * 1e9 + (double)now.tv_nsec - (double)arrived) / 1e6;
+    double wait = age + (double)(n - need) * (Q_SIZE(q) / 4) / 48.0;
+    if (wait < wait_lo) wait_lo = wait;
+    if (wait > wait_hi) wait_hi = wait;
+    wait_sum += wait, waits++;
+  }
+  if (count < 940) return;  // about five seconds of 256-frame blocks
+  unsigned tenths = (unsigned)(sum * 10 / count);
+  double quiet = (double)(now.tv_sec - last_told.tv_sec);
+  if (lo != told_lo || hi != told_hi || tenths != told_tenths || quiet >= 60) {
+    unsigned frames = Q_SIZE(q) / 4;
+    rs_audio_log("input queue: %u.%u slots waiting when the engine reads (%u to %u; %.1f ms of sound at %u frames a slot); "
+                 "%lu trims, %lu empty reads so far",
+                 tenths / 10, tenths % 10, lo, hi, tenths * frames / 480.0, frames,
+                 atomic_load_explicit(&g_trims, memory_order_relaxed), atomic_load_explicit(&g_empty, memory_order_relaxed));
+    if (waits)
+      rs_audio_log("input queue: the sound read had waited %.1f ms since it came (%.1f to %.1f)", wait_sum / waits, wait_lo,
+                   wait_hi);
+    told_lo = lo, told_hi = hi, told_tenths = tenths, last_told = now;
+  }
+  lo = Q_SLOTS, hi = 0, count = 0, sum = 0;
+  wait_sum = 0, wait_lo = 1e9, wait_hi = 0, waits = 0;
+}
+
 // 0x10133b310 with the trim: limit >= Q_SLOTS reads exactly as the original.
 static uint16_t rs_queue_read(uint8_t *q, void *dst, uint16_t req, unsigned limit) {
   if (limit < Q_SLOTS && Q_OFF(q) == 0 && flag_ld(q, Q_RD(q)) == 1) trim(q, limit);
+  if (Q_OFF(q) == 0 && rs_audio_log_on()) waiting_report(q);
   uint16_t rd = Q_RD(q);
   int filled = flag_ld(q, rd) == 1;
   Q_EMPTY(q) = !filled;
-  if (!filled) return 0;
+  if (!filled) {  // the engine wanted input and none had come: a gap in what the game hears
+    unsigned long e = atomic_fetch_add_explicit(&g_empty, 1, memory_order_relaxed) + 1;
+    if (e <= 10 || e % 200 == 0) rs_audio_log("input queue: nothing to read (%lu times so far)", e);
+    return 0;
+  }
   uint32_t avail = (uint32_t)Q_SIZE(q) - Q_OFF(q);
   if (avail == 0) {
     pthread_mutex_lock(Q_LOCK(q));
