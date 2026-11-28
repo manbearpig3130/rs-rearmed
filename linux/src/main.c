@@ -8,7 +8,9 @@
 //       --frames N    stop after N frames         --size WxH        the window's size (1280x720)
 //       --picture FILE --picture-frame N          save frame N as a PPM file
 //       --picture FILE --picture-every N          or every Nth frame, as FILE.<frame>.ppm
+//       --keys 600:return,900:down                keys typed by a script, each at its frame
 //   --count                                  count each import's calls, and list them
+//   --no-overrides                           leave every game function as it is (the online services too)
 //   --survey                                 with --boot: a function with no answer is noted and returns 0, and
 //                                            the run goes on, to list what the game's start asks for
 //
@@ -32,22 +34,24 @@ static double now(void) {
 
 int main(int argc, char **argv, char **envp) {
   const char *path = getenv("RC_IMAGE");
-  const char *boot = NULL, *run = NULL, *picture = NULL;
+  const char *boot = NULL, *run = NULL, *picture = NULL, *keys = NULL;
   int width = 0, height = 0;
   long picture_frame = 1, picture_every = 0;
-  int bind_only = 0, init_only = 0, count = 0, survey = 0, frames = 0;
+  int bind_only = 0, init_only = 0, count = 0, survey = 0, frames = 0, no_overrides = 0;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--image") && i + 1 < argc) path = argv[++i];
     else if (!strcmp(argv[i], "--bind-only")) bind_only = 1;
     else if (!strcmp(argv[i], "--init-only")) init_only = 1;
     else if (!strcmp(argv[i], "--count")) count = 1;
     else if (!strcmp(argv[i], "--survey")) survey = 1;
+    else if (!strcmp(argv[i], "--no-overrides")) no_overrides = 1;
     else if (!strcmp(argv[i], "--boot") && i + 1 < argc) boot = argv[++i];
     else if (!strcmp(argv[i], "--frames") && i + 1 < argc) frames = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--run") && i + 1 < argc) run = argv[++i];
     else if (!strcmp(argv[i], "--picture") && i + 1 < argc) picture = argv[++i];
     else if (!strcmp(argv[i], "--picture-frame") && i + 1 < argc) picture_frame = atol(argv[++i]);
     else if (!strcmp(argv[i], "--picture-every") && i + 1 < argc) picture_every = atol(argv[++i]);
+    else if (!strcmp(argv[i], "--keys") && i + 1 < argc) keys = argv[++i];
     else if (!strcmp(argv[i], "--size") && i + 1 < argc && sscanf(argv[i + 1], "%dx%d", &width, &height) == 2) i++;
     else {
       fprintf(stderr, "usage: %s [--image FILE] [--count] --bind-only | --init-only | --boot DIR [--survey]\n", argv[0]);
@@ -85,6 +89,13 @@ int main(int argc, char **argv, char **envp) {
   double t1 = now();
   printf("image: 0x%llx to 0x%llx, loaded in %.3f s; unwind tables %s\n", (unsigned long long)info.lo,
          (unsigned long long)info.hi, t1 - t0, info.unwind ? "registered" : "not registered");
+  // The game's own code needs no change to run; these are the functions the app replaces on every host. A
+  // made-up image (the tests') has none of them: only an image of the game's size is patched.
+  if (!no_overrides && info.hi - info.lo > 0x1000000) {
+    int n = rsl_install_overrides();
+    if (n < 0) return 1;
+    printf("replaced: %d game functions with native ones (the online services, offline)\n", n);
+  }
   rsl_report_binding(stdout);
   if (bind_only) return 0;
   if (!init_only && !boot && !run) {
@@ -100,13 +111,13 @@ int main(int argc, char **argv, char **envp) {
   if (run) {
 #ifdef RSL_HAVE_SHELL
     fflush(stdout);
-    rsl_shell_options opt = {run, width, height, frames, survey, picture, picture_frame, picture_every};
+    rsl_shell_options opt = {run, width, height, frames, survey, picture, picture_frame, picture_every, keys};
     int status = rsl_shell_run(&opt);
     if (count) rsl_report_calls(stdout);
     fflush(NULL);
     _exit(status);
 #else
-    (void)picture, (void)picture_frame, (void)picture_every, (void)width, (void)height;
+    (void)picture, (void)picture_frame, (void)picture_every, (void)width, (void)height, (void)keys;
     fprintf(stderr, "rs-rearmed: built without the shell (SDL 3's headers were not there): --run is not in this build\n");
     return 2;
 #endif

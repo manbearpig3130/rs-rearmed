@@ -7,7 +7,8 @@ run as it is.
 
 **There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
 tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
-its intro and its title screen (on Bazzite, 2026-11-28). No sound, no videos, no install; the menus not tried.
+its intro, its title screen and its first menu (on Bazzite, 2026-11-28). No sound, no videos, no install; no
+song played yet.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -20,7 +21,6 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
 | `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |
 | `gl` | `libRSSystemGL.so`: Mesa as the renderer's OpenGL backend expects Apple's OpenGL (CGL over EGL, Apple's identity) |
-| `direct` | the recompiler runtime's headers where nothing is translated: the app's seam compiles against them as it is |
 
 ## In short
 
@@ -90,6 +90,7 @@ make -C linux check-gl                     # the renderer's offscreen test and t
 build/linux/rs-rearmed --run GAME          # the game in a window
 SDL_VIDEODRIVER=offscreen build/linux/rs-rearmed --run GAME --frames 600 --picture f --picture-every 60
                                            # with no display: ten seconds, a frame saved every second (f.<n>.ppm)
+#   --keys 1300:return,1500:down           keys typed by a script, each at its frame
 python3 linux/test_loader.py               # its test (ctest: linux.loader)
 ```
 

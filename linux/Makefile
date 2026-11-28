@@ -15,11 +15,44 @@ endif
 
 # -fno-strict-aliasing: the layer reads and writes the game's objects through its own types.
 ALL_CFLAGS = -std=gnu11 -Wall -Wextra -fno-strict-aliasing -pthread $(CFLAGS) $(ALL_CFLAGS_EXTRA) -Isrc -Idarwin -I$(OUT) -I$(OUT)/target
-LIBS = -ldl -lm -pthread
+LIBS = -ldl -lm -pthread -lstdc++
 
 LAYER = $(sort $(wildcard darwin/*.c))
 SRC = src/main.c src/loader.c src/imports.c $(LAYER)
 OBJ = $(SRC:%.c=$(OUT)/%.o)
+
+TARGET = ../tools/targets
+
+# The app's native code that touches the game, from its own sources, against the recompiler runtime's own headers
+# (src/direct.c has the runtime's functions as they are where nothing is translated; src/patch.c puts a native
+# function in a game function's place). So far the `online` override module: the game stays offline.
+RUNTIME = ../tools/ws7/recomp/runtime
+OVERRIDES = ../tools/ws7/recomp/overrides
+GAME = ../shims/game
+NATIVE_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-unknown-pragmas -Wno-comment \
+    -fno-strict-aliasing -pthread $(CFLAGS) -Isrc -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) \
+    -I$(OVERRIDES) -I$(OVERRIDES)/gen -I$(GAME)/include -I../shims/include
+NATIVE_OBJ = $(OUT)/native/direct.o $(OUT)/native/patch.o $(OUT)/native/online_glue.o $(OUT)/native/online.o \
+    $(OUT)/native/online_stub.o
+$(OUT)/target/overrides_online.inc: $(TARGET)/names/overrides/online.list
+	@mkdir -p $(OUT)/target
+	sed -n 's/^\([a-z][a-z0-9_]*\).*/OV(\1)/p' $< > $@
+$(OUT)/native/direct.o: src/direct.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
+$(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
+$(OUT)/native/online_glue.o: $(OVERRIDES)/src/online_glue.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
+$(OUT)/native/online.o: $(OVERRIDES)/gen/online.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
+$(OUT)/native/online_stub.o: $(GAME)/src/online_stub.cpp $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CXX) -std=c++17 -O2 -g -fno-exceptions -fno-rtti -Wall -Wextra -Wno-unused-parameter -Icompat -include compat/rs_linux.h \
+	    -I$(OUT)/target -I$(RUNTIME) -I$(GAME)/include -I../shims/include -c -o $@ $<
 LAYER_OBJ = $(LAYER:%.c=$(OUT)/%.o)
 
 # The shell (the window, the frame loop, input) is in the program where SDL 3 is there to build with: the Mac
@@ -31,14 +64,14 @@ APP = ../tools/ws7/recomp/app
 # (-Wno-comment and the two after it: the shared sources are written for clang on the Mac)
 SHELL_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-comment -Wno-unused-variable -Wno-format-truncation \
     -fno-strict-aliasing -pthread $(CFLAGS) $(shell pkg-config --cflags sdl3) \
-    -DRSL_HAVE_SHELL -Isrc -Idarwin -Idirect -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(PLATFORM)/include -I$(PLATFORM)/src -I$(APP)
+    -DRSL_HAVE_SHELL -Isrc -Idarwin -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) -I$(PLATFORM)/include -I$(PLATFORM)/src -I$(APP)
 SHELL_OBJ = $(OUT)/shell/shell.o $(OUT)/shell/seam_platform.o $(OUT)/shell/rsp_engine.o $(OUT)/shell/rsp_logic.o \
     $(OUT)/shell/rsp_paths.o $(OUT)/shell/rsp_config.o
 ALL_CFLAGS_EXTRA = -DRSL_HAVE_SHELL
 $(OUT)/shell/shell.o: src/shell.c src/rsl.h $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/shell
 	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
-$(OUT)/shell/seam_platform.o: $(APP)/seam_platform.c $(wildcard direct/*.h) $(OUT)/target/rc_target_names.h
+$(OUT)/shell/seam_platform.o: $(APP)/seam_platform.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/shell
 	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
 $(OUT)/shell/rsp_%.o: $(PLATFORM)/src/rsp_%.c $(wildcard $(PLATFORM)/include/*.h)
@@ -51,8 +84,8 @@ all: $(OUT)/rs-rearmed $(OUT)/libsteam_api.so
 # The renderer's libraries need OpenGL's and EGL's headers (on Bazzite: in a distrobox): `make -C linux gl`.
 gl: $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
 
-$(OUT)/rs-rearmed: $(OBJ) $(SHELL_OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS)
+$(OUT)/rs-rearmed: $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ)
+	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS)
 
 # The project's replacement libraries, from the sources the Mac app builds them from (shims/), each a shared
 # library beside the program. compat/ has the few macOS functions they call.
@@ -149,7 +182,6 @@ $(OUT)/imports_table.inc: darwin-imports.tsv gen_import_table.py import_census.p
 $(OUT)/src/imports.o: $(OUT)/imports_table.inc
 
 # The game's addresses by name (RC_ADDR_<name>), from the Mac target's tables as every edition's build has them.
-TARGET = ../tools/targets
 $(OUT)/target/rc_target_names.h: $(TARGET)/targets.py $(wildcard $(TARGET)/mac-x64/*) $(wildcard $(TARGET)/names/*)
 	@mkdir -p $(OUT)/target
 	$(PYTHON) $(TARGET)/targets.py gen --target mac-x64 $(OUT)/target >/dev/null
@@ -166,7 +198,7 @@ check: $(OUT)/rs-rearmed $(OUT)/layer_test check-steam
 	 else echo "no image at $(IMAGE): the game's initializers not run"; fi
 
 clean:
-	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/shell $(OUT)/shims $(OUT)/imports_table.inc $(OUT)/rs-rearmed \
+	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/shell $(OUT)/native $(OUT)/shims $(OUT)/imports_table.inc $(OUT)/rs-rearmed \
 	    $(OUT)/layer_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
 
 .PHONY: all gl check check-steam check-gl clean

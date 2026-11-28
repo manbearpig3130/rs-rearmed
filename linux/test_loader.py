@@ -228,6 +228,30 @@ class Picture(unittest.TestCase):
             seen.append((n, round(light, 2), round(dark, 3)))
         self.assertTrue(any(light > 0.5 and dark > 0.01 for _, light, dark in seen), seen)
 
+    def test_enter_on_the_title_screen_goes_past_the_sign_in(self):
+        """The online services are replaced by the offline ones (nine game functions, patched at their entries):
+        Enter on the title screen leads to the profiles, not to a sign-in dialog, and nothing reaches a network."""
+        if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
+            self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
+        home, picture = os.path.join(self.tmp.name, "home2"), os.path.join(self.tmp.name, "menu")
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen")
+        r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "1900",
+                            "--keys", "1300:return", "--picture", picture, "--picture-every", "300"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        out, err = r.stdout.decode(), r.stderr.decode()
+        self.assertEqual(r.returncode, 0, out + err)
+        self.assertIn("replaced: 9 game functions with native ones", out)
+
+        def light(frame):
+            with open("%s.%06d.ppm" % (picture, frame), "rb") as f:
+                rgb = f.read().split(b"\n", 3)[3]
+            pixels = [rgb[i:i + 3] for i in range(0, len(rgb), 3 * 251)]
+            return sum(1 for p in pixels if min(p) > 200) / len(pixels)
+
+        # the title screen is a logo on a light ground; the profiles are a list over a room
+        self.assertGreater(light(1200), 0.8)
+        self.assertLess(light(1800), 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,10 +60,18 @@ typedef struct {
   const char *picture;    // save frame number picture_frame there (a PPM file)
   long picture_frame;
   long picture_every;     // or every so many frames, as <picture>.<frame>.ppm
+  const char *keys;       // keys typed by a script: "600:return,900:down" (frame:key)
 } rsl_shell_options;
 int rsl_shell_run(const rsl_shell_options *opt);  // the window, the game's start and its frames; an exit status
 // A function of one of the project's libraries, by the Mac library's name ("OpenGL") and the function's.
 void *rsl_shim_function(const char *library, const char *name);
+
+// --- native functions in the place of game functions (patch.c) ---
+struct rc_ctx;
+// The game function at ADDRESS becomes a jump to NATIVE, an override as rc_ov.h has them. 0, or -1.
+int rsl_override(uint64_t address, void (*native)(struct rc_ctx *), const char *name);
+// The override modules this build has (so far `online`: the game stays offline). How many functions, or -1.
+int rsl_install_overrides(void);
 
 // --- the imports (imports.c) ---
 void rsl_imports_begin(int count_calls);

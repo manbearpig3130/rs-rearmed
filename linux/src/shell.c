@@ -80,6 +80,49 @@ static int cocoa_character(SDL_Scancode sc, SDL_Keymod mod) {
   return key >= 0x20 && key < 0x10000 && !(key & SDLK_SCANCODE_MASK) ? (int)key : 0;
 }
 
+// --- keys from a script, to drive the game where no one is at the keyboard ---
+// "600:return,900:down,960:a": at that frame the key goes down, four frames later up, as if typed.
+#define MAX_SCRIPT 256
+static struct {
+  long frame;
+  SDL_Scancode sc;
+} g_script[MAX_SCRIPT];
+static int g_nscript;
+
+static void read_script(const char *text) {
+  static const struct {
+    const char *name;
+    SDL_Scancode sc;
+  } names[] = {{"return", SDL_SCANCODE_RETURN}, {"enter", SDL_SCANCODE_RETURN}, {"escape", SDL_SCANCODE_ESCAPE},
+               {"up", SDL_SCANCODE_UP}, {"down", SDL_SCANCODE_DOWN}, {"left", SDL_SCANCODE_LEFT},
+               {"right", SDL_SCANCODE_RIGHT}, {"space", SDL_SCANCODE_SPACE}, {"tab", SDL_SCANCODE_TAB},
+               {"backspace", SDL_SCANCODE_BACKSPACE}, {"delete", SDL_SCANCODE_DELETE}};
+  while (text && *text && g_nscript < MAX_SCRIPT) {
+    char *end;
+    long frame = strtol(text, &end, 10);
+    if (end == text || *end != ':') break;
+    const char *key = end + 1;
+    size_t n = strcspn(key, ",");
+    SDL_Scancode sc = SDL_SCANCODE_UNKNOWN;
+    for (size_t i = 0; i < sizeof names / sizeof *names; i++)
+      if (strlen(names[i].name) == n && !strncmp(names[i].name, key, n)) sc = names[i].sc;
+    if (sc == SDL_SCANCODE_UNKNOWN && n == 1 && key[0] >= 'a' && key[0] <= 'z') sc = (SDL_Scancode)(SDL_SCANCODE_A + (key[0] - 'a'));
+    if (sc == SDL_SCANCODE_UNKNOWN && n == 1 && key[0] >= '1' && key[0] <= '9') sc = (SDL_Scancode)(SDL_SCANCODE_1 + (key[0] - '1'));
+    if (sc == SDL_SCANCODE_UNKNOWN) fprintf(stderr, "[rs-rearmed] --keys: no key called %.*s\n", (int)n, key);
+    else g_script[g_nscript].frame = frame, g_script[g_nscript++].sc = sc;
+    text = key + n + (key[n] == ',');
+  }
+}
+
+static void post_key(SDL_Scancode sc, SDL_Keymod mod, int down);
+
+static void play_script(long frame) {
+  for (int i = 0; i < g_nscript; i++) {
+    if (g_script[i].frame == frame) post_key(g_script[i].sc, SDL_KMOD_NONE, 1);
+    if (g_script[i].frame + 4 == frame) post_key(g_script[i].sc, SDL_KMOD_NONE, 0);
+  }
+}
+
 // --- a frame as a picture, to see what was drawn where no one is looking ---
 static void save_picture(SDL_Window *window, const char *path) {
   void (*read_pixels)(int, int, int, int, unsigned, unsigned, void *) = (void (*)(int, int, int, int, unsigned, unsigned, void *))SDL_GL_GetProcAddress("glReadPixels");
@@ -112,6 +155,15 @@ static void save_picture(SDL_Window *window, const char *path) {
   fclose(f);
   free(rgb);
   fprintf(stderr, "[rs-rearmed] frame saved: %s (%d x %d)\n", path, w, h);
+}
+
+// A key to the game, as the Mac shell posts it: the macOS key code, and the character Cocoa would report.
+static void post_key(SDL_Scancode sc, SDL_Keymod mod, int down) {
+  int code = mac_keycode(sc);
+  if (code < 0) return;
+  int ch = cocoa_character(sc, mod);
+  if (down) rsp_post_input(RSP_EV_KEYDOWN, code, (int)rsp_pack_keydown_char((uint16_t)ch, mod & SDL_KMOD_GUI ? RSP_MOD_COMMAND : 0));
+  else rsp_post_input(RSP_EV_KEYUP, code, ch);
 }
 
 // The display's modes, for the renderer's list: each size once.
@@ -161,6 +213,7 @@ int rsl_shell_run(const rsl_shell_options *opt) {
   void *(*current_context)(void) = (void *(*)(void))rsl_shim_function("OpenGL", "CGLGetCurrentContext");
   if (rsp_hooks()->gl_context && current_context) rsp_hooks()->gl_context(rsp_hooks()->ctx, current_context());
 
+  read_script(opt->keys);
   rsl_survey(opt->survey);
   rsp_boot boot = {opt->game_dir, opt->game_dir, 0, NULL};
   if (rsp_game_bootstrap(&boot)) {
@@ -188,16 +241,9 @@ int rsl_shell_run(const rsl_shell_options *opt) {
           rsp_set_display_mode(rsp_is_fullscreen(), w, h);
           break;
         case SDL_EVENT_KEY_DOWN:
-        case SDL_EVENT_KEY_UP: {
-          int code = mac_keycode(e.key.scancode);
-          if (code < 0) break;
-          int ch = cocoa_character(e.key.scancode, e.key.mod);
-          if (e.type == SDL_EVENT_KEY_DOWN)
-            rsp_post_input(RSP_EV_KEYDOWN, code, (int)rsp_pack_keydown_char((uint16_t)ch, e.key.mod & SDL_KMOD_GUI ? RSP_MOD_COMMAND : 0));
-          else
-            rsp_post_input(RSP_EV_KEYUP, code, ch);
+        case SDL_EVENT_KEY_UP:
+          post_key(e.key.scancode, e.key.mod, e.type == SDL_EVENT_KEY_DOWN);
           break;
-        }
         case SDL_EVENT_MOUSE_MOTION:
           rsp_post_input(RSP_EV_MOUSEMOVE, rsp_mouse_engine_coord(e.motion.x), rsp_mouse_engine_coord((double)h - e.motion.y));
           break;
@@ -215,6 +261,7 @@ int rsl_shell_run(const rsl_shell_options *opt) {
         default: break;
       }
     }
+    play_script(frame + 1);
     done = rsp_game_frame();
     frame++;
     if (opt->picture && opt->picture_every > 0 && frame % opt->picture_every == 0) {

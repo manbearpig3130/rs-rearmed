@@ -6,9 +6,10 @@ page is what to do about it, in what order, and what has been done. The editions
 ## Status
 
 - **Investigated** (2026-11-26, from 1.20.0), **and begun on x86-64** (2026-11-28): a loader builds there and runs
-  the game's 3,487 initializers and then the game itself, as it is, in a window: the intro and the title screen
-  are drawn ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture)). No sound, no video and no install
-  yet, the menus not yet tried, and nothing for arm64.
+  the game's 3,487 initializers and then the game itself, as it is, in a window: the intro, the title screen,
+  and, past the sign-in that the offline services replace, the profiles' menu
+  ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture)). No sound, no video and no install yet, no
+  song played, and nothing for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -207,9 +208,22 @@ root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.ps
   frames, a minute, with no fault and no import without an answer. Seen through `--picture`, which saves a
   frame as a file; with SDL's offscreen driver the run needs no display. Who answers: 259 the host, 157 the
   layer, 146 the project's libraries, 119 nothing yet (vDSP's 5, Bink's 16, and the 98 stubs).
-- **Next**: input tried on the title screen and the menus; Bink for the videos; the three functions in the
-  place of the engine's Objective-C and the online stub's nine, as the first patches, when a run reaches them;
-  full screen; the render thread; then sound (X3).
+- **Input works, and the first patches are in** (2026-11-28). `--keys 1300:return` types Enter on the title
+  screen from a script. With the game's functions all its own, that opens the Uplay sign-in dialog. With the Mac
+  app's `online` override module in place it opens the profiles' menu, over the rehearsal room in 3D.
+  - **The module is the Mac app's, compiled as it is**: `overrides/src/online_glue.c`, `overrides/gen/online.c`
+    and `shims/game/src/online_stub.cpp`, against the runtime's own headers (`rc.h`, `rc_abi.h`, `rc_rt.h`,
+    `rc_ov.h`), which compile on Linux unchanged. `src/direct.c` has the runtime's functions as they are where
+    nothing is translated: the slide is zero, `rc_call_guest` and a virtual call are calls, and the adapters
+    between the game's functions and native ones do nothing. The seam uses the same headers.
+  - **A patch is a jump at a function's entry** (`src/patch.c`): 13 bytes to a stub that puts the CPU's
+    registers into an `rc_ctx`, calls the override, and returns its results to the game's caller. The nine
+    functions are replaced whole, so no instruction of theirs is moved. This is the first form of
+    [X5](#x5-fixes-and-mods)'s patches; hook points and mid points, which run the function's own instructions
+    after the native code, still need the moving.
+- **Next**: a profile made and a song started (the note highway); Bink for the videos; the three functions in
+  the place of the engine's Objective-C when a run reaches them; full screen; the render thread; then sound
+  (X3).
 
 ### X3. Sound and the guitar
 
@@ -501,3 +515,6 @@ Proposed; none is final before the step that tests it.
   SDL 3 over the Mac shell's C half and the seam; the audio layer silent. The game then drew its intro and its
   title screen. Two things the runs found: the game asks `pthread_mach_thread_np` for a thread it has not made
   (no port, not a fault), and the renderer needs `__invert_f4`.
+- **2026-11-28, the first menu.** Keys from a script; the `online` override module from its own sources with a
+  jump at each of its nine functions; the runtime's headers used as they are (the shadow copies in
+  `linux/direct` of the step before are gone). Enter on the title screen opens the profiles' menu.
