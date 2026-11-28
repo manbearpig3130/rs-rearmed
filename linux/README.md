@@ -8,8 +8,9 @@ run as it is.
 **There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
 tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
 its intro, its title screen and its menus, with its sound and the guitar's input through PipeWire and its videos
-(on Bazzite, 2026-11-28, with a Real Tone Cable as far as the calibration screen). No song played yet, no
-install, and none of the Mac app's built-in fixes.
+(on Bazzite, 2026-11-28: a player calibrated a Real Tone Cable and played a song). Of the Mac app's built-in
+fixes, those that hook a function are in (no intro screens, for one); those inside a function are not, and
+there is no install yet.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |

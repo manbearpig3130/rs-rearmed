@@ -25,6 +25,13 @@ void *rs_compat_dlsym(void *handle, const char *name);
 #define dlopen rs_compat_dlopen
 #define dlsym rs_compat_dlsym
 
+// Darwin's sysctl by name, for the one name the shared code asks (the most files a process may open).
+#include <stddef.h>
+#ifdef __cplusplus
+extern "C"
+#endif
+int sysctlbyname(const char *name, void *old, size_t *oldlen, void *new_value, size_t newlen);
+
 // Darwin's clock by number of nanoseconds, and its clock that does not count sleep.
 #include <stdint.h>
 #include <time.h>

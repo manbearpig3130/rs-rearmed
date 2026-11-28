@@ -91,10 +91,12 @@ int main(int argc, char **argv, char **envp) {
          (unsigned long long)info.hi, t1 - t0, info.unwind ? "registered" : "not registered");
   // The game's own code needs no change to run; these are the functions the app replaces on every host. A
   // made-up image (the tests') has none of them: only an image of the game's size is patched.
+  rsl_direct_image(info.lo, info.hi);
   if (!no_overrides && info.hi - info.lo > 0x1000000) {
     int n = rsl_install_overrides();
     if (n < 0) return 1;
-    printf("replaced: %d game functions with native ones (the online services, offline)\n", n);
+    printf("replaced: %d game functions with native ones (the online services, offline; the built-in fixes)\n", n);
+    printf("hook points: %d\n", rsl_install_hooks());
   }
   rsl_report_binding(stdout);
   if (bind_only) return 0;

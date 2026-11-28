@@ -327,6 +327,8 @@ int rsl_load(const char *path, int count_calls, rsl_info *info) {
   return 0;
 }
 
+uint64_t rsl_image_end(void) { return g_info.hi; }
+
 int rsl_run_initializers(int argc, char **argv, char **envp) {
   static char *apple[] = {NULL};
   for (int i = 0; i < g_ninits; i++) {

@@ -155,6 +155,22 @@ int sysctl(int *name, unsigned namelen, void *old, size_t *oldlen, void *new_val
   return -1;
 }
 
+// kern.maxfilesperproc: the hard limit of open files, which is what a process may raise its own to.
+#include <sys/resource.h>
+int sysctlbyname(const char *name, void *old, size_t *oldlen, void *new_value, size_t newlen) {
+  (void)new_value, (void)newlen;
+  if (name && !strcmp(name, "kern.maxfilesperproc") && old && oldlen && *oldlen >= sizeof(int)) {
+    struct rlimit r;
+    if (getrlimit(RLIMIT_NOFILE, &r)) return -1;
+    int most = r.rlim_max > 0x7fffffff ? 0x7fffffff : (int)r.rlim_max;
+    memcpy(old, &most, sizeof most);
+    *oldlen = sizeof most;
+    return 0;
+  }
+  errno = ENOENT;
+  return -1;
+}
+
 // --- libraries by their Mac names (rs_linux.h) ---
 // This file's own library's folder, where the project's other libraries are.
 static int beside(const char *file, char *out, size_t n) {

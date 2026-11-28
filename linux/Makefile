@@ -30,17 +30,39 @@ RUNTIME = ../tools/ws7/recomp/runtime
 OVERRIDES = ../tools/ws7/recomp/overrides
 GAME = ../shims/game
 NATIVE_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-unknown-pragmas -Wno-comment \
+    -Wno-missing-field-initializers -Wno-format-truncation -Wno-attributes \
     -fno-strict-aliasing -pthread $(CFLAGS) -Isrc -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) \
     -I$(OVERRIDES) -I$(OVERRIDES)/gen -I$(GAME)/include -I../shims/include
 NATIVE_OBJ = $(OUT)/native/direct.o $(OUT)/native/patch.o $(OUT)/native/online_glue.o $(OUT)/native/online.o \
-    $(OUT)/native/online_stub.o
+    $(OUT)/native/online_stub.o $(OUT)/native/rc_hook.o $(OUT)/native/rc_target.o $(OUT)/native/compat.o \
+    $(MODS_SRC:$(OVERRIDES)/mods/%.c=$(OUT)/native/mods_%.o)
+# The built-in fixes (overrides/mods), compiled as they are, with the runtime's hook points (rc_hook.c) and the
+# target's tables by name (rc_target.c, which targets.py writes beside rc_target_names.h).
+MODS_SRC = $(sort $(wildcard $(OVERRIDES)/mods/*.c))
+$(OUT)/target/hooks.inc: $(TARGET)/names/hooks.list
+	@mkdir -p $(OUT)/target
+	sed -n 's/^\([a-z][a-z0-9_]*\).*/HOOK(\1)/p' $< > $@
+# (-O0: rc_hook.c has weak, constant defaults for the tables another file gives it, the hook points' among them;
+# optimizing, gcc reads a default's value where it is used, and the hook points would number none.)
+$(OUT)/native/rc_hook.o: $(RUNTIME)/rc_hook.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
+$(OUT)/native/rc_target.o: $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $(OUT)/target/rc_target.c
+$(OUT)/native/compat.o: compat/compat.c $(wildcard compat/*.h compat/*/*.h)
+	@mkdir -p $(OUT)/native
+	$(CC) -O2 -g -Wall -Wextra -Icompat -c -o $@ $<
+$(OUT)/native/mods_%.o: $(OVERRIDES)/mods/%.c $(wildcard $(OVERRIDES)/mods/*.h) $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -I$(OVERRIDES)/mods -I../shims/platform/include -I../shims/coreaudio -I../shims/opengl/src -c -o $@ $<
 $(OUT)/target/overrides_online.inc: $(TARGET)/names/overrides/online.list
 	@mkdir -p $(OUT)/target
 	sed -n 's/^\([a-z][a-z0-9_]*\).*/OV(\1)/p' $< > $@
 $(OUT)/native/direct.o: src/direct.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
-$(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc
+$(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc $(OUT)/target/hooks.inc
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
 $(OUT)/native/online_glue.o: $(OVERRIDES)/src/online_glue.c $(OUT)/target/rc_target_names.h

@@ -240,7 +240,9 @@ class Picture(unittest.TestCase):
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         out, err = r.stdout.decode(), r.stderr.decode()
         self.assertEqual(r.returncode, 0, out + err)
-        self.assertIn("replaced: 9 game functions with native ones", out)
+        # nine functions of the online services and nine of the built-in fixes are replaced, and every hook point is in
+        self.assertIn("replaced: 18 game functions with native ones", out)
+        self.assertIn("hook points: 21", out)
 
         def light(frame):
             with open("%s.%06d.ppm" % (picture, frame), "rb") as f:
@@ -251,6 +253,10 @@ class Picture(unittest.TestCase):
         # the title screen is a logo on a light ground; the profiles are a list over a room
         self.assertGreater(light(1200), 0.8)
         self.assertLess(light(1800), 0.5)
+        # The intro skip of the built-in fixes (a hook before the boot service's intro tick, the game's function
+        # then running from its moved first instructions): the title screen is there within ten seconds, where
+        # the intro alone takes seventeen. The same picture at frame 600 as at 1200.
+        self.assertAlmostEqual(light(600), light(1200), delta=0.01)
 
 
 if __name__ == "__main__":

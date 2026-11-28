@@ -9,8 +9,10 @@ page is what to do about it, in what order, and what has been done. The editions
   the game's 3,487 initializers and then the game itself, as it is, in a window: the intro, the title screen,
   and, past the sign-in that the offline services replace, the menus, with sound out, the videos, and the Real
   Tone Cable heard at the calibration screen ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture),
-  [X3](#x3-sound-and-the-guitar)). Every import but the 98 that nothing should call has an answer. No song
-  played yet, no install, none of the built-in fixes, and nothing for arm64.
+  [X3](#x3-sound-and-the-guitar)). Every import but the 98 that nothing should call has an answer. A player
+  has calibrated and played a song with the cable (2026-11-28): no crackle, the notes detected, the latency as
+  good as he knows it. The built-in fixes that hook a function are in (the intro skip among them); those at
+  mid points are not, nor an install, nor anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -282,6 +284,33 @@ driver and PipeWire are used, not carried. On an image-based system such as Bazz
 a container (distrobox), since the host has no compiler.
 
 ### X5. Fixes and mods
+
+**Hook points and the fixes module are in; mid points and edits are not** (2026-11-28).
+
+- **A hook point** is a 5-byte jump at the function's entry to a stub near the image (`src/patch.c`). The stub
+  makes an `rc_ctx` of the CPU's registers and calls the runtime's own `rc_hook_call`; its `orig` runs the
+  function from the context: the argument registers loaded, eight words of stack arguments copied, then the
+  instructions the jump covered, moved behind the stubs, and a jump to the rest. The mover reads the few kinds
+  of instruction a function starts with (pushes, moves, a stack adjustment, a `call`), corrects a displacement
+  from the instruction pointer, and refuses anything else with a line naming the function. All 21 hook points'
+  first instructions are of those kinds. The stubs' memory is just past the image, so that 32-bit displacements
+  reach both ways; an override's jump is 5 bytes now too.
+- **The runtime's `rc_hook.c` and the target's `rc_target.c` are compiled as they are**, and so is the fixes
+  module (`overrides/mods`: `mods.c`, `mods_shared.c`, `framerate.c`, `menu_options*.c`, `fftsetup.c`). Its hooks
+  register and run: no intro screens (the title is up in 5 seconds for 17), the Auto Save notice skipped, a
+  song in `dlc/` counting as owned, the cache overlay's file opening, Player 2's input mode. Nine of the
+  eleven functions it replaces are replaced (the keyboard's two, the mouse wheel, the thread priority, the path
+  MD5 cache, the JSON-number hash's three, the `.sng` signature check, whose override runs the game's own
+  check for other callers through its moved start).
+- **Not in**: mid points (a hook before one instruction inside a function) and edits. `rc_mid_add_name` answers
+  that the point is not here, with a line, as on a game without it, and the module goes on without those fixes:
+  the batched DLC mounting (whose two overrides are left out with it), the frame-rate fixes, the tuner's skip
+  offer, the manifest and file-system fixes. They need the instruction at the point moved and the registers
+  handed over whole and taken back: the next step here. Mods (`.dylib` files) do not load.
+- **Three things the build needed**: gcc reads a weak constant's default where it is used when optimizing, so
+  `rc_hook.c` is built at `-O0` for the hook points' table to be the one `patch.c` gives; the fixes name the
+  C++ allocator as Mach-O writes it (`__Znwm`); and `rc_nofile.h` asks `sysctlbyname` for the open-file limit
+  (`linux/compat`).
 
 The built-in fixes and mods are written against the runtime's hook points, mid points and edits. Two ways, decided
 here with figures:
@@ -568,3 +597,6 @@ Proposed; none is final before the step that tests it.
   purchased DLC was copied into the game's `dlc` folder with the list of the DLC it owns in
   `.rearmed/steam_shim.ini`, as the Mac install records it; the Steam library then reports them owned. Getting
   DLC through Steam on Linux is the install's work (X4).
+- **2026-11-28, a song, and the first fixes.** The player calibrated again (no notice this time) and played a
+  song through headphones: no crackle, the notes detected, the latency at least as good as on Windows by his
+  ear. Then hook points in the patch engine, and the fixes module compiled as it is: the intro is skipped.

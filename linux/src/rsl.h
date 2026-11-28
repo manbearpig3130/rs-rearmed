@@ -77,8 +77,15 @@ int rsl_alsa_level_set(int card, float level);
 struct rc_ctx;
 // The game function at ADDRESS becomes a jump to NATIVE, an override as rc_ov.h has them. 0, or -1.
 int rsl_override(uint64_t address, void (*native)(struct rc_ctx *), const char *name);
-// The override modules this build has (so far `online`: the game stays offline). How many functions, or -1.
+// The override modules this build has (`online`: the game stays offline; the built-in fixes' replaced
+// functions). How many functions, or -1.
 int rsl_install_overrides(void);
+// A hook point (rc_hook.h) at the function at ADDRESS, with the index rc_hook.c knows it by. 0, or -1.
+int rsl_hook_point(uint64_t address, int index, const char *name);
+// Every hook point of the tables. How many were put in.
+int rsl_install_hooks(void);
+uint64_t rsl_image_end(void);  // the end of the loaded image (loader.c)
+void rsl_direct_image(uint64_t lo, uint64_t hi);  // the runtime's variables for where the image is (direct.c)
 
 // --- the imports (imports.c) ---
 void rsl_imports_begin(int count_calls);
