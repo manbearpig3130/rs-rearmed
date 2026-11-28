@@ -6,9 +6,9 @@ page is what to do about it, in what order, and what has been done. The editions
 ## Status
 
 - **Investigated** (2026-11-26, from 1.20.0), **and begun on x86-64** (2026-11-28): a loader builds there and runs
-  the game's 3,487 initializers and then its start, `GameBootstrap`, whole, as they are
-  ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture)). No window, no sound and no install yet, and
-  nothing for arm64.
+  the game's 3,487 initializers and then the game itself, as it is, in a window: the intro and the title screen
+  are drawn ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture)). No sound, no video and no install
+  yet, the menus not yet tried, and nothing for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -178,8 +178,38 @@ root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.ps
   two matrix helpers; shim 150: Cg 29, OpenGL 105, Bink 16; layer 25: the audio devices and graph; stub 98).
 - **The first three frames then stop at two things only**: CoreAudio's devices and `cgCreateContext`, where the
   renderer starts.
-- **Next**: the audio layer's silent form; Cg, the renderer's OpenGL path and the shell, which need a distrobox
-  for their headers.
+- **The renderer's libraries build from their own sources** (`make -C linux gl`, in a distrobox with Mesa's and
+  EGL's headers): `libRSOpenGL.so` from `shims/opengl` (the wrapper table, the tracing and checking tools, the
+  offscreen contexts) and `libCg.so` from `shims/cg`, unchanged. Under them is one new library,
+  `libRSSystemGL.so` (`linux/gl/system_gl.c`): Mesa as the OpenGL backend expects Apple's framework to be. It
+  answers CGL over EGL (an offscreen context is an EGL context on Mesa's surfaceless display; the current
+  context is whichever EGL context is current), reports Apple's legacy identity (version 2.1, GLSL 1.20, the
+  extension list the Metal core answers, with the ARB assembly programs where the driver has them), and has a
+  forwarder for each of the table's 144 OpenGL names, since libglvnd does not export every older alias. The
+  Mac build's generators make the table from Khronos's headers, put in the form they read
+  (`gl/khronos_headers.py`). `linux/compat` gained Apple's OpenGL header names, Mach's clock, and
+  `rs_linux.h`, which maps the two places the shared code names a macOS library. No shared source is changed.
+- **Their own tests pass on the Bazzite PC's Radeon** (`make -C linux check-gl`): the offscreen context's 52
+  checks with every call checked for an OpenGL error, and the Cg library's render test on its `arb` and `glsl`
+  backends.
+- **The shell** (`src/shell.c`, SDL 3): a window with a compatibility context made through EGL, the frame loop
+  (one frame a refresh, or 60 a second where the swap does not wait), keys as macOS key codes with Cocoa's
+  characters, the pointer, the wheel, focus, the window's size as the engine's resolution, the display's modes
+  for the renderer's list. It stands on the Mac shell's C half (`rsp_engine.c`, `rsp_logic.c`, `rsp_paths.c`,
+  `rsp_config.c`) and the app's seam (`seam_platform.c`), compiled as they are against `linux/direct`: the
+  runtime's `rc.h`, `rc_abi.h` and `rc_rt.h` with the meaning they have where nothing is translated (an image
+  address is the address; calling the game is a call). So far one thread makes the context, starts the game and
+  runs its frames, and the window is never full screen.
+- **The audio layer's silent form** (`dw_audio.c`): one output device and the game's graph, its callback called
+  on the clock and the sound dropped.
+- **The game draws** (2026-11-28): `rs-rearmed --run GAME` goes through the intro (the publisher's logo, the
+  brands) to the title screen, "Rocksmith 2014 Edition Remastered, Enter: Begin", and stays there: 3,600
+  frames, a minute, with no fault and no import without an answer. Seen through `--picture`, which saves a
+  frame as a file; with SDL's offscreen driver the run needs no display. Who answers: 259 the host, 157 the
+  layer, 146 the project's libraries, 119 nothing yet (vDSP's 5, Bink's 16, and the 98 stubs).
+- **Next**: input tried on the title screen and the menus; Bink for the videos; the three functions in the
+  place of the engine's Objective-C and the online stub's nine, as the first patches, when a run reaches them;
+  full screen; the render thread; then sound (X3).
 
 ### X3. Sound and the guitar
 
@@ -466,3 +496,8 @@ Proposed; none is final before the step that tests it.
   initialize Steam and go on to the display's modes, the audio devices and Cg.
 - **2026-11-28, CoreFoundation and the display.** `dw_cf.c` and `dw_display.c`, with their tests. What the first
   frames still ask for and do not get: CoreAudio's devices (two calls) and Cg.
+- **2026-11-28, a picture.** A distrobox on the Bazzite PC for the headers. The renderer's libraries and the Cg
+  library built from their sources over `libRSSystemGL.so`, their tests passing on the PC's GPU; the shell on
+  SDL 3 over the Mac shell's C half and the seam; the audio layer silent. The game then drew its intro and its
+  title screen. Two things the runs found: the game asks `pthread_mach_thread_np` for a thread it has not made
+  (no port, not a fault), and the renderer needs `__invert_f4`.

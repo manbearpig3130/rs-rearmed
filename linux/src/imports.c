@@ -62,6 +62,8 @@ static void *shim_symbol(const char *library, const char *symbol) {
   return NULL;
 }
 
+void *rsl_shim_function(const char *library, const char *name) { return shim_symbol(library, name); }
+
 void rsl_imports_begin(int count_calls) {
   g_count = count_calls;
   g_traps = mmap(NULL, (size_t)MAX_IMPORTS * TRAP_STRIDE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);

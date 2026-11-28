@@ -6,8 +6,8 @@ virtual machine and gets the same translated code as on macOS; and an x86-64 des
 run as it is.
 
 **There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
-tools, and the start of the x86-64 build: a loader that maps the game's image on x86-64 Linux, answers its
-imports and runs its 3,487 initializers as they are (on Bazzite, 2026-11-28). No window, no sound, no install.
+tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
+its intro and its title screen (on Bazzite, 2026-11-28). No sound, no videos, no install; the menus not tried.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -18,7 +18,9 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
-| `compat` | the few macOS functions the project's shared libraries call, for Linux, so that `shims/` builds from its own sources |
+| `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |
+| `gl` | `libRSSystemGL.so`: Mesa as the renderer's OpenGL backend expects Apple's OpenGL (CGL over EGL, Apple's identity) |
+| `direct` | the recompiler runtime's headers where nothing is translated: the app's seam compiles against them as it is |
 
 ## In short
 
@@ -81,6 +83,13 @@ build/linux/rs-rearmed --init-only --count # the initializers run, and the impor
 build/linux/rs-rearmed --boot GAME         # and the game's start, with GAME the Mac depot's folder
 build/linux/rs-rearmed --boot GAME --frames 3 --survey   # what its first frames ask for that nothing answers yet
 make -C linux check                        # the Darwin layer's own test, the Steam library's, and --init-only
+
+# with SDL 3's, EGL's and OpenGL's headers (on Bazzite: in a distrobox), the renderer and the shell as well:
+make -C linux all gl                       # libRSSystemGL.so, libRSOpenGL.so, libCg.so; rs-rearmed with the shell
+make -C linux check-gl                     # the renderer's offscreen test and the Cg library's render test
+build/linux/rs-rearmed --run GAME          # the game in a window
+SDL_VIDEODRIVER=offscreen build/linux/rs-rearmed --run GAME --frames 600 --picture f --picture-every 60
+                                           # with no display: ten seconds, a frame saved every second (f.<n>.ppm)
 python3 linux/test_loader.py               # its test (ctest: linux.loader)
 ```
 

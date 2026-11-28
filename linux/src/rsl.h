@@ -51,6 +51,20 @@ void rsl_survey(int on);
 void rsl_report_survey(FILE *out);
 int rsl_survey_note(const rsl_import *im);  // 1 the first time
 
+// --- the shell (shell.c, where SDL 3 is there to build with) ---
+typedef struct {
+  const char *game_dir;   // the game's folder: the Mac depot as Steam downloaded it
+  int width, height;      // the window's size; 0: 1280 x 720
+  long frames;            // stop after this many; 0: run until the game quits
+  int survey;             // rsl_survey for the whole run
+  const char *picture;    // save frame number picture_frame there (a PPM file)
+  long picture_frame;
+  long picture_every;     // or every so many frames, as <picture>.<frame>.ppm
+} rsl_shell_options;
+int rsl_shell_run(const rsl_shell_options *opt);  // the window, the game's start and its frames; an exit status
+// A function of one of the project's libraries, by the Mac library's name ("OpenGL") and the function's.
+void *rsl_shim_function(const char *library, const char *name);
+
 // --- the imports (imports.c) ---
 void rsl_imports_begin(int count_calls);
 rsl_import *rsl_answer(const char *library, const char *symbol, int lazy);

@@ -174,5 +174,60 @@ class Loader(unittest.TestCase):
         self.assertIn("all checks passed", r.stdout.decode())
 
 
+def pkg_config(*names):
+    return bool(shutil.which("pkg-config")) and subprocess.run(["pkg-config", "--exists"] + list(names)).returncode == 0
+
+
+@unittest.skipUnless(BUILDS and pkg_config("sdl3", "egl", "opengl"),
+                     "the shell and the renderer build where SDL 3's, EGL's and OpenGL's headers are (on Bazzite: in a distrobox)")
+class Picture(unittest.TestCase):
+    """The renderer's libraries from shims/opengl and shims/cg, and the game in a window. These draw: they need a GPU
+    or Mesa's software renderer, and no display (EGL without a window, SDL's offscreen driver)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.out = os.path.join(cls.tmp.name, "out")
+        r = subprocess.run(["make", "-C", HERE, "OUT=" + cls.out, "all", "gl"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if r.returncode:
+            raise AssertionError("make failed:\n" + r.stdout.decode())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_the_renderers_own_tests(self):
+        """An offscreen context drawn into and read back, and the Cg library's programs on both of its backends."""
+        r = subprocess.run(["make", "-C", HERE, "OUT=" + self.out, "check-gl"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        text = r.stdout.decode()
+        self.assertEqual(r.returncode, 0, text)
+        self.assertRegex(text, r"\d+ passed, 0 failed")
+        self.assertEqual(text.count("ok (0 failures)"), 2, text)
+
+    def test_the_game_draws_its_first_screens(self):
+        if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
+            self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
+        home, picture = os.path.join(self.tmp.name, "home"), os.path.join(self.tmp.name, "frame")
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen")
+        r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "300",
+                            "--picture", picture, "--picture-every", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        out, err = r.stdout.decode(), r.stderr.decode()
+        self.assertEqual(r.returncode, 0, out + err)
+        self.assertIn("300 frames", err)
+        # The first screens are dark logos on a light ground, with fades between: one of the pictures, taken every
+        # half second, has both, the ground being most of it. (Which one depends on the machine's pace.)
+        seen = []
+        for n in range(30, 301, 30):
+            with open("%s.%06d.ppm" % (picture, n), "rb") as f:
+                head, size, depth, rgb = f.read().split(b"\n", 3)
+            self.assertEqual((head, size, depth), (b"P6", b"1280 720", b"255"))
+            self.assertEqual(len(rgb), 1280 * 720 * 3)
+            pixels = [rgb[i:i + 3] for i in range(0, len(rgb), 3 * 251)]
+            light = sum(1 for p in pixels if min(p) > 200) / len(pixels)
+            dark = sum(1 for p in pixels if max(p) < 80) / len(pixels)
+            seen.append((n, round(light, 2), round(dark, 3)))
+        self.assertTrue(any(light > 0.5 and dark > 0.01 for _, light, dark in seen), seen)
+
+
 if __name__ == "__main__":
     unittest.main()

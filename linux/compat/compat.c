@@ -3,6 +3,7 @@
 // needs them is built with this file, hidden, so nothing here is seen outside it.
 #define _GNU_SOURCE
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
@@ -153,3 +154,28 @@ int sysctl(int *name, unsigned namelen, void *old, size_t *oldlen, void *new_val
   errno = ENOENT;
   return -1;
 }
+
+// --- libraries by their Mac names (rs_linux.h) ---
+// This file's own library's folder, where the project's other libraries are.
+static int beside(const char *file, char *out, size_t n) {
+  Dl_info info;
+  if (!dladdr((void *)beside, &info) || !info.dli_fname) return 0;
+  const char *slash = strrchr(info.dli_fname, '/');
+  int dir = slash ? (int)(slash - info.dli_fname) : 1;
+  return snprintf(out, n, "%.*s/%s", dir, slash ? info.dli_fname : ".", file) < (int)n;
+}
+
+void *rs_compat_dlopen(const char *path, int flags) {
+  char ours[PATH_MAX];
+  if (path && strstr(path, "/OpenGL.framework/") && beside("libRSSystemGL.so", ours, sizeof ours)) return dlopen(ours, flags);
+  return dlopen(path, flags);
+}
+
+void *rs_compat_dlsym(void *handle, const char *name) {
+  void *p = dlsym(handle, name);
+  if (p || handle != RTLD_DEFAULT) return p;
+  char ours[PATH_MAX];
+  void *gl = beside("libRSOpenGL.so", ours, sizeof ours) ? dlopen(ours, RTLD_NOW | RTLD_NOLOAD) : NULL;
+  return gl ? dlsym(gl, name) : NULL;
+}
+

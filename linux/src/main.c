@@ -4,6 +4,10 @@
 //   rs-rearmed [--image FILE] --init-only    and run the static initializers
 //   rs-rearmed [--image FILE] --boot DIR     and call the game's GameBootstrap, with DIR as the game's folder
 //   --frames N                               with --boot: then N calls of the game's GameFrame
+//   rs-rearmed [--image FILE] --run DIR      the game in a window, DIR being the game's folder (needs SDL 3)
+//       --frames N    stop after N frames         --size WxH        the window's size (1280x720)
+//       --picture FILE --picture-frame N          save frame N as a PPM file
+//       --picture FILE --picture-every N          or every Nth frame, as FILE.<frame>.ppm
 //   --count                                  count each import's calls, and list them
 //   --survey                                 with --boot: a function with no answer is noted and returns 0, and
 //                                            the run goes on, to list what the game's start asks for
@@ -28,7 +32,9 @@ static double now(void) {
 
 int main(int argc, char **argv, char **envp) {
   const char *path = getenv("RC_IMAGE");
-  const char *boot = NULL;
+  const char *boot = NULL, *run = NULL, *picture = NULL;
+  int width = 0, height = 0;
+  long picture_frame = 1, picture_every = 0;
   int bind_only = 0, init_only = 0, count = 0, survey = 0, frames = 0;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--image") && i + 1 < argc) path = argv[++i];
@@ -38,6 +44,11 @@ int main(int argc, char **argv, char **envp) {
     else if (!strcmp(argv[i], "--survey")) survey = 1;
     else if (!strcmp(argv[i], "--boot") && i + 1 < argc) boot = argv[++i];
     else if (!strcmp(argv[i], "--frames") && i + 1 < argc) frames = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--run") && i + 1 < argc) run = argv[++i];
+    else if (!strcmp(argv[i], "--picture") && i + 1 < argc) picture = argv[++i];
+    else if (!strcmp(argv[i], "--picture-frame") && i + 1 < argc) picture_frame = atol(argv[++i]);
+    else if (!strcmp(argv[i], "--picture-every") && i + 1 < argc) picture_every = atol(argv[++i]);
+    else if (!strcmp(argv[i], "--size") && i + 1 < argc && sscanf(argv[i + 1], "%dx%d", &width, &height) == 2) i++;
     else {
       fprintf(stderr, "usage: %s [--image FILE] [--count] --bind-only | --init-only | --boot DIR [--survey]\n", argv[0]);
       return 2;
@@ -58,9 +69,13 @@ int main(int argc, char **argv, char **envp) {
   else snprintf(home, sizeof home, "%s/.local/share/rs-rearmed", user ? user : "");
   snprintf(dir, sizeof dir, "%s/steam", home);
   setenv("RS_STEAM_DATA_DIR", dir, 0);
-  if (boot) {
+  // The renderer's library on OpenGL (its Metal backend is the Mac's), and the Cg library's cache of program
+  // pairs out of the Mac's ~/Library.
+  setenv("RS_GL_BACKEND", "gl", 1);
+  setenv("RS_CG_PAIR_CACHE", "0", 0);
+  if (boot || run) {
     char exe[4096];
-    if (snprintf(exe, sizeof exe, "%s/Rocksmith2014.app/Contents/MacOS/Rocksmith2014", boot) < (int)sizeof exe)
+    if (snprintf(exe, sizeof exe, "%s/Rocksmith2014.app/Contents/MacOS/Rocksmith2014", boot ? boot : run) < (int)sizeof exe)
       setenv("RS_MAC_EXECUTABLE", exe, 0);
   }
 
@@ -72,7 +87,7 @@ int main(int argc, char **argv, char **envp) {
          (unsigned long long)info.hi, t1 - t0, info.unwind ? "registered" : "not registered");
   rsl_report_binding(stdout);
   if (bind_only) return 0;
-  if (!init_only && !boot) {
+  if (!init_only && !boot && !run) {
     fprintf(stderr, "rs-rearmed: the game's start is not written yet (linux/PLAN.md, X2): --init-only runs what is\n");
     return 2;
   }
@@ -82,6 +97,20 @@ int main(int argc, char **argv, char **envp) {
   printf("%d of %d initializers ran in %.3f s", ran, info.ninits, now() - t1);
   if (info.unwind) printf("; %d of them have a frame description the unwinder finds", rsl_initializers_with_unwind());
   printf("\n");
+  if (run) {
+#ifdef RSL_HAVE_SHELL
+    fflush(stdout);
+    rsl_shell_options opt = {run, width, height, frames, survey, picture, picture_frame, picture_every};
+    int status = rsl_shell_run(&opt);
+    if (count) rsl_report_calls(stdout);
+    fflush(NULL);
+    _exit(status);
+#else
+    (void)picture, (void)picture_frame, (void)picture_every, (void)width, (void)height;
+    fprintf(stderr, "rs-rearmed: built without the shell (SDL 3's headers were not there): --run is not in this build\n");
+    return 2;
+#endif
+  }
   if (boot) {
     // GameBootstrap(app_dir, cwd): the game's root, Lua, Rocksmith.ini, the display settings, the file system,
     // the main service. The Mac app calls it from the shell, with the window and its OpenGL context made.
