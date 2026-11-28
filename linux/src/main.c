@@ -99,7 +99,7 @@ int main(int argc, char **argv, char **envp) {
   if (!no_overrides && info.hi - info.lo > 0x1000000) {
     int n = rsl_install_overrides();
     if (n < 0) return 1;
-    printf("replaced: %d game functions with native ones (the online services, offline; the built-in fixes)\n", n);
+    printf("replaced: %d game functions with native ones (the online services, offline; the audio's two; the built-in fixes)\n", n);
     int hooks = rsl_install_hooks();
     printf("hook points: %d; mid points with a hook: %d\n", hooks, rsl_install_mids());
   }

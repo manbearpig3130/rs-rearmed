@@ -573,6 +573,7 @@ static int mid_point(uint64_t address, int point, const char *name) {
 #include "rc_ov.h"
 #define OV(name) void RC_FN_##name(rc_ctx *);
 #include "overrides_online.inc"
+#include "overrides_audio.inc"  // the audio module's two that are not the Mac's alone (src/audio_glue.c)
 #undef OV
 // The fixes module's own table of the functions it replaces (overrides/mods/mods.c).
 extern const ov_entry ov_mods_entries[];
@@ -602,6 +603,7 @@ int rsl_install_overrides(void) {
   } list[] = {
 #define OV(name) {RC_ADDR_##name, RC_FN_##name, #name},
 #include "overrides_online.inc"
+#include "overrides_audio.inc"
 #undef OV
   };
   int n = 0;

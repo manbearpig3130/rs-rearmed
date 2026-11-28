@@ -35,6 +35,7 @@ NATIVE_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-funct
     -I$(OVERRIDES) -I$(OVERRIDES)/gen -I$(GAME)/include -I../shims/include
 NATIVE_OBJ = $(OUT)/native/direct.o $(OUT)/native/patch.o $(OUT)/native/online_glue.o $(OUT)/native/online.o \
     $(OUT)/native/online_stub.o $(OUT)/native/rc_hook.o $(OUT)/native/rc_mid.o $(OUT)/native/rc_target.o $(OUT)/native/compat.o \
+    $(OUT)/native/audio_in.o $(OUT)/native/audio_ring.o $(OUT)/native/audio_glue.o \
     $(MODS_SRC:$(OVERRIDES)/mods/%.c=$(OUT)/native/mods_%.o)
 # The built-in fixes (overrides/mods), compiled as they are, with the runtime's hook points (rc_hook.c) and the
 # target's tables by name (rc_target.c, which targets.py writes beside rc_target_names.h).
@@ -65,10 +66,22 @@ $(OUT)/native/mods_%.o: $(OVERRIDES)/mods/%.c $(wildcard $(OVERRIDES)/mods/*.h) 
 $(OUT)/target/overrides_online.inc: $(TARGET)/names/overrides/online.list
 	@mkdir -p $(OUT)/target
 	sed -n 's/^\([a-z][a-z0-9_]*\).*/OV(\1)/p' $< > $@
+# The `audio` override module's functions that are not the Mac's alone: the input queue's reader and the sink's
+# ring (its third, the engine thread's real-time policy in the device's workgroup, is macOS's).
+$(OUT)/target/overrides_audio.inc: $(TARGET)/names/overrides/audio.list
+	@mkdir -p $(OUT)/target
+	sed -n 's/^\(input_queue_read\|ak_sink_ring_init\)[ \t].*/OV(\1)/p' $< > $@
+$(OUT)/native/audio_%.o: $(OVERRIDES)/src/audio_%.c $(OVERRIDES)/src/audio.h $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -I../shims/coreaudio -c -o $@ $<
+$(OUT)/native/audio_glue.o: src/audio_glue.c $(OVERRIDES)/src/audio.h $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -I$(OVERRIDES)/src -I../shims/coreaudio -c -o $@ $<
 $(OUT)/native/direct.o: src/direct.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
 $(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc $(OUT)/target/hooks.inc \
+    $(OUT)/target/overrides_audio.inc \
     $(OUT)/target/mids.inc
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<

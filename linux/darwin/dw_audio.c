@@ -72,12 +72,16 @@ static uint32_t g_frames = 256;  // the device's buffer: the Mac's default
 
 // RS_AUDIO_FRAMES, the installer's "Output device buffer": the output's buffer in frames, which then stays whatever
 // the game sets, as the Mac's audio module keeps it. Unset, empty or 0: the game's own (256 unless it sets
-// another). Kept within 32 and 4096, as the Mac keeps it within the device's range.
+// another). Kept within 32 and 4096, as the Mac keeps it within the device's range, and at most half the game's
+// ring (128 at LatencyBuffer 1), as the Mac's module caps it: a call for more than the ring holds would run dry.
+uint32_t (*dw_audio_output_cap)(void);
+void (*dw_audio_output_started)(uint32_t frames);
 static uint32_t out_frames(void) {
   const char *e = getenv("RS_AUDIO_FRAMES");
   long n = e && *e ? strtol(e, NULL, 10) : 0;
-  if (n <= 0) return g_frames;
-  return n < 32 ? 32 : n > 4096 ? 4096 : (uint32_t)n;
+  uint32_t frames = n <= 0 ? g_frames : n < 32 ? 32 : n > 4096 ? 4096 : (uint32_t)n;
+  uint32_t cap = n == 0 && e && *e ? 0 : dw_audio_output_cap ? dw_audio_output_cap() : 0;  // (RS_AUDIO_FRAMES=0: as it is)
+  return cap >= 32 && frames > cap ? cap : frames;
 }
 
 // The inputs: what the backend has, each a device of its own with one input stream. A device keeps its number for
@@ -810,6 +814,7 @@ int dw_AUGraphStart(graph *g) {
     }
   }
   g->started = 1;
+  if (dw_audio_output_started) dw_audio_output_started(out_frames());
   if (audio_log())
     fprintf(stderr, "[audio] graph: started, %s, %u frames a call at %.0f Hz\n", g->backend ? g_backend->name : "silent", out_frames(), g_rate);
   return noErr;

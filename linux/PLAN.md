@@ -715,3 +715,10 @@ Proposed; none is final before the step that tests it.
   records (PipeWire's sinks tell); a USB microphone is not one. Checked in the layer's test with a made-up
   interface of eight channels; **not yet with a real interface**. `RS_AUDIO_INPUT_TRIM` (the game's own queue
   of input buffers, a hook in the game's code) is not in.
+- **2026-11-28, the audio module's game half.** `overrides/src/audio_in.c` and `audio_ring.c` compiled as they
+  are (two more functions replaced, a hook on the sound engine's start): the input queue is read without its
+  stale buffers (`RS_AUDIO_INPUT_TRIM`), and at the game's audio setting 1 the engine keeps two refills while the
+  output's ring has one. The output's buffer is capped at half that ring, as the Mac's module caps it: 128
+  frames at setting 1, 256 at the default 4 (seen in a run without sound). The module's third function, the
+  engine thread's real-time policy in the device's workgroup, is macOS's; a real-time engine thread here would
+  go through PipeWire's own way to one.

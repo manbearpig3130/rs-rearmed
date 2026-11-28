@@ -75,6 +75,10 @@ typedef struct {
   int (*level_set)(const dw_audio_input *input, float level);
 } dw_audio_backend;
 void dw_audio_set_backend(const dw_audio_backend *backend);
+// The game's side of the output, where there is one (linux/src/audio_glue.c; none in a test of the layer alone):
+// the most frames a call may ask of the game's ring, and the size the output started with.
+extern uint32_t (*dw_audio_output_cap)(void);
+extern void (*dw_audio_output_started)(uint32_t frames);
 
 // errno: Darwin's number for the host's, and DW_ERR for a returned one.
 int dw_errno_from_host(int host);

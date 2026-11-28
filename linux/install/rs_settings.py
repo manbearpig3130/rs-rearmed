@@ -86,7 +86,7 @@ OPTIONS = (
     Option("RS_AUDIO_RT", "Real-time audio thread", "The audio thread runs in the device's workgroup. Off: as the original.",
            toggle(True), AUDIO, True, "no"),
     Option("RS_AUDIO_INPUT_TRIM", "Drop stale guitar input",
-           "Up to 8 ms of old input never reaches the speakers. Off: as the original.", toggle(True), AUDIO, True, "soon"),
+           "Up to 8 ms of old input never reaches the speakers. Off: as the original.", toggle(True), AUDIO, True, "yes"),
     Option("RS_AUDIO_INPUT", "Guitar input fixes", "The channel, gain and list below. Off: the game's input as it is.",
            toggle(True), AUDIO, True, "yes"),
     Option("RS_AUDIO_INPUT_CHANNEL", "Input channel", "From 1, for every device. Empty: every channel is listed.",

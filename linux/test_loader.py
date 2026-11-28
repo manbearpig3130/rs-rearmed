@@ -289,9 +289,10 @@ class Picture(unittest.TestCase):
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         out, err = r.stdout.decode(), r.stderr.decode()
         self.assertEqual(r.returncode, 0, out + err)
-        # nine functions of the online services and the eleven of the built-in fixes are replaced; every hook point
+        # nine functions of the online services, two of the audio module and the eleven of the built-in fixes are
+        # replaced; every hook point
         # is in, and the thirteen mid points the fixes have hooks on
-        self.assertIn("replaced: 20 game functions with native ones", out)
+        self.assertIn("replaced: 22 game functions with native ones", out)
         self.assertIn("hook points: 21; mid points with a hook: 13", out)
         self.assertNotIn("left as it is", err)
 
