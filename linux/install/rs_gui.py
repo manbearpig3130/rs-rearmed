@@ -21,6 +21,7 @@ import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")  # (asked for itself: a newer PyGObject loads Gdk 4 when it is imported first)
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 import rs_install  # noqa: E402
