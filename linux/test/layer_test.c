@@ -787,7 +787,7 @@ static void test_audio(void) {
   CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
 
   // with a backend: no clock thread; the backend asks for the sound and gets what the game's callback filled
-  static const dw_audio_backend backend = {"test", backend_start, backend_stop, NULL, NULL, NULL, NULL, NULL};
+  static const dw_audio_backend backend = {"test", backend_start, backend_stop, NULL, NULL, NULL, NULL, NULL, NULL};
   dw_audio_set_backend(&backend);
   CHECK(FN(int (*)(void **), "_NewAUGraph")(&graph) == 0);
   CHECK(add(graph, &out_desc, &out_node) == 0 && add(graph, &mixer_desc, &mixer_node) == 0);
