@@ -41,6 +41,46 @@ def version():
     return ""
 
 
+# The look, after the Mac installer's (AppKit's proportions in GTK, with the desktop's own theme and colours): labels
+# of a row at a medium weight, hints small and dim, the log a darker inset box of small monospace text with rounded
+# corners, and room between groups. The log's colour is worked out from the theme's, light or dark.
+CSS = """
+.rs-row-label { font-weight: 500; }
+.rs-hint { font-size: 0.88em; }
+.rs-step { font-weight: 500; }
+.rs-log-box { border-radius: 6px; border: 1px solid alpha(@theme_fg_color, 0.12); }
+.rs-log-box, .rs-log-box textview, .rs-log-box textview text { background-color: %(log_bg)s; }
+.rs-log-box textview text { color: alpha(@theme_fg_color, 0.85); }
+.rs-log-box textview { font-family: monospace; font-size: 0.82em; }
+.rs-guide { border-radius: 6px; border: 1px solid alpha(@theme_selected_bg_color, 0.55);
+            background-color: alpha(@theme_selected_bg_color, 0.10); }
+.rs-sheet-title { font-weight: bold; font-size: 1.1em; }
+.rs-section { font-weight: bold; }
+.rs-buttons { border-top: 1px solid alpha(@theme_fg_color, 0.10); }
+.rs-bar trough, .rs-bar progress { min-height: 4px; border-radius: 2px; }
+.rs-bar trough { border: none; background-color: alpha(@theme_fg_color, 0.12); }
+"""
+
+
+def apply_style(widget):
+    """The style sheet, once, for the screen WIDGET is on."""
+    if getattr(apply_style, "done", False):
+        return
+    apply_style.done = True
+    found, bg = widget.get_style_context().lookup_color("theme_bg_color")
+    dark = found and (0.2126 * bg.red + 0.7152 * bg.green + 0.0722 * bg.blue) < 0.5
+    css = CSS % {"log_bg": "shade(@theme_bg_color, 0.62)" if dark else "@theme_base_color"}
+    provider = Gtk.CssProvider()
+    provider.load_from_data(css.encode())
+    Gtk.StyleContext.add_provider_for_screen(widget.get_screen(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
+def styled(widget, *classes):
+    for c in classes:
+        widget.get_style_context().add_class(c)
+    return widget
+
+
 def label(text, dim=False, small=False, bold=False, wrap=False, big=False):
     w = Gtk.Label(label=text, xalign=0)
     attrs = Pango.AttrList()
@@ -74,15 +114,21 @@ class SettingsPage(Gtk.Dialog):
 
     def __init__(self, parent, home):
         super().__init__(title="Settings and switches", transient_for=parent, modal=True)
+        apply_style(self)
         self.home = home
-        self.set_default_size(680, 640)
+        self.set_default_size(640, 620)
         self.mods, self.controls = {}, {}
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.names = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)  # the options' names one width: fields in a column
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         for side in ("start", "end", "top", "bottom"):
-            getattr(box, "set_margin_" + side)(16)
+            getattr(box, "set_margin_" + side)(20)
+        box.pack_start(styled(label("Settings and switches: Rocksmith 2014 for Linux"), "rs-sheet-title"), False, False, 0)
         box.pack_start(label("Set what you want. A change takes effect the next time the game starts, with nothing to "
                              "reinstall. Empty fields and Default choices are the game's own settings.", wrap=True),
                        False, False, 0)
+        box.pack_start(label("The defaults are what RS Re-ARMed is tested with. Changing these can have unexpected "
+                             "effects, and problems with other values are not supported: Reset to Defaults before "
+                             "reporting one.", wrap=True), False, False, 0)
 
         box.pack_start(self.heading("Built-in mods"), False, False, 0)
         off = rs_settings.read_mods_off(home)
@@ -102,12 +148,14 @@ class SettingsPage(Gtk.Dialog):
                 for o in rows:
                     box.pack_start(self.option_row(o, values), False, False, 0)
 
-        self.advanced_check = Gtk.CheckButton(label="Show advanced options")
-        self.advanced_check.connect("toggled", lambda w: self.advanced.set_visible(w.get_active()))
-        box.pack_start(self.advanced_check, False, False, 6)
-        self.advanced = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        # Advanced: one section, collapsed by default, as the Mac sheet has it
+        self.advanced_check = Gtk.Expander()
+        self.advanced_check.set_label_widget(styled(label("Advanced"), "rs-section"))
+        self.advanced_check.set_margin_top(12)
+        self.advanced_check.connect("notify::expanded", lambda w, _: self.advanced.set_visible(w.get_expanded()))
+        box.pack_start(self.advanced_check, False, False, 0)
+        self.advanced = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.advanced.set_no_show_all(True)
-        self.advanced.pack_start(self.heading("Advanced"), False, False, 0)
         self.advanced.pack_start(label(
             "These turn off fixes or change how the game is run. Leave them alone unless you are tracking down a "
             "problem. The defaults are what RS Re-ARMed is tested with: Reset to Defaults before reporting one.",
@@ -117,28 +165,43 @@ class SettingsPage(Gtk.Dialog):
                 self.advanced.pack_start(self.option_row(o, values), False, False, 0)
         box.pack_start(self.advanced, False, False, 0)
         if any(o.advanced and o.key in values for o in options):
-            self.advanced_check.set_active(True)
+            self.advanced_check.set_expanded(True)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.add(box)
         self.get_content_area().pack_start(scroll, True, True, 0)
-        self.get_action_area().set_property("margin", 10)
+        # The buttons in a strip of their own under the list: Reset to Defaults on the left, Cancel and Save right
+        area = styled(self.get_action_area(), "rs-buttons")
+        area.set_property("margin", 0)
+        for side in ("start", "end"):
+            getattr(area, "set_margin_" + side)(20)
+        area.set_margin_top(0)
+        area.set_margin_bottom(14)
+        area.set_border_width(0)
         reset = self.add_button("Reset to Defaults", Gtk.ResponseType.REJECT)
         reset.set_tooltip_text("Every mod on and every other switch the game's own setting (Save keeps it).")
+        if isinstance(area, Gtk.ButtonBox):
+            area.set_child_secondary(reset, True)
+            area.set_layout(Gtk.ButtonBoxStyle.END)
         self.add_button("Cancel", Gtk.ResponseType.CANCEL)
         save = self.add_button("Save", Gtk.ResponseType.OK)
         save.get_style_context().add_class("suggested-action")
+        for b in area.get_children():
+            b.set_margin_top(12)
+            if isinstance(area, Gtk.ButtonBox):
+                area.set_child_non_homogeneous(b, True)  # each its own width, as the Mac's
         self.set_default_response(Gtk.ResponseType.OK)
         self.show_all()
         for child in self.advanced.get_children():
             child.show_all()
-        self.advanced.set_visible(self.advanced_check.get_active())
+        self.advanced.set_visible(self.advanced_check.get_expanded())
+        save.grab_focus()
 
     @staticmethod
     def heading(text):
-        w = label(text, bold=True)
-        w.set_margin_top(10)
+        w = styled(label(text), "rs-section")
+        w.set_margin_top(12)
         return w
 
     @staticmethod
@@ -146,8 +209,8 @@ class SettingsPage(Gtk.Dialog):
         """A control with what it does under it, in smaller, dimmer letters."""
         b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         b.pack_start(control, False, False, 0)
-        d = label(detail, dim=True, small=True, wrap=True)
-        d.set_margin_start(24)
+        d = styled(label(detail, dim=True, wrap=True), "rs-hint")
+        d.set_margin_start(26)
         b.pack_start(d, False, False, 0)
         b.set_sensitive(sensitive)
         return b
@@ -166,7 +229,8 @@ class SettingsPage(Gtk.Dialog):
             return self.row(control, text, there)
         line = Gtk.Box(spacing=8)
         name = label(o.title)
-        name.set_margin_start(24)
+        name.set_margin_start(26)
+        self.names.add_widget(name)
         line.pack_start(name, False, False, 0)
         if kind[0] == "choice":
             control = Gtk.ComboBoxText()
@@ -265,10 +329,11 @@ class Installer(Gtk.Window):
         self.set_default_size(720, 640)
         self.set_icon_name("rs-rearmed")
         self.connect("delete-event", self.closing)
+        apply_style(self)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         for side in ("start", "end", "top", "bottom"):
-            getattr(box, "set_margin_" + side)(18)
+            getattr(box, "set_margin_" + side)(20)
         self.add(box)
 
         head = Gtk.Box(spacing=10)
@@ -278,9 +343,12 @@ class Installer(Gtk.Window):
         v.set_margin_bottom(4)
         head.pack_start(v, False, False, 0)
         box.pack_start(head, False, False, 0)
-        box.pack_start(label("Sets up Rocksmith 2014 on Linux from your Steam copy of the game.", dim=True), False, False, 0)
+        box.pack_start(styled(label("Sets up Rocksmith 2014 on Linux from your Steam copy of the game.", dim=True), "rs-hint"),
+                       False, False, 0)
 
-        box.pack_start(label("Mac game folder (leave empty to download it with Steam):"), False, False, 4)
+        folder = styled(label("Mac game folder (leave empty to download it with Steam):"), "rs-row-label")
+        folder.set_margin_top(12)
+        box.pack_start(folder, False, False, 0)
         line = Gtk.Box(spacing=8)
         self.game_dir = Gtk.Entry()
         self.game_dir.set_placeholder_text("Steam's download folder")
@@ -290,15 +358,20 @@ class Installer(Gtk.Window):
         line.pack_start(self.browse, False, False, 0)
         box.pack_start(line, False, False, 0)
 
+        # A row as the Mac's Renderer row: its label, a short hint, and the button at the right
         line = Gtk.Box(spacing=10)
+        line.set_margin_top(8)
+        line.pack_start(styled(label("Game options:"), "rs-row-label"), False, False, 0)
+        hint = styled(label("Custom songs, the mods, the sound; no reinstall", dim=True), "rs-hint")
+        hint.set_ellipsize(Pango.EllipsizeMode.END)
+        line.pack_start(hint, True, True, 0)
         self.settings = Gtk.Button(label="Settings and switches…")
         self.settings.connect("clicked", self.show_settings)
-        line.pack_start(self.settings, False, False, 0)
-        line.pack_start(label("Set the game's options, such as custom songs or the output buffer. Takes effect the next "
-                              "time the game starts; nothing to reinstall.", dim=True, small=True, wrap=True), True, True, 0)
-        box.pack_start(line, False, False, 4)
+        line.pack_end(self.settings, False, False, 0)
+        box.pack_start(line, False, False, 0)
 
         self.dlc = Gtk.CheckButton(label="Download my DLC with Steam")
+        self.dlc.set_margin_top(6)
         self.dlc.set_active(True)
         self.dlc.set_tooltip_text("Each DLC the Steam account owns, a few seconds apiece. Refresh Game Files gets the "
                                   "ones bought later.")
@@ -307,19 +380,21 @@ class Installer(Gtk.Window):
         self.menu.set_active(True)
         box.pack_start(self.menu, False, False, 0)
 
-        self.bar = Gtk.ProgressBar()
-        self.bar.set_margin_top(8)
+        self.bar = styled(Gtk.ProgressBar(), "rs-bar")
+        self.bar.set_margin_top(14)
         box.pack_start(self.bar, False, False, 0)
         line = Gtk.Box(spacing=12)
-        self.step = label("Ready")
+        line.set_margin_top(4)
+        self.step = styled(label("Ready"), "rs-step")
         self.step.set_ellipsize(Pango.EllipsizeMode.END)
         line.pack_start(self.step, True, True, 0)
-        self.detail = label("", dim=True)
+        self.detail = styled(label("", dim=True), "rs-hint")
         line.pack_end(self.detail, False, False, 0)
         box.pack_start(line, False, False, 0)
 
         # What the user has to do now, or how the last run ended: between the progress and the log.
-        self.guide = Gtk.Frame()
+        self.guide = styled(Gtk.Frame(), "rs-guide")
+        self.guide.set_shadow_type(Gtk.ShadowType.NONE)
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         for side in ("start", "end", "top", "bottom"):
             getattr(inner, "set_margin_" + side)(10)
@@ -345,17 +420,19 @@ class Installer(Gtk.Window):
         self.log.set_cursor_visible(False)
         self.log.set_monospace(True)
         self.log.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self.log.set_left_margin(8)
-        self.log.set_right_margin(8)
-        self.log.set_top_margin(6)
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_shadow_type(Gtk.ShadowType.IN)
+        self.log.set_left_margin(10)
+        self.log.set_right_margin(10)
+        self.log.set_top_margin(8)
+        self.log.set_bottom_margin(8)
+        scroll = styled(Gtk.ScrolledWindow(), "rs-log-box")
+        scroll.set_shadow_type(Gtk.ShadowType.NONE)
         scroll.set_min_content_height(80)
         scroll.add(self.log)
         self.scroll = scroll
         box.pack_start(scroll, True, True, 4)
 
         line = Gtk.Box(spacing=8)
+        line.set_margin_top(6)
         self.show_log = Gtk.Button(label="Show Log File")
         self.show_log.connect("clicked", lambda w: self.reveal(self.log_path()))
         self.refresh = Gtk.Button(label="Refresh Game Files")
@@ -381,6 +458,8 @@ class Installer(Gtk.Window):
         self.set_log(self.what_happens())
         self.show_all()
         self.update_buttons()
+        # the first button with something to do has the focus, not the folder field (whose hint then shows)
+        (self.play if self.play.get_visible() else self.install).grab_focus()
 
     # --- what is there, and the buttons that follow from it
 
@@ -657,7 +736,7 @@ def main(argv=None):
     if a.page in ("settings", "advanced"):
         page = SettingsPage(win, win.home)
         if a.page == "advanced":
-            page.advanced_check.set_active(True)
+            page.advanced_check.set_expanded(True)
             page.set_default_size(680, 1500)
             page.resize(680, 1500)
         if a.screenshot:
