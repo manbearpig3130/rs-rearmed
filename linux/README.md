@@ -25,6 +25,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [patch-edits.tsv](patch-edits.tsv) | every edit whose new instructions are longer than its range, with what its jump covers (the same tool) |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `latency_test.py` | the delay from the game's guitar input to its output, measured: a windowless copy of the game between two made-up PipeWire devices |
+| [`../tools/latency/loop_test.py`](../tools/latency/loop_test.py) | the whole delay from the string to the game's sound, with a cable from the interface's output to a spare input: the same on a Mac and on Linux |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
 | `install` | the installer's window (`rs_gui.py`) and its settings (`rs_settings.py`); the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`); and the packaged build's launcher, desktop entry, icon and AppImage step |
 | `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |
