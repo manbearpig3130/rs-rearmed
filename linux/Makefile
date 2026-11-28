@@ -131,7 +131,9 @@ SHELL_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-comment -Wno-
     -fno-strict-aliasing -pthread $(CFLAGS) $(shell pkg-config --cflags sdl3) \
     -DRSL_HAVE_SHELL -Isrc -Idarwin -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) -I$(PLATFORM)/include -I$(PLATFORM)/src -I$(APP)
 SHELL_OBJ = $(OUT)/shell/shell.o $(OUT)/shell/seam_platform.o $(OUT)/shell/rsp_engine.o $(OUT)/shell/rsp_logic.o \
-    $(OUT)/shell/rsp_paths.o $(OUT)/shell/rsp_config.o
+    $(OUT)/shell/rsp_paths.o $(OUT)/shell/rsp_config.o $(OUT)/shell/rsp_overlay.o
+# (rsp_overlay.c, the overlay API for mods, makes its own OpenGL calls in the window's context: the system's library.)
+SDL_LIBS += -lOpenGL
 ALL_CFLAGS_EXTRA = -DRSL_HAVE_SHELL
 # Sound, where PipeWire is there to build with: the game's audio graph to a PipeWire stream.
 PW_LIBS := $(shell pkg-config --libs libpipewire-0.3 2>/dev/null)
@@ -159,6 +161,8 @@ $(OUT)/shell/shell.o: src/shell.c src/rsl.h $(OUT)/target/rc_target_names.h
 $(OUT)/shell/seam_platform.o: $(APP)/seam_platform.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/shell
 	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
+# (The overlay names Apple's form of two calls, for a context that has only that; Mesa has the standard form.)
+$(OUT)/shell/rsp_overlay.o: SHELL_CFLAGS += -DglGenVertexArraysAPPLE=glGenVertexArrays -DglBindVertexArrayAPPLE=glBindVertexArray
 $(OUT)/shell/rsp_%.o: $(PLATFORM)/src/rsp_%.c $(wildcard $(PLATFORM)/include/*.h)
 	@mkdir -p $(OUT)/shell
 	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
@@ -178,7 +182,7 @@ $(OUT)/rs-rearmed: $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ)
 # the program's functions when it is loaded (the program is linked to offer them: -rdynamic). The test's own.
 $(OUT)/test/mods/%.so: test/mods/%.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(dir $@)
-	$(CC) -std=gnu11 -Wall -Wextra -O2 -g -shared -fPIC -I$(RUNTIME) -I$(OVERRIDES) -I$(OUT)/target -o $@ $<
+	$(CC) -std=gnu11 -Wall -Wextra -O2 -g -shared -fPIC -I$(RUNTIME) -I$(OVERRIDES) -I../shims/include -I$(OUT)/target -o $@ $<
 
 # The project's replacement libraries, from the sources the Mac app builds them from (shims/), each a shared
 # library beside the program. compat/ has the few macOS functions they call.

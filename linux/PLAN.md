@@ -765,6 +765,12 @@ Proposed; none is final before the step that tests it.
   points hooked by a function that changes nothing (five by a breakpoint) and the game starting as it does
   without; and the forms one by one on code of the test's own (`test/patch_test.c`, in `make check`). What is
   left for a mod of `rearmed-mods` is its own build: a `.so` from its sources, and whatever of macOS it uses.
+- **2026-11-28, the overlay API.** A mod draws over the game's frame through `shims/include/rs_overlay.h`, which
+  the Mac shell's `rsp_overlay.c` implements on OpenGL with only calls the game makes too. It is compiled into the
+  program as it is (two Apple names of calls mapped to the standard ones) and run by `src/shell.c` after the
+  game's frame, before the frame is shown or saved. The test mod draws a square and an image and reads the frame
+  back: the colours it drew, in the saved picture as well. Not there: the render API (`rs_render.h`), which is the
+  Metal renderer's on the Mac; a mod finds it absent, as on the Mac's OpenGL renderer.
 - **2026-11-28, a real interface.** A mixer with a 12-channel USB input (TC-Helicon Blender) on the Bazzite PC:
   the game lists "Blender channel 1" to "channel 10" and opens them, 128 frames each. An input may have up to 32
   channels now (it was eight; the layer's buffer for what the game hears is the entry's own, not a thread's).

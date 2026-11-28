@@ -339,6 +339,21 @@ class Picture(unittest.TestCase):
         self.assertIn("[rs-rearmed] edits plain_packages: 2 written into the game's code, 2 of them longer than their range", err)
         self.assertIn("[test-mod] edit groups on: 1; mid points hooked: 0", err)
         self.assertIn("[test-mod] 100 frames: 100 hooks before, 100 after; the provider was asked for files: yes", err)
+        # and it draws over the game's frame through the overlay API: what it reads back is what it drew, on a
+        # picture of the frame as well
+        picture = os.path.join(self.tmp.name, "overlay.ppm")
+        r = subprocess.run(argv + ["--picture", picture, "--picture-frame", "120"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           env=dict(env, RS_TEST_MOD_OVERLAY="1"))
+        err = r.stderr.decode()
+        self.assertEqual(r.returncode, 0, r.stdout.decode() + err)
+        self.assertIn("[test-mod] overlay API 1: registered", err)
+        self.assertRegex(err, r"\[test-mod\] overlay on a frame of \d+x\d+: the square reads ff00ffff, the image 00ff00ff")
+        with open(picture, "rb") as f:
+            head = f.readline(), f.readline(), f.readline()
+            width = int(head[1].split()[0])
+            rgb = f.read()
+        at = lambda x, y: tuple(rgb[3 * (y * width + x):3 * (y * width + x) + 3])
+        self.assertEqual((at(16, 16), at(44, 16)), ((255, 0, 255), (0, 255, 0)))
         r = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(env, RS_LOAD_MODS="0"))
         self.assertEqual(r.returncode, 0)
         self.assertNotIn("test-mod", r.stderr.decode())  # switched off: none is loaded

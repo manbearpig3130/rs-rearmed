@@ -332,6 +332,13 @@ int rsl_shell_run(const rsl_shell_options *opt) {
     play_script(frame + 1);
     done = rsp_game_frame();
     frame++;
+    // The mods' drawing over the frame (shims/include/rs_overlay.h, the Mac shell's own rsp_overlay.c), before it
+    // is shown or saved.
+    if (!done && rsp_overlay_active()) {
+      int w = 0, h = 0;
+      SDL_GetWindowSizeInPixels(window, &w, &h);
+      rsp_overlay_run(w, h);
+    }
     if (opt->picture && opt->picture_every > 0 && frame % opt->picture_every == 0) {
       char path[1024];
       snprintf(path, sizeof path, "%s.%06ld.ppm", opt->picture, frame);

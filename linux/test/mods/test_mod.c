@@ -3,16 +3,51 @@
 //   cc -shared -fPIC -I tools/ws7/recomp/runtime -I tools/ws7/recomp/overrides -I build/linux/target test_mod.c -o test_mod.so
 // Its constructor asks for a hook on the game's frame, and it says so when it has seen a hundred of them. It
 // switches on the edit groups RS_TEST_MOD_EDITS names (commas between; plain_packages when unset) and hooks the mid
-// points RS_TEST_MOD_MIDS names with a function that changes nothing.
+// points RS_TEST_MOD_MIDS names with a function that changes nothing. With RS_TEST_MOD_OVERLAY=1 it draws over the
+// game's frame through the overlay API (rs_overlay.h), found by name as a mod for every edition finds it: a
+// magenta square and an image, and it reads the frame back to say what it finds where it drew.
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <dlfcn.h>
+
 #include "rc_mod.h"
+#include "rs_overlay.h"
 
 static int g_before, g_after;
 static _Atomic int g_asked, g_listed, g_mid_calls;
+
+// The overlay's callback, once a frame after the game has drawn it: a square of one colour, an image of another
+// beside it (premultiplied, half transparent in its right half), and the frame read back at the middle of each.
+static void draw_over(rs_overlay_frame *f, void *user) {
+  (void)user;
+  static rs_overlay_image *image;
+  static int said;
+  rs_overlay_image *(*create)(rs_overlay_frame *, int, int) = dlsym(RTLD_DEFAULT, "rs_overlay_image_create");
+  int (*update)(rs_overlay_frame *, rs_overlay_image *, const void *, int) = dlsym(RTLD_DEFAULT, "rs_overlay_image_update");
+  int (*draw)(rs_overlay_frame *, rs_overlay_image *, float, float, float, float, float) = dlsym(RTLD_DEFAULT, "rs_overlay_draw_image");
+  int (*fill)(rs_overlay_frame *, float, float, float, float, uint32_t) = dlsym(RTLD_DEFAULT, "rs_overlay_fill_rect");
+  int (*read)(rs_overlay_frame *, int, int, int, int, void *) = dlsym(RTLD_DEFAULT, "rs_overlay_read_pixels");
+  if (!create || !update || !draw || !fill || !read) return;
+  if (!image && (image = create(f, 16, 16))) {
+    uint8_t px[16 * 16 * 4];
+    for (int i = 0; i < 16 * 16; i++) {
+      int half = i % 16 >= 8;  // opaque green, then green at half alpha (premultiplied)
+      px[4 * i] = 0, px[4 * i + 1] = half ? 128 : 255, px[4 * i + 2] = 0, px[4 * i + 3] = half ? 128 : 255;
+    }
+    update(f, image, px, 0);
+  }
+  fill(f, 8, 8, 16, 16, 0xff00ffffu);
+  if (image) draw(f, image, 40, 8, 16, 16, 1.0f);
+  uint8_t a[4] = {0}, b[4] = {0};
+  if (!said && f->index >= 20 && !read(f, 16, 16, 1, 1, a) && !read(f, 44, 16, 1, 1, b)) {
+    said = 1;
+    fprintf(stderr, "[test-mod] overlay on a frame of %dx%d: the square reads %02x%02x%02x%02x, the image %02x%02x%02x%02x\n", f->width,
+            f->height, a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]);
+  }
+}
 
 // A mid point's hook that lets the instruction run: the game goes on as without it.
 static void at_mid(rc_mid_frame *f, void *user) {
@@ -83,6 +118,11 @@ __attribute__((constructor)) static void test_mod_init(void) {
   rc_hook_add_name("no_such_point", before_frame, NULL, NULL);  // refused, with a line of the runtime's
   int groups = each_name("RS_TEST_MOD_EDITS", "plain_packages", edits_on), points = each_name("RS_TEST_MOD_MIDS", "", mid_hooked);
   fprintf(stderr, "[test-mod] edit groups on: %d; mid points hooked: %d\n", groups, points);
+  if (getenv("RS_TEST_MOD_OVERLAY")) {
+    int (*version)(void) = dlsym(RTLD_DEFAULT, "rs_overlay_api_version");
+    int (*add)(rs_overlay_fn, void *) = dlsym(RTLD_DEFAULT, "rs_overlay_register");
+    fprintf(stderr, "[test-mod] overlay API %d: %s\n", version ? version() : 0, add && !add(draw_over, NULL) ? "registered" : "not there");
+  }
   static const rc_file_provider files = {.open = provide_open, .read = provide_read, .close = provide_close, .list = provide_list};
   rc_file_provide(&files);
 }
