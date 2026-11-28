@@ -9,6 +9,7 @@
 // streams that feed the game's input procedure.
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -282,7 +283,9 @@ static void *capture_start(const dw_audio_input *input, double rate, uint32_t fr
   struct pw_properties *props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture", PW_KEY_MEDIA_ROLE, "Game",
                                                   PW_KEY_APP_NAME, "Rocksmith 2014", PW_KEY_NODE_NAME, "rs-rearmed-input",
                                                   PW_KEY_TARGET_OBJECT, input->uid, PW_KEY_NODE_LATENCY, latency, PW_KEY_NODE_RATE, hz,
-                                                  PW_KEY_STREAM_DONT_REMIX, "true", NULL);
+                                                  PW_KEY_STREAM_DONT_REMIX, "true",
+                                                  // (its device pulled out: the input ends; it is not another's)
+                                                  PW_KEY_NODE_DONT_RECONNECT, "true", NULL);
   c->stream = c->loop ? pw_stream_new_simple(pw_thread_loop_get_loop(c->loop), "Rocksmith 2014 guitar input", props, &k_capture_events, c) : NULL;
   uint8_t buffer[1024];
   struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof buffer);
@@ -318,6 +321,57 @@ static int level_set(const dw_audio_input *input, float level) { return rsl_alsa
 #define level_set NULL
 #endif
 
-static const dw_audio_backend k_backend = {"PipeWire", start, stop, inputs, capture_start, capture_stop, level_get, level_set};
+// --- inputs that come and go ---
+// A connection kept for the registry alone: every audio node that appears or goes raises a count, which the layer
+// looks at while the game listens for changes of its device list (dw.h).
+static struct {
+  struct pw_thread_loop *loop;
+  struct pw_core *core;
+  struct pw_registry *registry;
+  struct spa_hook listener;
+  uint32_t nodes[256];
+  int n;
+  atomic_uint count;
+  int started;
+} w;
+
+static void watch_global(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
+  (void)data, (void)permissions, (void)version;
+  if (strcmp(type, PW_TYPE_INTERFACE_Node)) return;
+  const char *cls = props ? spa_dict_lookup(props, "media.class") : NULL;
+  if (!cls || (strcmp(cls, "Audio/Source") && strcmp(cls, "Audio/Sink"))) return;
+  if (w.n < (int)(sizeof w.nodes / sizeof *w.nodes)) w.nodes[w.n++] = id;
+  atomic_fetch_add(&w.count, 1);
+}
+
+static void watch_global_remove(void *data, uint32_t id) {
+  (void)data;
+  for (int i = 0; i < w.n; i++)
+    if (w.nodes[i] == id) {
+      w.nodes[i] = w.nodes[--w.n];
+      atomic_fetch_add(&w.count, 1);
+      return;
+    }
+}
+
+static const struct pw_registry_events k_watch_events = {PW_VERSION_REGISTRY_EVENTS, .global = watch_global, .global_remove = watch_global_remove};
+
+static unsigned changes(void) {
+  if (!w.started) {
+    w.started = 1;
+    pw_init(NULL, NULL);
+    w.loop = pw_thread_loop_new("rs-audio-watch", NULL);
+    struct pw_context *context = w.loop ? pw_context_new(pw_thread_loop_get_loop(w.loop), NULL, 0) : NULL;
+    w.core = context ? pw_context_connect(context, NULL, 0) : NULL;
+    if (w.core) {
+      w.registry = pw_core_get_registry(w.core, PW_VERSION_REGISTRY, 0);
+      pw_registry_add_listener(w.registry, &w.listener, &k_watch_events, NULL);
+      pw_thread_loop_start(w.loop);
+    }
+  }
+  return atomic_load(&w.count);
+}
+
+static const dw_audio_backend k_backend = {"PipeWire", start, stop, inputs, capture_start, capture_stop, level_get, level_set, changes};
 
 void rsl_audio_pipewire(void) { dw_audio_set_backend(&k_backend); }

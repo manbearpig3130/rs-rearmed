@@ -220,7 +220,24 @@ static void refresh_inputs(void) {
     d->order = k;
     d->present = 1;
   }
+  // An entry whose device has gone while it was open: its capture ends here (the game is told its device list has
+  // changed, finds the device gone, and can stop nothing on what is no device any more).
+  void *gone[MAX_INPUTS];
+  int ngone = 0;
+  for (int i = 0; i < g_ninputs; i++)
+    if (!g_inputs[i].present && g_inputs[i].capture) gone[ngone++] = g_inputs[i].capture, g_inputs[i].capture = NULL;
   pthread_mutex_unlock(&g_inputs_lock);
+  for (int i = 0; i < ngone; i++) g_backend->capture_stop(gone[i]);
+}
+
+// What the game's list would be now, as one number: which entries are there.
+static uint64_t inputs_signature(void) {
+  uint64_t h = 1469598103934665603ull;
+  pthread_mutex_lock(&g_inputs_lock);
+  for (int i = 0; i < g_ninputs; i++)
+    if (g_inputs[i].present) h = (h ^ (uint64_t)(i + 1) ^ ((uint64_t)g_inputs[i].order << 8)) * 1099511628211ull;
+  pthread_mutex_unlock(&g_inputs_lock);
+  return h;
 }
 
 // An input's level, as the Mac app has it. The game sets a level from 0 to 1 on a device ('volm'): calibration
@@ -533,16 +550,81 @@ int dw_AudioObjectSetPropertyData(uint32_t obj, const prop_address *a, uint32_t 
 }
 DW_FUNCTION("_AudioObjectSetPropertyData", dw_AudioObjectSetPropertyData);
 
-// Listeners: taken and kept. Nothing changes here that they would hear of.
+// Listeners. The game asks to be told when the system's list of devices changes ('dev#' of the system object),
+// and then reads the list again: a cable or an interface plugged in or pulled out while it runs. CoreAudio calls
+// such a listener on a thread of its own; so does this, from a watcher that asks the backend a few times a second
+// whether an input may have come or gone, counts the entries again when it says so, and calls the listeners when
+// the list is another. Other listeners are taken and kept: nothing else changes here that they would hear of.
+typedef int (*listener_proc)(uint32_t object, uint32_t count, const prop_address *addresses, void *client);
+#define MAX_LISTENERS 8
+static struct {
+  listener_proc proc;
+  void *client;
+} g_listeners[MAX_LISTENERS];
+static pthread_mutex_t g_listeners_lock = PTHREAD_MUTEX_INITIALIZER;
+static atomic_int g_watching;
+static unsigned g_changes_seen;  // the backend's count when the game began to listen: what comes after is news
+
+static void *watch_devices(void *arg) {
+  (void)arg;
+  pthread_setname_np(pthread_self(), "rs-audio-watch");
+  unsigned seen = g_changes_seen;
+  for (;;) {
+    struct timespec nap = {0, 400000000};
+    nanosleep(&nap, NULL);
+    const dw_audio_backend *backend = g_backend;
+    if (!backend || !backend->changes) continue;
+    unsigned now = backend->changes();
+    if (now == seen) continue;
+    nanosleep(&nap, NULL);  // a device's nodes come one after another: the list once they are all there
+    seen = backend->changes();
+    uint64_t before = inputs_signature();
+    refresh_inputs();
+    if (inputs_signature() == before) continue;
+    if (audio_log()) fprintf(stderr, "[audio] the inputs have changed: the game is told\n");
+    static const prop_address devices = {FOURCC('d', 'e', 'v', '#'), SCOPE_GLOBAL, 0};
+    for (int i = 0; i < MAX_LISTENERS; i++) {
+      pthread_mutex_lock(&g_listeners_lock);
+      listener_proc proc = g_listeners[i].proc;
+      void *client = g_listeners[i].client;
+      pthread_mutex_unlock(&g_listeners_lock);
+      if (proc) proc(SYSTEM, 1, &devices, client);
+    }
+  }
+  return NULL;
+}
+
 int dw_AudioObjectAddPropertyListener(uint32_t obj, const prop_address *a, void *proc, void *client) {
-  (void)proc, (void)client;
   note("listen for", obj, a, 1);
+  if (obj != SYSTEM || a->selector != FOURCC('d', 'e', 'v', '#') || !proc) return noErr;
+  pthread_mutex_lock(&g_listeners_lock);
+  for (int i = 0; i < MAX_LISTENERS; i++)
+    if (!g_listeners[i].proc) {
+      g_listeners[i].proc = (listener_proc)proc, g_listeners[i].client = client;
+      break;
+    }
+  pthread_mutex_unlock(&g_listeners_lock);
+  if (!atomic_exchange(&g_watching, 1)) {
+    g_changes_seen = g_backend && g_backend->changes ? g_backend->changes() : 0;
+    pthread_t t;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 1 << 20);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&t, &attr, watch_devices, NULL)) atomic_store(&g_watching, 0);
+    pthread_attr_destroy(&attr);
+  }
   return noErr;
 }
 DW_FUNCTION("_AudioObjectAddPropertyListener", dw_AudioObjectAddPropertyListener);
 
 int dw_AudioObjectRemovePropertyListener(uint32_t obj, const prop_address *a, void *proc, void *client) {
-  (void)obj, (void)a, (void)proc, (void)client;
+  if (obj == SYSTEM && a->selector == FOURCC('d', 'e', 'v', '#')) {
+    pthread_mutex_lock(&g_listeners_lock);
+    for (int i = 0; i < MAX_LISTENERS; i++)
+      if (g_listeners[i].proc == (listener_proc)proc && g_listeners[i].client == client) g_listeners[i].proc = NULL;
+    pthread_mutex_unlock(&g_listeners_lock);
+  }
   return noErr;
 }
 DW_FUNCTION("_AudioObjectRemovePropertyListener", dw_AudioObjectRemovePropertyListener);

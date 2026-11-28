@@ -744,4 +744,11 @@ Proposed; none is final before the step that tests it.
   sets its sampling frequency, which Linux's USB audio driver leaves out for a device that already reports the
   rate; found with the kernel's USB monitor and by asking the device directly. That is the system's to fix (a
   request at plug-in, or a quirk in the kernel's driver), not the port's.
+- **2026-11-29, inputs that come and go.** The game asks to be told when the system's device list changes and
+  reads it again then; the layer took the request and never answered. Now the PipeWire backend counts the audio
+  nodes that appear and go (a registry listener of its own), a watcher in the layer looks at that count while
+  the game listens, counts the entries again, and calls the game's listener when the list is another. An entry
+  whose device went while it was open has its capture ended, and a capture is not moved to another device.
+  In the layer's test: a made-up interface pulled out while its input runs. With PipeWire: a virtual input made
+  to appear while the game ran, and the game was told. Not tried by hand: a cable plugged in and pulled out.
 

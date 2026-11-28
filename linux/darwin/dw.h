@@ -74,6 +74,9 @@ typedef struct {
   // volume scalar is. Each returns 1 when the hardware has the control (NULL: none ever).
   int (*level_get)(const dw_audio_input *input, float *level);
   int (*level_set)(const dw_audio_input *input, float level);
+  // A count that goes up whenever an input may have come or gone (NULL: the backend is never told). The layer
+  // looks at it a few times a second while the game listens for its device list's changes.
+  unsigned (*changes)(void);
 } dw_audio_backend;
 void dw_audio_set_backend(const dw_audio_backend *backend);
 // The game's side of the output, where there is one (linux/src/audio_glue.c; none in a test of the layer alone):

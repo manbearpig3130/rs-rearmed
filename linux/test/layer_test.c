@@ -455,6 +455,10 @@ static void *g_capture_ctx;
 static uint32_t g_capture_frames;
 static int g_capture_stopped;
 
+static int g_only_cable;       // the other devices pulled out
+static unsigned g_changes;     // what the backend says of that: a count that goes up
+static unsigned backend_changes(void) { return __atomic_load_n(&g_changes, __ATOMIC_RELAXED); }
+
 static int backend_inputs(dw_audio_input *list, int max) {
   if (max < 1) return 0;
   memset(&list[0], 0, sizeof list[0]);
@@ -463,7 +467,7 @@ static int backend_inputs(dw_audio_input *list, int max) {
   strcpy(list[0].uid, "alsa_input.test-cable");
   strcpy(list[0].model, "Rocksmith USB Guitar Adapter:12BA:00FF");
   list[0].channels = 1, list[0].usb = 1, list[0].card = 2;
-  if (max < 2) return 1;
+  if (max < 2 || g_only_cable) return 1;
   memset(&list[1], 0, sizeof list[1]);
   strcpy(list[1].name, "An Interface");
   strcpy(list[1].uid, "alsa_input.test-interface");
@@ -508,11 +512,20 @@ static int io_proc(uint32_t device, const void *now, const void *input, const vo
   return 0;
 }
 
+// The game's listener for its device list: the system object, one address, the list's.
+static int g_told;
+static int devices_changed(uint32_t object, uint32_t count, const void *addresses, void *client) {
+  const uint32_t *a = addresses;
+  if (object == 1 && count == 1 && a[0] == ((uint32_t)'d' << 24 | 'e' << 16 | 'v' << 8 | '#') && client == &g_told)
+    __atomic_store_n(&g_told, 1, __ATOMIC_RELAXED);
+  return 0;
+}
+
 static void test_audio_input(void) {
   struct address { uint32_t selector, scope, element; };
 #define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
   static const dw_audio_backend backend = {"test", backend_start, backend_stop, backend_inputs, backend_capture_start, backend_capture_stop,
-                                           backend_level_get, backend_level_set};
+                                           backend_level_get, backend_level_set, backend_changes};
   dw_audio_set_backend(&backend);
   int (*get)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *) =
       FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *), "_AudioObjectGetPropertyData");
@@ -689,6 +702,26 @@ static void test_audio_input(void) {
   unsetenv("RS_AUDIO_INPUT");
   unsetenv("RS_AUDIO_INPUT_FILE");
   remove(settings_path);
+  // the game listens for changes of the device list: the interface and the microphone are pulled out while an
+  // input of the interface runs. The game is told, on a thread of the layer's; the input's capture has ended; and
+  // the list is the cable and the output.
+  size = sizeof list;
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 44);
+  int (*listen)(uint32_t, const struct address *, void *, void *) = FN(int (*)(uint32_t, const struct address *, void *, void *), "_AudioObjectAddPropertyListener");
+  CHECK(listen(1, &devices, (void *)devices_changed, &g_told) == 0);
+  CHECK(FN(int (*)(uint32_t, void *, void *, void **), "_AudioDeviceCreateIOProcID")(list[3], (void *)io_proc, &g_io_calls, &proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(list[3], proc_id) == 0);
+  int stopped_before = g_capture_stopped;
+  g_only_cable = 1;
+  __atomic_add_fetch(&g_changes, 1, __ATOMIC_RELAXED);
+  for (int i = 0; i < 60 && !__atomic_load_n(&g_told, __ATOMIC_RELAXED); i++) usleep(100000);
+  CHECK(__atomic_load_n(&g_told, __ATOMIC_RELAXED) == 1);
+  CHECK(g_capture_stopped == stopped_before + 1);
+  size = sizeof list;
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 8 && list[0] == cable);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(0x110 + 3, proc_id) == (int)CC('!', 'o', 'b', 'j'));  // gone: no device
+  CHECK(FN(int (*)(uint32_t, const struct address *, void *, void *), "_AudioObjectRemovePropertyListener")(1, &devices, (void *)devices_changed, &g_told) == 0);
+  g_only_cable = 0;
   char mark[256];
   snprintf(mark, sizeof mark, "%s/input-level-calibrated", home);
   CHECK(access(mark, F_OK) == 0);  // calibration was seen, and kept
