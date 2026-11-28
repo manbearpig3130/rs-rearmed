@@ -70,8 +70,9 @@ def cstr(b, i):
 
 
 def binds(stream, segs, lazy):
-    """(address, ordinal, symbol) of every bind in a dyld bind opcode stream. `segs` are the segments' addresses."""
-    i, ordinal, sym, addr = 0, 0, None, 0
+    """(address, ordinal, symbol, addend) of every bind in a dyld bind opcode stream. `segs` are the segments'
+    addresses."""
+    i, ordinal, sym, addr, addend = 0, 0, None, 0, 0
     while i < len(stream):
         op, imm = stream[i] & 0xf0, stream[i] & 0x0f
         i += 1
@@ -88,10 +89,17 @@ def binds(stream, segs, lazy):
             sym, i = cstr(stream, i)
         elif op == 0x50:  # SET_TYPE_IMM
             pass
-        elif op == 0x60:  # SET_ADDEND_SLEB: the value is not needed here
-            while stream[i] & 0x80:
+        elif op == 0x60:  # SET_ADDEND_SLEB
+            addend, shift = 0, 0
+            while True:
+                c = stream[i]
                 i += 1
-            i += 1
+                addend |= (c & 0x7f) << shift
+                shift += 7
+                if not c & 0x80:
+                    if c & 0x40:
+                        addend -= 1 << shift
+                    break
         elif op == 0x70:  # SET_SEGMENT_AND_OFFSET_ULEB
             off, i = uleb(stream, i)
             addr = segs[imm] + off
@@ -99,20 +107,20 @@ def binds(stream, segs, lazy):
             off, i = uleb(stream, i)
             addr = (addr + off) & (2 ** 64 - 1)
         elif op == 0x90:  # DO_BIND
-            yield addr, ordinal, sym
+            yield addr, ordinal, sym, addend
             addr += 8
         elif op == 0xa0:  # DO_BIND_ADD_ADDR_ULEB
-            yield addr, ordinal, sym
+            yield addr, ordinal, sym, addend
             off, i = uleb(stream, i)
             addr = (addr + 8 + off) & (2 ** 64 - 1)
         elif op == 0xb0:  # DO_BIND_ADD_ADDR_IMM_SCALED
-            yield addr, ordinal, sym
+            yield addr, ordinal, sym, addend
             addr += 8 + imm * 8
         elif op == 0xc0:  # DO_BIND_ULEB_TIMES_SKIPPING_ULEB
             n, i = uleb(stream, i)
             skip, i = uleb(stream, i)
             for _ in range(n):
-                yield addr, ordinal, sym
+                yield addr, ordinal, sym, addend
                 addr += 8 + skip
         else:
             raise Failure("unknown bind opcode 0x%02x" % (op | imm))
@@ -181,7 +189,7 @@ def read_image(path):
     # copy (a weak instance of inline C++). One a library has too (operator new) is in the other two as well.
     out = {}
     for stream_off, stream_size, lazy in ((bind_off, bind_size, False), (lazy_off, lazy_size, True)):
-        for addr, ordinal, sym in binds(data[stream_off:stream_off + stream_size], segs, lazy):
+        for _, ordinal, sym, _ in binds(data[stream_off:stream_off + stream_size], segs, lazy):
             if 1 <= ordinal <= len(dylibs):
                 out[(dylibs[ordinal - 1], sym)] = "call" if sym in called else "data"
     return out

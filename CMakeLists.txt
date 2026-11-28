@@ -94,4 +94,7 @@ if(Python3_FOUND)
   # The Linux port's table of what the Mac game imports from macOS (linux/darwin-imports.tsv): the census on a
   # made-up Mach-O, and the table against the decrypted image when there is one.
   add_test(NAME linux.imports COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/test_import_census.py)
+  # The game's own code run untranslated (linux/first_run.py): its tables anywhere; a made-up image and, when there
+  # is one, the decrypted image's initializers where the process is x86-64.
+  add_test(NAME linux.first_run COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/test_first_run.py)
 endif()

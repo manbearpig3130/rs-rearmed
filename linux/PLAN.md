@@ -14,9 +14,17 @@ page is what to do about it, in what order, and what has been done. The editions
   ([how](FINDINGS.md#how-this-was-found)).
 - **The game**: the Mac game first. Learn & Play is step 6, and would be written without a run: it is not owned
   where this work is done.
-- **The machines in mind**: for arm64 an Apple silicon Mac with Fedora Asahi Remix, not at hand yet (steps 0 and 1
-  do not need it); for x86-64 a desktop with Arch Linux and an NVIDIA card. Neither is driven from where this is
-  written: each step comes with a script that builds, runs its check and says what it found.
+- **Asked for** (2026-11-27, the project's issue 18): a Linux build, by a player on Bazzite with KDE, as an
+  AppImage.
+- **The machines in mind**: for x86-64 a PC with Bazzite, the image-based Fedora the request came from; for arm64
+  an Apple silicon Mac with Fedora Asahi Remix. Neither is at hand yet where this is written: each step comes
+  with a script that runs its check and says what it found.
+- **The first run** (2026-11-28): `first_run.py` maps the image, answers its imports and runs its 3,487 static
+  initializers in a Python process, with nothing built. In an Intel process on a Mac, against macOS's own
+  libraries, all of them run, and they call 16 imports: 11 the table has as `same`, and five more
+  (`pthread_mutexattr_settype`, `sched_get_priority_min` and `max`, `__bzero`, `pthread_key_create`), which
+  have stand-ins in the script. The same rule as Linux's, tried on the Mac's libraries, gets through too. Not
+  yet run on Linux ([X0](#x0-the-first-run-with-nothing-built)).
 - **x86-64** (2026-11-26): the Mac game's code can run there as it is, and the translated C also passes a compile
   check for it ([X86-64.md](X86-64.md)). Proposed to come first ([below](#two-hosts-one-order)).
 
@@ -42,6 +50,23 @@ be put off, or avoided by translating there too.
 ## x86-64
 
 [What differs](X86-64.md). Each step ends in something that runs.
+
+### X0. The first run, with nothing built
+
+On the machine itself, with Python and Steam alone:
+
+- **The game's files**: Steam's console (`steam://open/console`, or Steam started with `-console`) and
+  `download_depot 221680 221682 2035751420671775739`, the Mac game's depot at the build the tables are for
+  (`tools/targets/mac-x64/target.toml`): 6.9 GB. Steam says where it put it, or that the account's license lacks
+  the depot.
+- **The image**: `python3 tools/steamless/decrypt.py --game <that folder>`.
+- **The machine**: `python3 linux/first_run.py --machine` says what the open questions ask: the image's address
+  free, the 259 `same` imports in the host's libraries, what OpenGL context EGL gives and with which of the game's
+  extensions, PipeWire and its clock, Steam's folders, FUSE for an AppImage, what there is to build with.
+- **The run**: `python3 linux/first_run.py`. Every import is counted; one that nothing answers stops the run and
+  is named.
+
+Done when: all 3,487 initializers run on x86-64 Linux, and the machine's report is in hand.
 
 ### X1. The game's initializers run
 
@@ -74,7 +99,15 @@ against the same machine's Proton route as well.
 ### X4. Install and play
 
 [arm64's step 4](#4-install-and-play-from-a-clean-machine), with Steam at hand: the depot through its console or
-`steamcmd`. No build of the game: the install decrypts the image and builds the small native part.
+`steamcmd`. No build of the game: the install decrypts the image.
+
+**As an AppImage**, as asked. Run untranslated, the program holds none of the game's code: the loader, the Darwin
+layer, the shell, the shims and the tools. So unlike a translated app it can be a download, made once, and the
+player's part is the game's files from their own Steam. It is built as a folder that runs from wherever it is
+(its libraries beside it, nothing installed), and the AppImage is that folder packed; a plain archive of the
+same folder serves a system without FUSE, or one that drops AppImages. The host's C library, libstdc++, OpenGL
+driver and PipeWire are used, not carried. On an image-based system such as Bazzite the build itself happens in
+a container (distrobox), since the host has no compiler.
 
 ### X5. Fixes and mods
 
@@ -200,8 +233,13 @@ To find out:
 4. **Which imports a session reaches** (step 0), and whether the two locale calls and the Ethernet address read
    are among them.
 5. **The cable's name** as ALSA gives it, against the name the game looks for.
-6. **x86-64**: is 0x100000000 free in a Linux process as expected; can LLVM's Mach-O linker make the test programs
-   with no macOS SDK; how fast is the translated game there against the original.
+6. **x86-64**: is 0x100000000 free in a Linux process as expected, and may memory be made executable there
+   (`first_run.py --machine` asks both); can LLVM's Mach-O linker make the test programs with no macOS SDK; how
+   fast is the translated game there against the original.
+14. **Who can download the Mac depot.** The game on Steam is one app with a Windows and a Mac depot, and an
+    account that has it for the Mac has both; whether every account that bought it for Windows does is for the
+    console to say (`missing license for depot`). Learn & Play's license has no Mac download
+    ([Windows install](../docs/windows/INSTALL.md)), so its owners are not served by this port.
 
 To decide:
 
@@ -270,6 +308,10 @@ Proposed; none is final before the step that tests it.
   one source; translation there stays possible and is checked to compile.
 - **x86-64 before arm64**, as the proving ground for what both share.
 - **No Vulkan backend on either CPU**; Zink is the way out where a driver lacks the compatibility profile.
+- **The Mac game on Linux too, not the Windows one.** The tables, hook points and fixes are this image's; its code
+  is 64-bit and runs on an x86-64 Linux as it is; what it asks of the system is mostly the C library. The Windows
+  games are 32-bit programs that ask for Windows, which is Wine's work, and Proton does it today.
+- **x86-64 ships as an AppImage** made from a folder that runs anywhere, with none of the game in it.
 
 ## For the maintainer
 
@@ -292,3 +334,10 @@ Proposed; none is final before the step that tests it.
   counted its instructions (no system call, segment register or AVX; 4 KB segments; DWARF unwind tables); read the
   harness's loader; counted the edits and mid points by form and the overrides by purpose. Wrote `X86-64.md` and
   the x86-64 steps here. Next, if x86-64 goes first: X1's loader and the layer's first cut, with a script to run it.
+- **2026-11-28.** A Linux build was asked for (issue 18: Bazzite, an AppImage), so x86-64 goes first. Wrote
+  `first_run.py` and its test: the image mapped, bound and its initializers run in a Python process, each import
+  counted; and `--machine`, the report of what the plan asks of a machine. Run on a Mac in an Intel process:
+  3,487 of 3,487 initializers, 16 imports called (11 `same`, 5 with stand-ins); with Linux's rule on the Mac's
+  libraries the same; an import with no answer stops it by name. The rune table the script makes for
+  `_DefaultRuneLocale` equals macOS's own for all 256 characters, and macOS gives 15 and 47 as the priority range
+  of every policy. Next: X0 on a Bazzite machine.

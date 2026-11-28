@@ -14,6 +14,7 @@ tool. The work is on the branches `port/linux-arm64` and, on top of it, `port/li
 | [X86-64.md](X86-64.md) | what differs on x86-64: the game's code runs as it is, and what that takes |
 | [PLAN.md](PLAN.md) | the steps, what each proves and needs, the open questions, the risks, and a log of what was done |
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
+| `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 
 ## In short
 
@@ -54,6 +55,18 @@ tool. The work is on the branches `port/linux-arm64` and, on top of it, `port/li
 - **A good part can be done before a Linux machine is at hand**: counting which imports a real session reaches
   (on the Mac), and everything up to the game's 3,487 static initializers running, which needs no window and no
   sound (any arm64 Linux, a virtual machine included).
+
+## The first run
+
+```sh
+python3 linux/first_run.py --machine      # what this machine has of what the plan asks (Linux)
+python3 linux/first_run.py                # the game's own code, untranslated: its 3,487 initializers run, its imports counted
+arch -x86_64 /usr/bin/python3 linux/first_run.py   # the same on a Mac, against macOS's own libraries: the reference
+python3 linux/test_first_run.py           # its test (ctest: linux.first_run)
+```
+
+Nothing is built or installed: the image is mapped and run in the Python process. It needs an x86-64 process and
+the decrypted image ([PLAN.md](PLAN.md#x0-the-first-run-with-nothing-built) says how to get it on Linux).
 
 ## The census
 

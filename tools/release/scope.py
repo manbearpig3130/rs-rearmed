@@ -74,7 +74,8 @@ SUITES = {
     "ct.bink":       ("Bink", "ctest", r"^bink\."),
     "ct.game":       ("the game libraries", "ctest", r"^game\."),
     "ct.shims":      ("the shims' architectures and names", "ctest", r"^(shim|libstdcxx)\."),
-    "linux":         ("the Linux port's table of the Mac game's imports", "cmd", "{py} linux/test_import_census.py"),
+    "linux":         ("the Linux port's table of the Mac game's imports, and its first run", "cmd",
+                      "{py} linux/test_import_census.py && {py} linux/test_first_run.py"),
 }
 
 RECOMP = ("hooks", "inner64", "inner32", "hand32")
