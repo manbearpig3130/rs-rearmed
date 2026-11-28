@@ -112,11 +112,11 @@ OPTIONS = (
            "An unreadable output-only device can't end the device scan. Off: as the original.", toggle(True), AUDIO, True,
            "no"),
     Option("RS_FPS", "Frame rate", "Frames per second; a fixed rate turns vsync off. Empty: follows the display.",
-           text(int_range(1, 1000), "60"), PICTURE, False, "soon"),
+           text(int_range(1, 1000), "60"), PICTURE, False, "yes"),
     Option("RS_WINDOW_ANY_SHAPE", "Window takes any shape", "Off: 16:9 with bars, as on Windows.", toggle(True), PICTURE,
-           False, "soon"),
+           False, "yes"),
     Option("RS_GL_MTENGINE", "Multithreaded GL engine", "OpenGL only, off by default. On: Apple's multithreaded engine.",
-           toggle(False), PICTURE, True, "no"),
+           toggle(False), PICTURE, True, "yes"),
     Option("RS_METAL_RETINA", "Full Retina resolution",
            "Renders every pixel, about 4x the GPU work. Off: scaled up with MetalFX.", toggle(False), PICTURE, False, "no"),
     Option("RS_METAL_SCALE", "Render scale",
@@ -139,7 +139,7 @@ OPTIONS = (
            "Apple's Metal HUD over the game (macOS 13 and later): frame rate, frame times, GPU memory.", toggle(False),
            PICTURE, False, "no"),
     Option("RS_FULLSCREEN", "Window mode", "Whatever the game's setting, or forced.",
-           choice(("Default (the game's setting)", ""), ("Window", "0"), ("Full screen", "1")), PICTURE, False, "soon"),
+           choice(("Default (the game's setting)", ""), ("Window", "0"), ("Full screen", "1")), PICTURE, False, "yes"),
     Option("RS_D3D9_DISPLAY", "Desktop size", "As in 1920x1080. Empty: the screen's.",
            text(full_match(r"[0-9]+x[0-9]+"), "1920x1080"), PICTURE, True, "no"),
     Option("RS_STEAM_DLC", "The game's DLC list (for tests)",
@@ -167,7 +167,10 @@ OPTIONS = (
 # Where a detail's words are the Mac's: the same switch in Linux's.
 LINUX_DETAIL = {
     "RS_AUDIO_FRAMES": "Frames per callback asked of PipeWire, which may give another size. Default 256.",
-    "RS_WINDOW_ANY_SHAPE": "Off: 16:9 with bars, as on Windows.",
+    "RS_WINDOW_ANY_SHAPE": "Off: a window keeps 16:9, as the original game's.",
+    "RS_GL_MTENGINE": "Off by default. On: Mesa's multithreaded OpenGL, the drawing calls on a thread of the driver's.",
+    "RS_FULLSCREEN": "Whatever the game's Windowed Mode setting, or forced at each start. F11 or Alt+Enter changes it "
+                     "while the game runs.",
 }
 GROUPS = (AUDIO, PICTURE, SONGS, STARTUP)
 MOD_KEYS = tuple(m.key for m in MODS)

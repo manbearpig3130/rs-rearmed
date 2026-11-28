@@ -259,6 +259,24 @@ class Picture(unittest.TestCase):
             seen.append((n, round(light, 2), round(dark, 3)))
         self.assertTrue(any(light > 0.5 and dark > 0.01 for _, light, dark in seen), seen)
 
+    def test_a_fixed_frame_rate_and_the_windows_switches(self):
+        """RS_FPS: the frames start on the shell's clock, 30 a second here, whatever the display's rate. With it
+        the other switches of the installer's Picture group, which change nothing a run without a display shows
+        but must not stop one: a forced window mode, the 16:9 lock, Mesa's multithreaded OpenGL."""
+        if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
+            self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
+        import time
+        home = os.path.join(self.tmp.name, "home3")
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen",
+                   RS_AUDIO="silent", RS_FPS="30", RS_FULLSCREEN="0", RS_WINDOW_ANY_SHAPE="0", RS_GL_MTENGINE="1")
+        start = time.monotonic()
+        r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "150"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        took = time.monotonic() - start
+        self.assertEqual(r.returncode, 0, r.stdout.decode() + r.stderr.decode())
+        self.assertIn("150 frames", r.stderr.decode())
+        self.assertGreater(took, 149 / 30.0 - 0.2)  # (at the display's 60 a second it is half that)
+
     def test_enter_on_the_title_screen_goes_past_the_sign_in(self):
         """The online services are replaced by the offline ones (nine game functions, patched at their entries):
         Enter on the title screen leads to the profiles, not to a sign-in dialog, and nothing reaches a network."""

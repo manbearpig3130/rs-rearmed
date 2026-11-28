@@ -44,7 +44,7 @@ class TheMacsLists(unittest.TestCase):
     def test_what_is_only_learn_and_plays_or_apples_is_not_called_there(self):
         editions = dict(re.findall(r'OptionSpec\(key: "(\w+)".*?editions: "(\w+)"', self.swift, re.S))
         for o in rs_settings.OPTIONS:
-            if o.key.startswith(("RS_METAL_", "RS_GL_", "RS_D3D9_")):
+            if o.key.startswith(("RS_METAL_", "RS_D3D9_")):
                 self.assertEqual(o.linux, "no", o.key)
             if editions[o.key] == "lp" and o.key != "RS_FULLSCREEN":  # (Linux has a window mode to choose too)
                 self.assertEqual(o.linux, "no", o.key)

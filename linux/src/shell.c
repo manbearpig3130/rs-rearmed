@@ -3,7 +3,10 @@
 // seam to the engine (tools/ws7/recomp/app/seam_platform.c), so what the engine is told is what the Mac app tells it:
 // macOS key codes and Cocoa's characters, pointer positions from the bottom left, one frame a refresh.
 //
-// So far: one thread makes the context, starts the game and runs its frames; windowed only.
+// One thread makes the context, starts the game and runs its frames. The window's mode is the engine's, as on the
+// Mac (its Visual Settings' Windowed Mode, kept in Rocksmith.ini), which F11 or Alt+Enter turns over as the Mac's
+// keys do; a scripted run (--frames, --size) stays the window it asked for. The switches of the installer's
+// Picture group that are not Metal's are here: RS_FULLSCREEN, RS_WINDOW_ANY_SHAPE, RS_FPS, RS_GL_MTENGINE.
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +14,7 @@
 
 #include "dw.h"
 #include "rsl.h"
+#include "rsp_fps.h"
 #include "rsp_platform.h"
 #include "seam.h"
 
@@ -179,7 +183,31 @@ static void tell_display_modes(SDL_Window *window) {
   if (count) dw_display_set_modes(modes, count);
 }
 
+// RS_WINDOW_ANY_SHAPE, on unless 0, as the Mac shell reads it: a window takes any shape, and the game follows it.
+// Off, a window keeps 16:9, the original's only shape for one.
+static int window_any_shape(void) {
+  const char *e = getenv("RS_WINDOW_ANY_SHAPE");
+  return !(e && *e && strchr("0nNfF", e[0]));
+}
+
+// RS_FULLSCREEN (the installer's Window mode): 0 a window, 1 full screen, whatever the game's setting; -1 without.
+static int window_mode_forced(void) {
+  const char *e = getenv("RS_FULLSCREEN");
+  return e && !strcmp(e, "0") ? 0 : e && !strcmp(e, "1") ? 1 : -1;
+}
+
+// The refresh rate of the display the window is on, for the frames a swap does not hold to it; 60 where it is
+// not told (no display).
+static double display_refresh(SDL_Window *window) {
+  const SDL_DisplayMode *m = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+  return m && m->refresh_rate >= 20 && m->refresh_rate <= 1000 ? (double)m->refresh_rate : 60.0;
+}
+
 int rsl_shell_run(const rsl_shell_options *opt) {
+  // RS_GL_MTENGINE=1 (Adv Display Settings' Multithreaded GL Engine): Mesa's own, its OpenGL calls made on a
+  // thread of the driver's. Mesa reads the switch when the context is made.
+  const char *mt = getenv("RS_GL_MTENGINE");
+  if (mt && !strcmp(mt, "1")) setenv("mesa_glthread", "true", 0);
   // One way to an OpenGL context on X11 and Wayland alike: EGL, which the renderer's library asks for the
   // current context (linux/gl/system_gl.c).
   SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
@@ -207,7 +235,7 @@ int rsl_shell_run(const rsl_shell_options *opt) {
     return 1;
   }
   SDL_SetWindowMinimumSize(window, 800, 600);
-  SDL_GL_SetSwapInterval(1);
+  if (!window_any_shape()) SDL_SetWindowAspectRatio(window, 16.0f / 9.0f, 16.0f / 9.0f);
   tell_display_modes(window);
 
   // The engine behind the hooks, and its `NSOpenGLContext`: the context as the renderer's library knows it.
@@ -223,12 +251,30 @@ int rsl_shell_run(const rsl_shell_options *opt) {
     return 1;
   }
   rsp_set_focus(1);
-  rsp_set_display_mode(0, w, h);
+  // The window's mode: the engine's own setting, read from its Rocksmith.ini at the start; RS_FULLSCREEN's; a
+  // window for a scripted run, whose pictures are of the size it asked for.
+  int scripted = opt->frames > 0 || opt->width > 0, forced = window_mode_forced();
+  rsp_set_display_mode(forced >= 0 ? forced : scripted ? 0 : rsp_is_fullscreen(), w, h);
 
-  int done = 0;
+  int done = 0, in_fullscreen = 0, swap = -1, pointer = 1;
+  int fps = rsp_fps();  // RS_FPS: frames start on a clock of ours, and are not held for the display
+  uint64_t fps_next = 0;
+  double refresh = display_refresh(window), last_input = (double)SDL_GetTicksNS() / 1e9;
   long frame = 0;
   Uint64 last = SDL_GetTicksNS();
   while (!done) {
+    // The window follows the engine's mode, as the Mac shell's timer has it; the size that comes of it is told
+    // to the engine when the window has it (the pixel size's event).
+    int engine_fullscreen = rsp_is_fullscreen();
+    if (engine_fullscreen != in_fullscreen) {
+      in_fullscreen = engine_fullscreen;
+      SDL_SetWindowFullscreen(window, in_fullscreen != 0);
+    }
+    int want_swap = fps || rsp_no_vsync() ? 0 : 1;
+    if (want_swap != swap) {
+      swap = want_swap;
+      SDL_GL_SetSwapInterval(swap);
+    }
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
       switch (e.type) {
@@ -242,11 +288,26 @@ int rsl_shell_run(const rsl_shell_options *opt) {
           w = e.window.data1, h = e.window.data2;
           rsp_set_display_mode(rsp_is_fullscreen(), w, h);
           break;
+        // The desktop's own way into and out of full screen (a window rule, its shortcut): the engine is told.
+        case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+        case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+          in_fullscreen = e.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN;
+          if (rsp_is_fullscreen() != in_fullscreen) rsp_set_display_mode(in_fullscreen, w, h);
+          break;
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED: refresh = display_refresh(window); break;
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
+          // F11 and Alt+Enter turn full screen over, as the Mac's keys for it do (rsp_is_fullscreen_toggle), and
+          // are not the game's.
+          if (e.key.scancode == SDL_SCANCODE_F11 ||
+              ((e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER) && (e.key.mod & SDL_KMOD_ALT))) {
+            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) rsp_set_display_mode(!rsp_is_fullscreen(), w, h);
+            break;
+          }
           post_key(e.key.scancode, e.key.mod, e.type == SDL_EVENT_KEY_DOWN);
           break;
         case SDL_EVENT_MOUSE_MOTION:
+          last_input = (double)SDL_GetTicksNS() / 1e9;
           rsp_post_input(RSP_EV_MOUSEMOVE, rsp_mouse_engine_coord(e.motion.x), rsp_mouse_engine_coord((double)h - e.motion.y));
           break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -263,6 +324,11 @@ int rsl_shell_run(const rsl_shell_options *opt) {
         default: break;
       }
     }
+    // The pointer goes when it has rested, and comes back when it moves, as on the Mac.
+    int act = rsp_cursor_policy((double)SDL_GetTicksNS() / 1e9, last_input, &pointer);
+    if (act < 0) SDL_HideCursor();
+    else if (act > 0) SDL_ShowCursor();
+    if (fps) rsp_fps_wait(&fps_next, 1000000000ull / (uint64_t)fps);
     play_script(frame + 1);
     done = rsp_game_frame();
     frame++;
@@ -275,9 +341,10 @@ int rsl_shell_run(const rsl_shell_options *opt) {
     }
     SDL_GL_SwapWindow(window);
     // One frame a refresh. Where the swap does not wait for one (no display, a compositor that does not hold
-    // it), the loop keeps to 60 a second itself: the game's clock is the real one.
-    Uint64 now = SDL_GetTicksNS();
-    if (now - last < 15000000ull) SDL_DelayNS(16666667ull - (now - last));
+    // it, vertical sync off in the game), the loop keeps to the display's rate itself: the game's clock is the
+    // real one. A fixed rate (RS_FPS) has waited for its frame's start already.
+    Uint64 now = SDL_GetTicksNS(), period = (Uint64)(1e9 / refresh);
+    if (!fps && now - last < period * 8 / 10) SDL_DelayPrecise(period - (now - last));
     last = SDL_GetTicksNS();
     if (opt->frames > 0 && frame >= opt->frames) break;
   }

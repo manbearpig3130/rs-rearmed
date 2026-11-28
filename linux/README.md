@@ -10,7 +10,7 @@ input through PipeWire and its videos (on Bazzite, 2026-11-28: a player calibrat
 song), and the Mac app's built-in fixes module whole (no intro screens, the batched DLC mounting, the frame-rate
 fixes). The game's files come from the player's own Steam: `install/rs_install.py` has Steam download the Mac
 game and the account's DLC, makes RS Re-ARMed's copy and starts the game ([below](#set-up-and-play-x86-64)).
-Not there yet: mods, full screen, an audio interface's channels as separate inputs, and
+Not there yet: mods, an audio interface's channels as separate inputs, and
 anything for arm64, which is investigated only.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
@@ -172,6 +172,8 @@ build/linux/rs-rearmed --run GAME          # the game in a window
 SDL_VIDEODRIVER=offscreen build/linux/rs-rearmed --run GAME --frames 600 --picture f --picture-every 60
                                            # with no display: ten seconds, a frame saved every second (f.<n>.ppm)
 #   --keys 1300:return,1500:down           keys typed by a script, each at its frame
+#   F11, Alt+Enter                         full screen and back; the game's own Windowed Mode setting is followed
+#   RS_FULLSCREEN=0|1  RS_FPS=N  RS_WINDOW_ANY_SHAPE=0  RS_GL_MTENGINE=1    the installer's Picture switches
 #   RS_AUDIO=silent                        the game's sound asked for and dropped (PipeWire is used where it was
 #                                          there to build with); RS_AUDIO_LOG=1 logs the audio layer's questions
 python3 linux/test_loader.py               # its test (ctest: linux.loader)

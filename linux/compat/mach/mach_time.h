@@ -20,4 +20,11 @@ static inline uint64_t mach_absolute_time(void) {
   return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
 }
 
+// Sleeps until the clock reads DEADLINE (mach_absolute_time's units: here nanoseconds).
+static inline int mach_wait_until(uint64_t deadline) {
+  struct timespec t = {(time_t)(deadline / 1000000000ull), (long)(deadline % 1000000000ull)};
+  while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL) == 4) {}  // (EINTR: a signal; the deadline stands)
+  return 0;
+}
+
 #endif
