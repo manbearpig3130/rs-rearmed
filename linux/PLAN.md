@@ -787,6 +787,17 @@ Proposed; none is final before the step that tests it.
   against a Mac framework (Sunlight, Secondary Monitor, Override Input Volume), the ones that need the Metal
   renderer's render API (note and highway colours), the helpers that are Mac programs (Song Stems, Tone Host),
   and the mods' settings app.
+- **2026-11-28, the latency measured.** `latency_test.py` runs a second, windowless copy of the game on a copy of
+  the player's folder, between two made-up PipeWire devices (a loopback pair as its input, a null sink as its
+  output), takes it into the Tone Designer with scripted keys, plays clicks into the input and records what the
+  game hears beside what it plays on one clock. On the PC, at audio engine setting 1 (the output 128 frames a
+  call, the ring 256) and PipeWire at 128 frames: **15.6 ms** from the input to the output, the same for every
+  click (15.6 to 15.8 of twelve, three runs). PipeWire's own figures for the interface (a buffer and 64 frames
+  each way) add 8 ms: 23.6 ms, and the converters and USB besides, which nothing in the machine can see. No
+  layer between the game and the sound system is in that: the game's CoreAudio calls are PipeWire streams. Two
+  switches came with it, for a test's devices: `RS_AUDIO_ONLY_INPUT` (the one input listed) and
+  `RS_AUDIO_OUTPUT_NODE` (the output's node; PipeWire's `PIPEWIRE_NODE` sends the inputs' streams there too,
+  which had the game hearing itself). Not tried: smaller buffers than 128, and the same measure on the Mac.
 - **2026-11-28, a real interface.** A mixer with a 12-channel USB input (TC-Helicon Blender) on the Bazzite PC:
   the game lists "Blender channel 1" to "channel 10" and opens them, 128 frames each. An input may have up to 32
   channels now (it was eight; the layer's buffer for what the game hears is the entry's own, not a thread's).

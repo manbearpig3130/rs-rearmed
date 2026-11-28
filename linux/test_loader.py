@@ -22,6 +22,7 @@ sys.path.insert(0, HERE)
 import gen_edits  # noqa: E402
 import gen_import_table  # noqa: E402
 import gen_mids  # noqa: E402
+import latency_test  # noqa: E402
 import import_census as census  # noqa: E402
 import test_first_run as made_up  # noqa: E402
 
@@ -97,6 +98,34 @@ class Table(unittest.TestCase):
         real = gen_edits.made()
         self.assertGreater(real.count("\nEDIT("), 600)
         self.assertEqual(real.count("\nEDIT("), real.count("\nBYTES("))
+
+    def test_the_latency_tools_reading_of_a_recording(self):
+        """latency_test.py's clicks, and the delay it reads from a recording of what the game heard beside what it
+        played: here one made up, the clicks 700 samples late and quieter over a little noise."""
+        import random
+        import struct
+        import wave
+        with tempfile.TemporaryDirectory() as d:
+            clicks, recording = os.path.join(d, "clicks.wav"), os.path.join(d, "recording.wav")
+            latency_test.write_clicks(clicks)
+            with wave.open(clicks) as w:
+                n = w.getnframes()
+                mono = struct.unpack("<%dh" % n, w.readframes(n))
+            self.assertEqual(len(latency_test.onsets(mono, max(mono) // 4, 14400)), latency_test.CLICKS)
+            rnd = random.Random(1)
+
+            def save(delay, level):
+                both = []
+                for i in range(n):
+                    both += [mono[i], (mono[i - delay] // level if i >= delay and level else 0) + rnd.randint(-3, 3)]
+                with wave.open(recording, "wb") as w:
+                    w.setnchannels(2), w.setsampwidth(2), w.setframerate(latency_test.RATE)
+                    w.writeframes(struct.pack("<%dh" % (2 * n), *both))
+            save(700, 3)
+            delays, said = latency_test.measure(recording)
+            self.assertEqual(delays, [700] * latency_test.CLICKS, said)
+            save(700, 0)   # a game that plays nothing of what it hears: no delay is made up
+            self.assertEqual(latency_test.measure(recording)[0], [])
 
     def test_the_layer_answers_only_what_the_table_gives_it(self):
         """Every name the layer registers is an import of the table, and not one the table calls the host's own."""

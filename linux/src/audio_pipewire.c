@@ -83,6 +83,10 @@ static int start(double rate, uint32_t frames, dw_audio_render render, void *ctx
   struct pw_properties *props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Playback", PW_KEY_MEDIA_ROLE, "Game",
                                                   PW_KEY_APP_NAME, "Rocksmith 2014", PW_KEY_NODE_NAME, "rs-rearmed",
                                                   PW_KEY_NODE_LATENCY, latency, PW_KEY_NODE_RATE, hz, NULL);
+  // RS_AUDIO_OUTPUT_NODE: the output's node by name, where it is not to be the desktop's default (latency_test.py's
+  // made-up output; PipeWire's own PIPEWIRE_NODE would send the inputs' streams there as well)
+  const char *to = getenv("RS_AUDIO_OUTPUT_NODE");
+  if (to && *to) pw_properties_set(props, PW_KEY_TARGET_OBJECT, to);
   g.stream = pw_stream_new_simple(pw_thread_loop_get_loop(g.loop), "Rocksmith 2014", props, &k_events, NULL);
   if (!g.stream) {
     pw_thread_loop_destroy(g.loop);
@@ -149,6 +153,9 @@ static void node_info(void *data, const struct pw_node_info *info) {
     return;
   }
   if (!cls || strcmp(cls, "Audio/Source") || !uid) return;
+  // RS_AUDIO_ONLY_INPUT: the one input listed, by a part of its node's name (latency_test.py's made-up input)
+  const char *only = getenv("RS_AUDIO_ONLY_INPUT");
+  if (only && *only && !strstr(uid, only)) return;
   dw_audio_input *in = &e.nodes[i].input;
   const char *card = spa_dict_lookup(p, "api.alsa.card.name"), *nick = spa_dict_lookup(p, "node.nick");
   const char *name = card ? card : nick ? nick : spa_dict_lookup(p, "node.description");
