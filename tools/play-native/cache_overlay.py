@@ -748,6 +748,18 @@ MAC_ONLY_OPTIONS = ("rsRenderer", "rsMultithreadedGL")
 LP_MENU_OPTIONS = [o for o in MENU_OPTIONS if o[0] not in MAC_ONLY_OPTIONS]
 
 
+# On Linux the Mac game runs untranslated on OpenGL alone (linux/): its list has the switches that are not Metal's,
+# without the renderer's choice, and the OpenGL engine's row is Mesa's own there (menu_options_common.c leaves the
+# same out; linux/src/shell.c has the three).
+LINUX_OPTIONS = ("rsFrameRate", "rsAnyWindowShape", "rsMultithreadedGL")
+LINUX_TEXT = {"rsMultithreadedGL": "Mesa's multithreaded OpenGL: the game's drawing calls are carried out on a thread "
+                                   "of the driver's own. Takes effect the next time the game starts."}
+LINUX_MENU_OPTIONS = [(o[0], o[1], o[2], o[3], LINUX_TEXT.get(o[0], o[4]), o[5]) for o in MENU_OPTIONS
+                      if o[0] in LINUX_OPTIONS]
+# Which system's list the Mac game gets: this one's (a test sets it).
+HOST = "linux" if sys.platform.startswith("linux") else "mac"
+
+
 def edit_options(text, options=MENU_OPTIONS):
     """Adv Display Settings' definition with RS Re-ARMed's buttons (OPTIONS) first among its own, laid out as
     the game's; None when it has them already or has no such menu."""
@@ -789,6 +801,16 @@ def edit_maingame(text, options=MENU_OPTIONS):
     out = edit_notice(text) or text
     out = edit_text_rows(out, options) or out
     return None if out == text else out
+
+
+def edit_options_linux(text):
+    """Linux's edit_options: its own list (LINUX_MENU_OPTIONS)."""
+    return edit_options(text, LINUX_MENU_OPTIONS)
+
+
+def edit_maingame_linux(text):
+    """Linux's edit_maingame: the rows of its own list (LINUX_MENU_OPTIONS)."""
+    return edit_maingame(text, LINUX_MENU_OPTIONS)
 
 
 def edit_options_lp(text):
@@ -1417,6 +1439,8 @@ MOVIE_EDITS = {DISPLAY_SETTINGS: edit_display_settings}  # a static.psarc movie'
 # Learn & Play's: its own list of RS Re-ARMed's options in Adv Display Settings (LP_MENU_OPTIONS; the native half is
 # win-x86/shims/win32_menu_options.c)
 LP_EDITS = dict(EDITS, **{OPTIONS: edit_options_lp, NOTICES: edit_maingame_lp})
+# The Mac game on Linux: its own list too (LINUX_MENU_OPTIONS; the native half is the Mac's, menu_options.c)
+LINUX_EDITS = dict(EDITS, **{OPTIONS: edit_options_linux, NOTICES: edit_maingame_linux})
 EDITIONS = ("mac", "learn-play")
 
 
@@ -1424,7 +1448,9 @@ def edits_of(edition):
     """(text edits, static.psarc movies' own edits) of EDITION's overlay."""
     if edition not in EDITIONS:
         raise ValueError("no such edition: %s" % edition)
-    return (EDITS, MOVIE_EDITS) if edition == "mac" else (LP_EDITS, MOVIE_EDITS)
+    if edition == "mac":
+        return (LINUX_EDITS if HOST == "linux" else EDITS, MOVIE_EDITS)
+    return (LP_EDITS, MOVIE_EDITS)
 
 
 def edit_file(name, data, edits=EDITS):

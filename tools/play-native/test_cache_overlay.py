@@ -21,6 +21,8 @@ import zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import cache_overlay as co  # noqa: E402
+
+co.HOST = "mac"  # the Mac's lists, on whatever machine this runs; the Linux list has its own test
 import gamefiles  # noqa: E402
 
 # The archives here are made up, and so are their key and IV: the game's own are read from a game (psarc_key.py).
@@ -887,6 +889,43 @@ class Overlay(TmpDir):
         ps = co.Psarc(os.path.join(game, "Update", "patcharchives.psarc"))
         self.assertEqual(ps.read(co.DISPLAY_SETTINGS), co.edit_display_settings(make_display_settings()))
         ps.close()
+
+    def test_linux_options(self):
+        """The Mac game on Linux: OpenGL alone, so its list has no renderer's choice and none of Metal's options,
+        and the OpenGL engine's row is Mesa's."""
+        game = os.path.join(self.tmp, "game")
+        os.makedirs(game)
+        make_cache(os.path.join(game, "cache.psarc"))
+        with open(os.path.join(game, "static.psarc"), "wb") as f:
+            f.write(co.write_psarc([(co.DISPLAY_SETTINGS, make_display_settings())]))
+        with mock.patch.object(co, "HOST", "linux"):
+            names = co.make(game)
+            self.assertRaises(ValueError, co.make, game, "linux")  # (no edition of its own: the Mac game's, here)
+        self.assertIn(co.OPTIONS, names)
+        ps = co.Psarc(os.path.join(game, "Update", "patcharchives.psarc"))
+        inner = {x.lower(): co.SevenZip(ps.read(n)).read(x) for n in ps.names if n.endswith(".7z")
+                 for x in co.SevenZip(ps.read(n)).names()}
+        ps.close()
+        options = inner[co.OPTIONS].decode()
+        self.assertEqual([o[0] for o in co.LINUX_MENU_OPTIONS], ["rsFrameRate", "rsAnyWindowShape", "rsMultithreadedGL"])
+        for o in co.MENU_OPTIONS:
+            self.assertEqual('"%s":' % o[0] in options, o[0] in co.LINUX_OPTIONS, o[0])
+        text = inner[co.NOTICES].decode()
+        self.assertEqual(inner[co.NOTICES], co.edit_maingame(NOTICES, co.LINUX_MENU_OPTIONS).encode())
+        self.assertIn("38918,Mesa's multithreaded OpenGL", text)
+        for word in ("Metal", "METAL", "Apple", "Retina"):
+            self.assertNotIn(word, text[text.index("38911,"):], word)  # in the rows it adds
+
+    def test_the_linux_list_is_the_native_tables_without_metal(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(co.__file__)), "..", "ws7", "recomp", "overrides",
+                               "mods", "menu_options_common.c")) as f:
+            src = f.read()
+        table = src[src.index("rs_menu_option rs_menu_opts[] = {"):]
+        rows = re.findall(r'^\s*\{"(rs\w+)", (NULL|"\w+"), \d, (\w+),', table[:table.index("};")], re.M)
+        self.assertEqual(len(rows), len(co.MENU_OPTIONS))
+        # (rs_menu_opt_here: on Linux, not Metal's and not the renderer's choice, which has no switch)
+        self.assertEqual(tuple(i for i, env, only in rows if only != "METAL" and env != "NULL"), co.LINUX_OPTIONS)
+        self.assertIn("if (LINUX_LIST && (o->only == METAL || !o->env)) return 0;", src)
 
     def test_learn_play_options(self):
         """Learn & Play's overlay: the same edits, with its own list of RS Re-ARMed's options in Adv Display Settings

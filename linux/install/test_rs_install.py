@@ -457,6 +457,26 @@ class Start(Base):
         rs_install.prepare(self.home, self.steam, {"RS_REARMED": "0"})
         self.assertEqual(read(link), "static.psarc")
 
+    def test_a_newer_program_makes_the_menu_overlay_again(self):
+        gamefiles = self.tools()
+        game = self.made()
+        stamp = os.path.join(game, ".rearmed", "overlay-tool")
+        self.assertEqual(read(stamp).strip(), rs_install.overlay_stamp())  # the setup's
+        made = []
+        with mock.patch.object(gamefiles.cache_overlay, "make", lambda g, e: made.append((g, e)) or ["a", "b"]):
+            _, notes = rs_install.prepare(self.home, self.steam, {})
+            self.assertEqual((made, [n for n in notes if "menus" in n]), ([], []))  # the same program: nothing
+            write(stamp, "an older program's\n")
+            _, notes = rs_install.prepare(self.home, self.steam, {})
+            self.assertEqual(made, [(game, "mac")])
+            self.assertIn("[menus] the menu overlay made again by this version (2 files)", notes)
+            rs_install.prepare(self.home, self.steam, {})
+            self.assertEqual(len(made), 1)  # once
+        with mock.patch.object(gamefiles.cache_overlay, "make", side_effect=ValueError("a cache it cannot read")):
+            write(stamp, "an older program's\n")
+            _, notes = rs_install.prepare(self.home, self.steam, {})  # never the start's end
+            self.assertIn("[menus] the menu overlay was not made again: a cache it cannot read", notes)
+
     def test_no_copy_no_start(self):
         with self.assertRaises(rs_install.Failure) as e:
             rs_install.prepare(self.home, self.steam, {})

@@ -13,8 +13,8 @@ page is what to do about it, in what order, and what has been done. The editions
   has calibrated and played a song with the cable (2026-11-28): no crackle, the notes detected, the latency as
   good as they know it. The built-in fixes module runs whole, at hook points and mid points. The game's files are
   set up from the player's Steam, and the game started from them, by `install/rs_install.py`
-  ([X4](#x4-install-and-play)). The title logo is made there too. Not there: mods and edits, full screen, an
-  interface's channels as inputs, anything for arm64.
+  ([X4](#x4-install-and-play)). The title logo is made there too, and the window goes full screen. Not there: mods
+  and edits, an interface's channels as inputs, anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -692,3 +692,16 @@ Proposed; none is final before the step that tests it.
 - **2026-11-28, the installer's window.** `install/rs_gui.py` and `rs_settings.py`; on the Bazzite PC, under a
   display of its own, the window ran an install into a test folder to "RS Re-ARMed is installed", and the
   settings page shows the Mac's switches. `RS_AUDIO_FRAMES` in the audio layer.
+- **2026-11-28, the window's switches.** The shell follows the engine's window mode, as the Mac's does (the
+  game's Windowed Mode setting; F11 and Alt+Enter turn it over; `RS_FULLSCREEN` forces it), keeps a window to
+  16:9 with `RS_WINDOW_ANY_SHAPE=0`, starts frames on its own clock with `RS_FPS`, and hides a resting pointer.
+  A frame a refresh is now the display's own rate where the swap does not hold it, not 60: a 144 Hz screen was
+  held to 60. `RS_GL_MTENGINE=1` is Mesa's multithreaded OpenGL (`mesa_glthread`), in the place of Apple's.
+  Checked without a display for the pacing (600 frames: 20 s at 30, 10 s at the default) and on a virtual X
+  display with a window manager for the mode (1600 x 900 full screen, 1280 x 720 as a window).
+- **2026-11-28, Adv Display Settings on Linux.** The game's own four rows and three of ours: Frame Rate, Any
+  Window Shape, Multithreaded GL Engine. The renderer's choice and Metal's eight rows are not in the Linux list
+  (`cache_overlay.py` LINUX_MENU_OPTIONS for the menu's definition; `menu_options_common.c` for the fixes'
+  half). A start with a newer program makes the copy's menu overlay again (its tool's hash is kept beside it),
+  where the Mac's installer would have. Candidates for rows of their own later, each needing work in the
+  renderer's OpenGL backend: anti-aliasing, texture filtering, a render scale.

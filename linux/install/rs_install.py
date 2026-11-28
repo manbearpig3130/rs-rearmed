@@ -415,6 +415,45 @@ def make_title_logo(home, say):
         say("note: the title logo was not made (%s). The game shows its own." % e)
 
 
+def overlay_stamp():
+    """What stands for the tool that makes the menu overlay: its own contents' hash."""
+    import hashlib
+    try:
+        with open(os.path.join(TOOLS, "play-native", "cache_overlay.py"), "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except (OSError, TypeError):
+        return ""
+
+
+def menu_overlay(home, made=False):
+    """The copy's menu overlay (Update/patcharchives.psarc: the menus' added rows) is the work of this program's
+    cache_overlay.py: a newer program, as a new AppImage is, makes it again at the first start, where the Mac
+    installer's Build & Install would have. MADE: a setup or refresh has just made it. Returns a note or None."""
+    game = os.path.join(home, "game")
+    path, stamp = os.path.join(game, ".rearmed", "overlay-tool"), overlay_stamp()
+    if not stamp:
+        return None
+    note = None
+    if not made:
+        try:
+            with open(path) as f:
+                if f.read().strip() == stamp:
+                    return None
+        except OSError:
+            pass
+        try:
+            gamefiles, _ = the_tools()
+            if gamefiles.cache_overlay is None:
+                return None
+            names = gamefiles.cache_overlay.make(game, "mac")
+            note = "[menus] the menu overlay made again by this version (%d files)" % len(names)
+        except Exception as e:  # noqa: BLE001  (a cache it cannot read: the game runs without the overlay)
+            return "[menus] the menu overlay was not made again: %s" % e
+    with open(path, "w") as f:
+        f.write(stamp + "\n")
+    return note
+
+
 def setup(args):
     home, steam = home_folder(args.home), steam_folder(args.steam)
     gamefiles, decrypt = the_tools()
@@ -457,6 +496,7 @@ def setup(args):
     except gamefiles.Failure as e:
         raise Failure(str(e), e.code or 1)
     make_title_logo(home, say)
+    menu_overlay(home, made=True)
     say("RS Re-ARMed is set up in %s. Custom songs go in %s." % (home, os.path.join(dest, "dlc")))
     return 0
 
@@ -478,6 +518,7 @@ def refresh(args):
     except gamefiles.Failure as e:
         raise Failure(str(e), e.code or 1)
     make_title_logo(home, progress.say)  # (a new static.psarc took the old one's logo with it: gamefiles)
+    menu_overlay(home, made=True)
     return 0
 
 
@@ -637,6 +678,9 @@ def prepare(home, steam, base=None):
         except OSError as e:
             notes.append("[saves] Steam's saves were not copied: %s" % e)
     no_credentials(home)
+    note = menu_overlay(home)
+    if note:
+        notes.append(note)
     title_logo(game, env)
     write_ini(game, env)
     return env, notes

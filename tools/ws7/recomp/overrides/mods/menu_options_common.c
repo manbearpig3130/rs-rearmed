@@ -40,7 +40,18 @@ typedef rs_menu_option option;
 
 static int g_lp;  // Learn & Play's list
 
-int rs_menu_opt_here(const option *o) { return !(g_lp && o->mac_only); }
+// On Linux the Mac game has OpenGL alone (linux/): the renderer's choice and Metal's options are not in its list
+// (cache_overlay.py, LINUX_MENU_OPTIONS), and the OpenGL engine's row, Mesa's there, is open.
+#ifdef __linux__
+enum { LINUX_LIST = 1 };
+#else
+enum { LINUX_LIST = 0 };
+#endif
+
+int rs_menu_opt_here(const option *o) {
+  if (LINUX_LIST && (o->only == METAL || !o->env)) return 0;
+  return !(g_lp && o->mac_only);
+}
 
 // The game's own compare is in any case (it has "buttons.<id>.states"; a press gives "Buttons.<id>.States").
 option *rs_menu_opt_of_path(const char *path) {
@@ -253,7 +264,7 @@ static int fixed_rate(const option *fps) {
 const char RS_MENU_SESSION[] = "SET FOR THIS SESSION";
 const char *rs_menu_locked(const option *o) {
   const option *renderer = rs_menu_opt_of_id("rsRenderer"), *fps = rs_menu_opt_of_id("rsFrameRate");
-  int r = renderer ? rs_menu_choice(renderer) : METAL - 1;
+  int r = renderer ? rs_menu_choice(renderer) : LINUX_LIST ? OPENGL - 1 : METAL - 1;
   if (o->only && o->only - 1 != r) return o->only == METAL ? "METAL ONLY" : "OPENGL ONLY";
   // (one whose switch has a value it has no choice for, RS_METAL_DRAWABLES=3, stays open: the row is the way to
   // take it out)
