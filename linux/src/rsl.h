@@ -63,6 +63,10 @@ typedef struct {
   const char *keys;       // keys typed by a script: "600:return,900:down" (frame:key)
 } rsl_shell_options;
 int rsl_shell_run(const rsl_shell_options *opt);  // the window, the game's start and its frames; an exit status
+// A mod's colour grade over the shown frame (picture_grade.c); the shell runs it after the overlay, before the swap.
+// rs_picture_grade is the call mods make (by dlsym: it is exported, as the overlay's calls are).
+int rs_picture_grade(const float *cube, int size);
+void rsl_picture_grade_run(int width, int height);
 // A function of one of the project's libraries, by the Mac library's name ("OpenGL") and the function's.
 void *rsl_shim_function(const char *library, const char *name);
 

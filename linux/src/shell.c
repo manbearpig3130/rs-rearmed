@@ -339,6 +339,12 @@ int rsl_shell_run(const rsl_shell_options *opt) {
       SDL_GetWindowSizeInPixels(window, &w, &h);
       rsp_overlay_run(w, h);
     }
+    // A mod's colour grade over all of it (picture_grade.c: rearmed-mods' Sunlight), last before it is shown.
+    if (!done) {
+      int w = 0, h = 0;
+      SDL_GetWindowSizeInPixels(window, &w, &h);
+      rsl_picture_grade_run(w, h);
+    }
     if (opt->picture && opt->picture_every > 0 && frame % opt->picture_every == 0) {
       char path[1024];
       snprintf(path, sizeof path, "%s.%06ld.ppm", opt->picture, frame);

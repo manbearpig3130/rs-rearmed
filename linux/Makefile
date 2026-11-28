@@ -132,7 +132,7 @@ SHELL_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-comment -Wno-
     -fno-strict-aliasing -pthread $(CFLAGS) $(shell pkg-config --cflags sdl3) \
     -DRSL_HAVE_SHELL -Isrc -Idarwin -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) -I$(PLATFORM)/include -I$(PLATFORM)/src -I$(APP)
 SHELL_OBJ = $(OUT)/shell/shell.o $(OUT)/shell/seam_platform.o $(OUT)/shell/rsp_engine.o $(OUT)/shell/rsp_logic.o \
-    $(OUT)/shell/rsp_paths.o $(OUT)/shell/rsp_config.o $(OUT)/shell/rsp_overlay.o
+    $(OUT)/shell/rsp_paths.o $(OUT)/shell/rsp_config.o $(OUT)/shell/rsp_overlay.o $(OUT)/shell/picture_grade.o
 # (rsp_overlay.c, the overlay API for mods, makes its own OpenGL calls in the window's context: the system's library.)
 SDL_LIBS += -lOpenGL
 ALL_CFLAGS_EXTRA = -DRSL_HAVE_SHELL
@@ -157,6 +157,9 @@ $(OUT)/shell/audio_alsa.o: src/audio_alsa.c src/rsl.h
 endif
 endif
 $(OUT)/shell/shell.o: src/shell.c src/rsl.h $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/shell
+	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
+$(OUT)/shell/picture_grade.o: src/picture_grade.c src/rsl.h
 	@mkdir -p $(OUT)/shell
 	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
 $(OUT)/shell/seam_platform.o: $(APP)/seam_platform.c $(OUT)/target/rc_target_names.h
