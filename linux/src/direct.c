@@ -36,19 +36,41 @@ void rs_crypto_dsa_verify(rc_ctx *c) { rsl_sng_verify_original(c); }
 int rsp_renderer_env_given(void) { return 1; }
 
 // A call with the argument registers loaded: rdi the function, rsi six integer arguments, rdx eight SSE ones (64
-// bits each: a float in the low half), rcx where rax, rdx, xmm0 and xmm1 go.
-void rsl_call_with(uint64_t fn, const uint64_t gi[6], const uint64_t dv[8], uint64_t out[4]);
+// bits each: a float in the low half), rcx where rax, rdx, xmm0 and xmm1 go, r8 the arguments that go on the
+// stack and r9 how many (8 bytes each, in argument order: the callee finds the first just above its return
+// address). The stack is kept 16-byte aligned at the call, and al says eight SSE registers may be in use.
+void rsl_call_with(uint64_t fn, const uint64_t gi[6], const uint64_t dv[8], uint64_t out[4], const uint64_t *stack,
+                   uint64_t nstack);
 __asm__(".text\n"
         ".globl rsl_call_with\n"
         ".type rsl_call_with,@function\n"
         "rsl_call_with:\n"
         "  .cfi_startproc\n"
+        "  pushq %rbp\n"
+        "  .cfi_def_cfa_offset 16\n"
+        "  .cfi_offset %rbp, -16\n"
+        "  movq %rsp, %rbp\n"
+        "  .cfi_def_cfa_register %rbp\n"
         "  pushq %rbx\n"
-        "  .cfi_adjust_cfa_offset 8\n"
-        "  .cfi_offset %rbx, -16\n"
+        "  pushq %r12\n"
+        "  .cfi_offset %rbx, -24\n"
+        "  .cfi_offset %r12, -32\n"
         "  movq %rcx, %rbx\n"
         "  movq %rdi, %r11\n"
         "  movq %rsi, %r10\n"
+        "  leaq 1(%r9), %rax\n"   // room for the stack's arguments, an even number of words
+        "  andq $-2, %rax\n"
+        "  shlq $3, %rax\n"
+        "  subq %rax, %rsp\n"
+        "  xorl %eax, %eax\n"
+        "1:\n"
+        "  cmpq %r9, %rax\n"
+        "  jae 2f\n"
+        "  movq (%r8,%rax,8), %r12\n"
+        "  movq %r12, (%rsp,%rax,8)\n"
+        "  incq %rax\n"
+        "  jmp 1b\n"
+        "2:\n"
         "  movq 0(%rdx), %xmm0\n"
         "  movq 8(%rdx), %xmm1\n"
         "  movq 16(%rdx), %xmm2\n"
@@ -69,24 +91,32 @@ __asm__(".text\n"
         "  movq %rdx, 8(%rbx)\n"
         "  movq %xmm0, 16(%rbx)\n"
         "  movq %xmm1, 24(%rbx)\n"
+        "  leaq -16(%rbp), %rsp\n"
+        "  popq %r12\n"
         "  popq %rbx\n"
-        "  .cfi_adjust_cfa_offset -8\n"
-        "  .cfi_restore %rbx\n"
+        "  popq %rbp\n"
+        "  .cfi_def_cfa %rsp, 8\n"
         "  retq\n"
         "  .cfi_endproc\n"
         ".size rsl_call_with, .-rsl_call_with\n");
 
-// Integer arguments ints[0..5] in the argument registers and dbls[0..7] in the SSE ones; out as rc_rt.h says.
-// More than six integer arguments (the rest go on the stack) is not written yet: no caller has them.
+// The general form (rc_rt.h): six integer registers, eight SSE ones, and ns words on the stack in argument order.
+void rc_call_guest_regs(uint64_t fn, const uint64_t gi[6], int ng, const uint64_t dv[8], int nd, const uint64_t *stk,
+                        int ns, uint64_t out[4]) {
+  uint64_t g[6] = {0, 0, 0, 0, 0, 0}, d[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  for (int i = 0; i < ng && i < 6; i++) g[i] = gi[i];
+  for (int i = 0; i < nd && i < 8; i++) d[i] = dv[i];
+  rsl_call_with(fn, g, d, out, stk, ns > 0 ? (uint64_t)ns : 0);
+}
+
+// Integer arguments ints[0..5] in the argument registers and the rest on the stack, as the convention has them;
+// dbls[0..7] in the SSE registers; out as rc_rt.h says. More than eight SSE arguments has no caller, and stops.
 void rc_call_guest_ex(uint64_t fn, const uint64_t *ints, int nint, const uint64_t *dbls, int ndbl, uint64_t out[4]) {
-  if (nint > 6 || ndbl > 8) {
-    fprintf(stderr, "[rs-rearmed] a call into the game with %d integer and %d SSE arguments is not written for this build\n", nint, ndbl);
+  if (ndbl > 8) {
+    fprintf(stderr, "[rs-rearmed] a call into the game with %d SSE arguments is not written for this build\n", ndbl);
     abort();
   }
-  uint64_t gi[6] = {0, 0, 0, 0, 0, 0}, dv[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  for (int i = 0; i < nint; i++) gi[i] = ints[i];
-  for (int i = 0; i < ndbl; i++) dv[i] = dbls[i];
-  rsl_call_with(fn, gi, dv, out);
+  rc_call_guest_regs(fn, ints, nint < 6 ? nint : 6, dbls, ndbl, nint > 6 ? ints + 6 : NULL, nint > 6 ? nint - 6 : 0, out);
 }
 
 uint64_t rc_call_guest(uint64_t fn, const uint64_t *ints, int nint, const uint64_t *dbls, int ndbl, uint64_t *xmm0_out) {

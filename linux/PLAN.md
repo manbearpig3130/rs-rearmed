@@ -650,3 +650,9 @@ Proposed; none is final before the step that tests it.
   Bazzite PC a full setup into a test folder: the game found in Steam's download, 187 DLC fetched through the
   running Steam, the copy cloned, the image decrypted, and the game started from that folder to its profile
   screen. (The real folder waits: a game was running, and the setup refuses then.)
+- **2026-11-28, a crash in the display settings.** The player opened Visual Settings and the game stopped: the
+  fixes' input handlers for those screens hand the game's own handler its eight arguments, and a call into the
+  game passed six (`src/direct.c`). Arguments past the sixth now go on the stack, as the convention has them, and
+  the runtime's general form (`rc_call_guest_regs`) is there too; `test/call_test.c` checks up to twelve, both
+  kinds, the results and the stack's alignment. Checked in the game with scripted keys: both screens open, and
+  their rows move and change.

@@ -91,7 +91,7 @@ class Loader(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.out = os.path.join(cls.tmp.name, "out")
         r = subprocess.run(["make", "-C", HERE, "OUT=" + cls.out, cls.out + "/rs-rearmed", cls.out + "/layer_test",
-                            cls.out + "/libsteam_api.so"],
+                            cls.out + "/call_test", cls.out + "/libsteam_api.so"],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if r.returncode:
             raise AssertionError("make failed:\n" + r.stdout.decode())
@@ -117,6 +117,11 @@ class Loader(unittest.TestCase):
 
     def test_the_layers_own_test(self):
         r = subprocess.run([os.path.join(self.out, "layer_test")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(r.returncode, 0, r.stdout.decode())
+        self.assertIn("all checks passed", r.stdout.decode())
+
+    def test_calls_into_the_game_pass_their_arguments(self):
+        r = subprocess.run([os.path.join(self.out, "call_test")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(r.returncode, 0, r.stdout.decode())
         self.assertIn("all checks passed", r.stdout.decode())
 

@@ -244,6 +244,10 @@ check-gl: gl
 $(OUT)/layer_test: $(OUT)/test/layer_test.o $(LAYER_OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
+# The calls native code makes into the game's code (src/direct.c), on functions of the test's own.
+$(OUT)/call_test: test/call_test.c $(OUT)/native/direct.o
+	$(CC) -std=gnu11 -Wall -Wextra -O2 -g -o $@ $^ $(LIBS)
+
 $(OUT)/imports_table.inc: darwin-imports.tsv gen_import_table.py import_census.py
 	@mkdir -p $(OUT)
 	$(PYTHON) gen_import_table.py $@
@@ -261,8 +265,9 @@ $(OUT)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(ALL_CFLAGS) -MMD -MP -c -o $@ $<
 
-check: $(OUT)/rs-rearmed $(OUT)/layer_test check-steam
+check: $(OUT)/rs-rearmed $(OUT)/layer_test $(OUT)/call_test check-steam
 	$(OUT)/layer_test
+	$(OUT)/call_test
 	@if [ -f "$(IMAGE)" ]; then $(OUT)/rs-rearmed --image "$(IMAGE)" --init-only; \
 	 else echo "no image at $(IMAGE): the game's initializers not run"; fi
 
@@ -306,7 +311,7 @@ appimage: appdir
 
 clean:
 	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/shell $(OUT)/native $(OUT)/shims $(OUT)/imports_table.inc $(OUT)/rs-rearmed \
-	    $(OUT)/layer_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so \
+	    $(OUT)/layer_test $(OUT)/call_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so \
 	    $(APPDIR)
 
 .PHONY: all gl bink check check-steam check-gl appdir appimage clean
