@@ -217,6 +217,7 @@ DW_FUNCTION("_pthread_yield_np", dw_pthread_yield_np);
 // thread id is that here; for another thread than the caller glibc gives it from 2.42 on, and before that a
 // number made of the thread's handle stands in.
 unsigned dw_pthread_mach_thread_np(pthread_t thread) {
+  if (!thread) return 0;  // the game asks for a thread it has not made (yet): no port, as macOS answers
   if (pthread_equal(thread, pthread_self())) return (unsigned)syscall(SYS_gettid);
   static int (*gettid_np)(pthread_t);
   static int looked;

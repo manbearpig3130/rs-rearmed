@@ -163,6 +163,7 @@ static void test_threads(void) {
   CHECK(FN(int (*)(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *), "_pthread_create")(&t, &attr.host, thread_body, &id) == 0);
   CHECK(pthread_join(t, &result) == 0 && result == &id && id != 0);
   CHECK(id != FN(unsigned (*)(pthread_t), "_pthread_mach_thread_np")(pthread_self()));
+  CHECK(FN(unsigned (*)(pthread_t), "_pthread_mach_thread_np")((pthread_t)0) == 0);  // no thread, no port
   CHECK(FN(int (*)(pthread_attr_t *, int), "_pthread_attr_setdetachstate")(&attr.host, 7) == 22);
   pthread_attr_destroy(&attr.host);
   int policy = 0, priority[2] = {0, 0}, want[2] = {40, 0};
@@ -398,6 +399,86 @@ static void test_display(void) {
   CHECK(iterator == 0 && FN(unsigned (*)(unsigned), "_IOIteratorNext")(iterator) == 0);
 }
 
+// The 4x4 inverse, called as the game calls it: the matrix by value in memory, the result through a pointer.
+static void test_simd(void) {
+  typedef struct { float m[16]; } __attribute__((aligned(16))) mat4;
+  const mat4 *identity = dw_data("_matrix_identity_float4x4");
+  CHECK(identity->m[0] == 1 && identity->m[5] == 1 && identity->m[10] == 1 && identity->m[15] == 1 && identity->m[1] == 0);
+  mat4 a = {{2, 0, 0, 0, 0, 4, 0, 0, 0, 0, 8, 0, 1, 2, 3, 1}};  // a scale with a translation in the last column
+  mat4 r = FN(mat4 (*)(mat4), "___invert_f4")(a);
+  CHECK(r.m[0] == 0.5f && r.m[5] == 0.25f && r.m[10] == 0.125f && r.m[12] == -0.5f && r.m[13] == -0.5f && r.m[14] == -0.375f && r.m[15] == 1);
+  mat4 back = FN(mat4 (*)(mat4), "___invert_f4")(r);
+  CHECK(!memcmp(&back, &a, sizeof a));
+}
+
+// The audio devices and the graph, silent: the game's callback is called on the clock with buffers in its format.
+static int g_render_calls, g_render_shape_ok;
+
+static int render(void *ref, uint32_t *flags, const void *when, uint32_t bus, uint32_t frames, void *data) {
+  struct list { uint32_t count; struct { uint32_t channels, bytes; void *data; } buffers[2]; } *l = data;
+  (void)flags, (void)when;
+  g_render_shape_ok = ref == &g_render_calls && bus == 0 && frames == 256 && l->count == 2 && l->buffers[0].channels == 1 &&
+                      l->buffers[0].bytes == 256 * 4 && l->buffers[1].data != NULL && l->buffers[1].data != l->buffers[0].data;
+  __atomic_add_fetch(&g_render_calls, 1, __ATOMIC_SEQ_CST);
+  return 0;
+}
+
+static void test_audio(void) {
+  struct address { uint32_t selector, scope, element; };
+#define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
+  int (*get)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *) =
+      FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *), "_AudioObjectGetPropertyData");
+  uint32_t device = 0, size = sizeof device, input = 7;
+  struct address out_device = {CC('d', 'O', 'u', 't'), CC('g', 'l', 'o', 'b'), 0}, in_device = {CC('d', 'I', 'n', ' '), CC('g', 'l', 'o', 'b'), 0};
+  CHECK(get(1, &out_device, 0, NULL, &size, &device) == 0 && device != 0 && size == 4);
+  CHECK(get(1, &in_device, 0, NULL, &size, &input) == 0 && input == 0);  // no input device
+  struct address name = {CC('l', 'n', 'a', 'm'), CC('g', 'l', 'o', 'b'), 0}, rate = {CC('n', 's', 'r', 't'), CC('g', 'l', 'o', 'b'), 0};
+  struct address layout = {CC('s', 'l', 'a', 'y'), CC('o', 'u', 't', 'p'), 0}, unknown = {CC('z', 'z', 'z', 'z'), CC('g', 'l', 'o', 'b'), 0};
+  void *string = NULL;
+  char text[32];
+  size = sizeof string;
+  CHECK(get(device, &name, 0, NULL, &size, &string) == 0 && string);
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(string, text, sizeof text, 0x600) && text[0]);
+  FN(void (*)(void *), "_CFRelease")(string);
+  double hz = 0;
+  size = sizeof hz;
+  CHECK(get(device, &rate, 0, NULL, &size, &hz) == 0 && hz == 48000.0);
+  struct { uint32_t count, channels, bytes; void *data; } channels = {0, 0, 0, NULL};
+  size = sizeof channels;
+  CHECK(get(device, &layout, 0, NULL, &size, &channels) == 0 && channels.count == 1);
+  size = sizeof text;
+  CHECK(get(device, &unknown, 0, NULL, &size, text) == (int)CC('w', 'h', 'o', '?'));
+  CHECK(get(0x999, &name, 0, NULL, &size, text) == (int)CC('!', 'o', 'b', 'j'));
+  CHECK(FN(unsigned char (*)(uint32_t, const struct address *), "_AudioObjectHasProperty")(device, &rate) == 1);
+  CHECK(FN(unsigned char (*)(uint32_t, const struct address *), "_AudioObjectHasProperty")(device, &unknown) == 0);
+
+  // the graph the game makes: a mixer it fills through a callback, into the device's output unit
+  void *graph = NULL, *mixer_unit = NULL;
+  int32_t out_node = 0, mixer_node = 0;
+  struct { uint32_t type, subtype, maker, flags, mask; } out_desc = {CC('a', 'u', 'o', 'u'), CC('a', 'h', 'a', 'l'), CC('a', 'p', 'p', 'l'), 0, 0},
+      mixer_desc = {CC('a', 'u', 'm', 'x'), CC('m', 'x', 'm', 'x'), CC('a', 'p', 'p', 'l'), 0, 0}, read_back = {0};
+  CHECK(FN(int (*)(void **), "_NewAUGraph")(&graph) == 0 && graph);
+  int (*add)(void *, const void *, int32_t *) = FN(int (*)(void *, const void *, int32_t *), "_AUGraphAddNode");
+  CHECK(add(graph, &out_desc, &out_node) == 0 && add(graph, &mixer_desc, &mixer_node) == 0 && out_node != mixer_node);
+  CHECK(FN(int (*)(void *), "_AUGraphOpen")(graph) == 0);
+  CHECK(FN(int (*)(void *, int32_t, void *, void **), "_AUGraphNodeInfo")(graph, mixer_node, &read_back, &mixer_unit) == 0 && mixer_unit && read_back.subtype == mixer_desc.subtype);
+  struct { double rate; uint32_t format, flags, bpp, fpp, bpf, channels, bits, reserved; } format = {48000.0, CC('l', 'p', 'c', 'm'), 0x29, 4, 1, 4, 2, 32, 0};
+  CHECK(FN(int (*)(void *, uint32_t, uint32_t, uint32_t, const void *, uint32_t), "_AudioUnitSetProperty")(mixer_unit, 8, 1, 0, &format, sizeof format) == 0);
+  struct { void *proc, *ref; } callback = {(void *)render, &g_render_calls};
+  CHECK(FN(int (*)(void *, int32_t, uint32_t, const void *), "_AUGraphSetNodeInputCallback")(graph, mixer_node, 0, &callback) == 0);
+  CHECK(FN(int (*)(void *, int32_t, uint32_t, int32_t, uint32_t), "_AUGraphConnectNodeInput")(graph, mixer_node, 0, out_node, 0) == 0);
+  CHECK(FN(int (*)(void *), "_AUGraphInitialize")(graph) == 0 && FN(int (*)(void *), "_AUGraphStart")(graph) == 0);
+  struct timespec wait = {0, 60000000};  // 60 ms: eleven buffers of 256 frames at 48,000 Hz
+  nanosleep(&wait, NULL);
+  CHECK(FN(int (*)(void *), "_AUGraphStop")(graph) == 0);
+  int calls = g_render_calls;
+  CHECK(calls >= 5 && calls <= 20 && g_render_shape_ok);
+  nanosleep(&wait, NULL);
+  CHECK(g_render_calls == calls);  // stopped
+  CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
+#undef CC
+}
+
 int main(void) {
   setenv("RS_DARWIN_LOG", "0", 1);  // what the layer refuses below is refused on purpose
   dw_init();
@@ -410,6 +491,8 @@ int main(void) {
   test_files();
   test_cf();
   test_display();
+  test_simd();
+  test_audio();
   test_tables();
   test_errno();
   test_pthread();
