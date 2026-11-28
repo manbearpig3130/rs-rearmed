@@ -327,6 +327,17 @@ blocks decoded and encoded (the blocks under the tag only; its encoder is closer
 than the Mac build's, 30.7 dB against 27.0), the archive rewritten by `psarc_pack.py`. Four seconds in the
 setup or a refresh, and each start links `static.psarc` to it.
 
+**Done (2026-11-28): the installer's window**, `install/rs_gui.py`, after the Mac installer's, in GTK 3
+through PyGObject (on the Bazzite host as on most desktops; Tk and the Qt bindings are not). The work is still
+`rs_install.py`'s commands, run as a child that writes progress lines, as the Mac installer runs its scripts.
+What differs from the Mac's window is what Linux has no use for: no build folder, no renderer choice, no second
+game. Settings and switches is the Mac's page from the Mac's lists (`install/rs_settings.py`, which a test holds
+to the Swift source: keys, titles, details, groups, defaults), each option with whether the Linux build has it.
+**What the page shows greyed is the list of what is still to do**: the guitar input's channel, gain and list
+(`RS_AUDIO_INPUT*`), the frame rate (`RS_FPS`), the window's shape and mode (`RS_WINDOW_ANY_SHAPE`,
+`RS_FULLSCREEN`), mods at startup (`RS_LOAD_MODS`), the file log. `RS_AUDIO_FRAMES` came with it: the output's
+buffer asked of PipeWire (128 frames were granted: 2.7 ms). Install puts the game in the applications menu.
+
 Not done: the account's ticket-based choice when
 several accounts use one Steam (the library's own choice, the last signed in, stands), the RS1 DLC asked of
 Steam (the package cache answers), a copy on another drive than the home folder.
@@ -678,3 +689,6 @@ Proposed; none is final before the step that tests it.
   test before), then the game.
 - **2026-11-28, the title logo.** `tools/loadscreen/logo.py` and `tag.png`; made in the player's copy on the
   Bazzite PC by a refresh, and the title screen shows it.
+- **2026-11-28, the installer's window.** `install/rs_gui.py` and `rs_settings.py`; on the Bazzite PC, under a
+  display of its own, the window ran an install into a test folder to "RS Re-ARMed is installed", and the
+  settings page shows the Mac's switches. `RS_AUDIO_FRAMES` in the audio layer.

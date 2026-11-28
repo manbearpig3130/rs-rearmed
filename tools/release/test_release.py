@@ -62,7 +62,8 @@ class Scope(unittest.TestCase):
     def test_the_installer_needs_no_game(self):
         s = scope.scope(["tools/installer/RSReARMedInstaller.swift"])
         # (the sheet's keys, and the installer replacing itself)
-        self.assertEqual((s["build"], s["run"], s["suites"]), ([], [], ["settings", "update"]))
+        # (and the Linux installer's page is held to this one's lists: the Linux suite, which needs no game either)
+        self.assertEqual((s["build"], s["run"], s["suites"]), ([], [], ["settings", "update", "linux"]))
         self.assertTrue(s["installer"])
         self.assertEqual(scope.scope(["tools/release/sign.swift"])["suites"], ["release", "update"])
 

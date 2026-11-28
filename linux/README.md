@@ -23,7 +23,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [patch-sites.tsv](patch-sites.tsv) | every hook point and mid point, with whether a jump can be written there (`check_patch_sites.py` makes and checks it) |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
-| `install` | the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`); and the packaged build's launcher, desktop entry, icon and AppImage step |
+| `install` | the installer's window (`rs_gui.py`) and its settings (`rs_settings.py`); the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`); and the packaged build's launcher, desktop entry, icon and AppImage step |
 | `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |
 | `gl` | `libRSSystemGL.so`: Mesa as the renderer's OpenGL backend expects Apple's OpenGL (CGL over EGL, Apple's identity) |
 
@@ -94,6 +94,23 @@ python3 linux/install/rs_install.py run -- --size 1920x1080     # the game, with
 python3 linux/install/test_rs_install.py      # its test (ctest: linux.install), on any machine
 ```
 
+**The installer's window** is the Mac installer's, for Linux: the game folder (empty: Steam's download), Install
+with its progress, what Steam needs from you in a box of its own with a button for it, the log, Refresh Game
+Files, Play, and **Settings and switches**: the built-in mods to switch off, and the options in the Mac's groups
+(audio and guitar input, picture, songs and Steam account, startup and logging) with the rest under Advanced.
+The page has the Mac's keys, titles and files, so a switch means one thing on every system; an option the Linux
+build does not have yet is there, greyed, and those about Metal or Apple's OpenGL are left out.
+
+```sh
+python3 linux/install/rs_install.py installer   # the window (GTK 3 through PyGObject, which most desktops have)
+python3 linux/install/rs_install.py menu        # RS Re-ARMed in the applications menu, with the installer as its action
+```
+
+A start from the desktop with nothing set up yet opens it. Install also puts RS Re-ARMed in the applications
+menu (a desktop entry and the icon in `~/.local/share`; from an AppImage, a copy of the AppImage is kept in the
+home folder's `app/` and the entry starts that, so the download can go). Without GTK for Python the same is done
+from a terminal, and `settings.env` and `options.env` hold the switches as on the Mac.
+
 **As an AppImage**, one file that holds the program, its libraries and the setup, and nothing of the game:
 
 ```sh
@@ -124,7 +141,8 @@ another place), laid out as the Mac app's home:
 | `game/static.psarc.rearmed` | the game's `static.psarc` with RS Re-ARMed's title logo, made by the setup (`tools/loadscreen/logo.py`: Python and `openssl` alone); each start links `static.psarc` to it, or to the original with `RS_REARMED=0` |
 | `image/` | the game's code, decrypted, which `rs-rearmed` loads. It is checked to be the build RS Re-ARMed is made for |
 | `steam/` | the saves. They start as a copy of Steam's own (`userdata/<account>/221680/remote`, where the Windows game played through Steam keeps the same files), without the stored Ubisoft sign-in; Steam's are never written |
-| `settings.env`, `options.env` | switches as `KEY=value` lines (`RS_MODS_INTRO=0`, `RS_LATENCY_BUFFER=2`, ...: [the Mac's list](../docs/mac/INSTALL.md)); the environment wins |
+| `settings.env`, `options.env` | the built-in mods switched off (`RS_MODS_INTRO=0`) and the options set (`RS_AUDIO_FRAMES=128`), written by the installer's Settings and switches page or by hand: [the Mac's list](../docs/mac/INSTALL.md), of which `install/rs_settings.py` says what the Linux build has; the environment wins |
+| `app/` | a copy of the AppImage, which the applications menu's entry starts |
 | `logs/` | `last-run.log`, when the game is started with no terminal |
 
 **Each start** does what the Mac launcher does: the game stays offline (`[Net] AutoLogin=0` and no browser, forced

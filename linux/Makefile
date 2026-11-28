@@ -293,7 +293,8 @@ appdir: all gl bink
 	chmod 755 $(APPLIB)/rs-rearmed
 	cp -L $(SDL_SO) $(APPLIB)/
 	install -m 755 install/launch.sh $(APPDIR)/usr/bin/rs-rearmed
-	install -m 644 install/rs_install.py ../VERSION ../LICENSE ../THIRD_PARTY_NOTICES.md $(APPSHARE)/
+	install -m 644 install/rs_install.py install/rs_settings.py install/rs_gui.py ../VERSION ../LICENSE \
+	    ../THIRD_PARTY_NOTICES.md $(APPSHARE)/
 	install -m 644 ../tools/play-native/gamefiles.py ../tools/play-native/cache_overlay.py ../tools/play-native/psarc_key.py \
 	    $(APPSHARE)/tools/play-native/
 	install -m 644 ../tools/steamless/decrypt.py $(APPSHARE)/tools/steamless/
@@ -303,7 +304,7 @@ appdir: all gl bink
 	install -m 644 ../tools/targets/mac-x64/target.toml $(APPSHARE)/tools/targets/mac-x64/
 	install -m 644 install/rs-rearmed.desktop $(APPDIR)/usr/share/applications/
 	install -m 644 install/rs-rearmed.svg $(APPDIR)/usr/share/icons/hicolor/scalable/apps/
-	sed 's/^Exec=.*/&\nX-AppImage-Version=$(APP_VERSION)/' install/rs-rearmed.desktop > $(APPDIR)/rs-rearmed.desktop
+	sed '0,/^Exec=.*/s//&\nX-AppImage-Version=$(APP_VERSION)/' install/rs-rearmed.desktop > $(APPDIR)/rs-rearmed.desktop
 	cp install/rs-rearmed.svg $(APPDIR)/rs-rearmed.svg
 	ln -s rs-rearmed.svg $(APPDIR)/.DirIcon
 	ln -s usr/bin/rs-rearmed $(APPDIR)/AppRun

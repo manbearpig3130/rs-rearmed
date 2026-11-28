@@ -10,6 +10,9 @@
         --no-dlc                     leave the account's DLC
         --progress-lines             progress and steps as lines (a window that shows them reads these)
     rs_install.py refresh            new DLC from Steam, and the copy checked against the game's files
+    rs_install.py installer          the installer's window: Install, Refresh Game Files, Settings and switches
+                                     (rs_gui.py; GTK 3 through PyGObject)
+    rs_install.py menu               RS Re-ARMed in the desktop's applications menu
     rs_install.py run [-- ARGS]      start the game (ARGS go to rs-rearmed)
     rs_install.py status             what is set up
 
@@ -25,7 +28,9 @@ laid out as the Mac app's home is:
     image/       the game's decrypted code (tools/steamless/decrypt.py), which rs-rearmed loads
     steam/       the saves (the offline Steam library's), started from Steam's own copy of them
     logs/        last-run.log when the game's output would go nowhere
-    settings.env, options.env    switches, KEY=value lines (docs/mac/INSTALL.md lists them); the environment wins
+    settings.env, options.env    the built-in mods switched off, and the options set (rs_settings.py; the
+                 installer's Settings and switches page writes them); the environment wins
+    app/         a copy of the AppImage, which the applications menu's entry starts
 
 The Mac's tools are used as they are, with what differs on Linux set here: where Steam keeps its files and its
 downloads, how Steam is started and told a command, and a clone by the kernel's own call.
@@ -476,9 +481,6 @@ def refresh(args):
 
 # --- the start -----------------------------------------------------------------------------------------------
 
-ENV_KEY = re.compile(r"RS_[A-Z0-9_]+$")
-
-
 def read_env(path, keys=None):
     """KEY=VALUE lines, # a comment, the ends' whitespace ignored; the first of a key counts. KEYS: a pattern the
     keys have to match (others are left out)."""
@@ -613,16 +615,10 @@ def prepare(home, steam, base=None):
                           "again: what is copied is kept.", 3)
         raise Failure("RS Re-ARMed has no copy of the game's files in %s yet: run setup first." % home, 3)
     env = dict(os.environ if base is None else base)
-    notes = []
-    # settings.env and options.env, then what the copy recorded (the DLC the account owns, the language, the
-    # account): each for a key the environment does not have already.
-    for name in ("settings.env", "options.env"):
-        for k, v in read_env(os.path.join(home, name), ENV_KEY).items():
-            if k in env and env[k] != v:
-                notes.append("[%s] %s=%s not used: the environment has %s=%s" % (name[:-4], k, v, k, env[k]))
-            else:
-                env[k] = v
-                notes.append("[%s] %s=%s" % (name[:-4], k, v))
+    # settings.env and options.env (rs_settings.py), then what the copy recorded (the DLC the account owns, the
+    # language, the account): each for a key the environment does not have already.
+    import rs_settings
+    env, notes = rs_settings.start_environment(home, env)
     for k, v in read_env(os.path.join(game, ".rearmed", "steam.env")).items():
         env.setdefault(k, v)
     env["RS_NATIVE_HOME"] = home
@@ -685,6 +681,85 @@ def status(args, out=sys.stdout):
              if os.path.isfile(os.path.join(d, GAME_BINARY))]
     out.write("Steam's download of the Mac game: %s\n" % (found[0] if found else "not there"))
     return 0
+
+
+# --- the applications menu -----------------------------------------------------------------------------------
+
+def desktop_quote(arg):
+    """ARG as one argument of a desktop entry's Exec line."""
+    return '"%s"' % "".join("\\" + c if c in '"`$\\' else c for c in arg).replace("%", "%%")
+
+
+def menu_entry(home):
+    """RS Re-ARMed in the desktop's applications menu, as the Mac install puts the game in ~/Applications: a
+    desktop entry and the icon in XDG's data folder. Started from an AppImage, a copy of it is kept in the home
+    folder (app/) and the entry starts that, so the download can be moved or deleted. The entry's own action opens
+    the installer's window. Returns what was done, in a sentence."""
+    data = os.environ.get("XDG_DATA_HOME")
+    data = data if data and data.startswith("/") else os.path.expanduser("~/.local/share")
+    appimage = os.environ.get("APPIMAGE")
+    if appimage and os.path.isfile(appimage):
+        keep = os.path.join(home, "app", "RS_Re-ARMed.AppImage")
+        os.makedirs(os.path.dirname(keep), exist_ok=True)
+        if not (os.path.exists(keep) and os.path.samefile(appimage, keep)):
+            shutil.copyfile(appimage, keep + ".new")
+            os.chmod(keep + ".new", 0o755)
+            os.replace(keep + ".new", keep)
+        command = desktop_quote(keep)
+    else:
+        command = "%s %s" % (desktop_quote(sys.executable or "python3"), desktop_quote(os.path.abspath(__file__)))
+    if home != home_folder(None):
+        command += " --home %s" % desktop_quote(home)
+    icon = next((p for p in (os.path.join(HERE, "rs-rearmed.svg"),
+                             os.path.join(HERE, "..", "icons", "hicolor", "scalable", "apps", "rs-rearmed.svg"))
+                 if os.path.isfile(p)), None)
+    if icon:
+        icons = os.path.join(data, "icons", "hicolor", "scalable", "apps")
+        os.makedirs(icons, exist_ok=True)
+        shutil.copyfile(icon, os.path.join(icons, "rs-rearmed.svg"))
+    apps = os.path.join(data, "applications")
+    os.makedirs(apps, exist_ok=True)
+    entry = os.path.join(apps, "rs-rearmed.desktop")
+    with open(entry + ".new", "w", encoding="utf-8") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=RS Re-ARMed\nGenericName=Rocksmith 2014\n"
+                "Comment=Rocksmith 2014, from your own Steam copy of the game\nExec=%s\nIcon=rs-rearmed\n"
+                "Terminal=false\nCategories=Game;Music;\nKeywords=rocksmith;guitar;bass;\nStartupWMClass=rs-rearmed\n"
+                "Actions=installer;\n\n[Desktop Action installer]\nName=Installer and Settings\nExec=%s installer\n"
+                % (command, command))
+    os.replace(entry + ".new", entry)
+    for tool in ("update-desktop-database",):
+        if shutil.which(tool):
+            try:
+                subprocess.run([tool, apps], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return "RS Re-ARMed is in the applications menu (%s)." % entry
+
+
+def have_window():
+    """The installer's window can be opened: a display, and GTK 3 for Python."""
+    if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
+        return False
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk  # noqa: F401
+        return True
+    except (ImportError, ValueError):
+        return False
+
+
+def installer(args):
+    if not have_window():
+        raise Failure("The installer's window needs a desktop and GTK 3 for Python (the package python3-gobject, or "
+                      "python3-gi with gir1.2-gtk-3.0). Without them: `setup`, `refresh` and `run` do the same from a "
+                      "terminal, and settings.env and options.env hold the switches.", 2)
+    import rs_gui
+    argv = []
+    for name in ("home", "steam", "screenshot", "page", "run"):
+        if getattr(args, name, None):
+            argv += ["--" + name, getattr(args, name)]
+    return rs_gui.main(argv)
 
 
 # --- with no terminal: a window for the setup's progress and for what went wrong ------------------------------
@@ -766,6 +841,8 @@ def start(args):
     home = home_folder(args.home)
     if not set_up(home):
         argv = (["--home", home] if args.home else []) + (["--steam", args.steam] if args.steam else [])
+        if not on_terminal() and have_window():
+            return installer(args)  # the installer's window: Install there, then Play
         if on_terminal() or not shutil.which("zenity"):
             args.game, args.no_download, args.no_dlc, args.progress_lines = None, False, False, False
             setup(args)
@@ -800,6 +877,12 @@ def main(argv=None):
     p.add_argument("rest", nargs=argparse.REMAINDER)
     p = sub.add_parser("status")
     p.add_argument("--home", default=argparse.SUPPRESS)
+    p = sub.add_parser("installer")
+    p.add_argument("--home", default=argparse.SUPPRESS)
+    p.add_argument("--steam", default=argparse.SUPPRESS)
+    for name in ("--screenshot", "--page", "--run"):  # a test's: a picture of the window, a page of it, a run at once
+        p.add_argument(name, help=argparse.SUPPRESS)
+    sub.add_parser("menu")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "setup":
@@ -808,6 +891,11 @@ def main(argv=None):
             return refresh(a)
         if a.cmd == "status":
             return status(a)
+        if a.cmd == "installer":
+            return installer(a)
+        if a.cmd == "menu":
+            print(menu_entry(home_folder(a.home)))
+            return 0
         a.rest = getattr(a, "rest", [])
         a.rest = a.rest[1:] if a.rest[:1] == ["--"] else a.rest
         return run(a) if a.cmd == "run" else start(a)

@@ -393,11 +393,12 @@ class Start(Base):
 
     def test_the_environment_of_a_start(self):
         game = self.made()
-        write(os.path.join(self.home, "settings.env"), "# switches\nRS_MODS_INTRO=0\nPATH=/nowhere\nRS_FPS = 120\n")
-        write(os.path.join(self.home, "options.env"), "RS_AUDIO_FRAMES=128\nRS_MODS_LOG=1\n")
+        write(os.path.join(self.home, "settings.env"), "# switches\nRS_MODS_INTRO=0\nPATH=/nowhere\nRS_FPS=30\n")
+        write(os.path.join(self.home, "options.env"), "RS_AUDIO_FRAMES=128\nRS_MODS_LOG=1\nRS_FPS = 120\nRS_NONE=1\n")
         write(os.path.join(game, ".rearmed", "steam.env"), "# facts\nRS_STEAM_DLC=1,2\nRS_STEAM_LANGUAGE=german\n")
         env, notes = rs_install.prepare(self.home, self.steam, {"PATH": "/bin", "RS_MODS_LOG": "0", "RS_STEAM_LANGUAGE": "french"})
-        self.assertEqual(env["PATH"], "/bin")  # only RS_ keys are taken from the files
+        self.assertEqual(env["PATH"], "/bin")  # only the page's keys are taken, each from its own file
+        self.assertNotIn("RS_NONE", env)
         self.assertEqual((env["RS_MODS_INTRO"], env["RS_FPS"], env["RS_AUDIO_FRAMES"]), ("0", "120", "128"))
         self.assertEqual(env["RS_MODS_LOG"], "0")  # the environment wins, and the log says so
         self.assertIn("[options] RS_MODS_LOG=1 not used: the environment has RS_MODS_LOG=0", notes)
@@ -512,6 +513,38 @@ class Start(Base):
         third = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(third.returncode, 0, third.stderr)
         self.assertIn("args: --image", third.stdout)
+
+
+class Menu(Base):
+    def test_the_entry_starts_this_program_and_offers_the_installer(self):
+        os.environ["XDG_DATA_HOME"] = os.path.join(self.tmp, "data")
+        home = os.path.join(self.tmp, "a home")
+        said = rs_install.menu_entry(home)
+        entry = os.path.join(self.tmp, "data", "applications", "rs-rearmed.desktop")
+        self.assertIn(entry, said)
+        text = read(entry)
+        exe = '"%s" "%s" --home "%s"' % (sys.executable, os.path.join(HERE, "rs_install.py"), home)
+        self.assertIn("\nExec=%s\n" % exe, text)
+        self.assertIn("\nExec=%s installer\n" % exe, text)
+        self.assertIn("\nIcon=rs-rearmed\n", text)
+        self.assertIn("\nStartupWMClass=rs-rearmed\n", text)
+        self.assertTrue(os.path.isfile(os.path.join(self.tmp, "data", "icons", "hicolor", "scalable", "apps", "rs-rearmed.svg")))
+
+    def test_an_appimage_is_kept_in_the_home_folder(self):
+        os.environ["XDG_DATA_HOME"] = os.path.join(self.tmp, "data")
+        os.environ["APPIMAGE"] = write(os.path.join(self.tmp, "Downloads", "RS.AppImage"), b"the app")
+        rs_install.menu_entry(self.home)
+        keep = os.path.join(self.home, "app", "RS_Re-ARMed.AppImage")
+        self.assertEqual(read(keep), "the app")
+        self.assertTrue(os.access(keep, os.X_OK))
+        self.assertIn('\nExec="%s" --home "%s"\n' % (keep, self.home), read(os.path.join(self.tmp, "data", "applications", "rs-rearmed.desktop")))
+        os.environ["APPIMAGE"] = keep  # started from the kept one: nothing to copy
+        rs_install.menu_entry(self.home)
+        self.assertEqual(read(keep), "the app")
+
+    def test_an_argument_of_an_exec_line(self):
+        self.assertEqual(rs_install.desktop_quote("/a b/c"), '"/a b/c"')
+        self.assertEqual(rs_install.desktop_quote('a"b$c`d\\e%f'), '"a\\"b\\$c\\`d\\\\e%%f"')
 
 
 class Window(Base):

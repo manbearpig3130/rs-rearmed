@@ -9,3 +9,8 @@ Terminal=false
 Categories=Game;Music;
 Keywords=rocksmith;guitar;bass;
 StartupWMClass=rs-rearmed
+Actions=installer;
+
+[Desktop Action installer]
+Name=Installer and Settings
+Exec=rs-rearmed installer

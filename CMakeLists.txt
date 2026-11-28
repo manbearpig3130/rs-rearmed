@@ -106,4 +106,7 @@ if(Python3_FOUND)
   # The Linux setup and start (linux/install/rs_install.py, over tools/play-native/gamefiles.py): on made-up Steam
   # folders and a made-up game, on any machine.
   add_test(NAME linux.install COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/install/test_rs_install.py)
+  # The Linux installer's Settings and switches (linux/install/rs_settings.py): its lists against the Mac
+  # installer's own, and the two files it reads and writes.
+  add_test(NAME linux.settings COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/install/test_rs_settings.py)
 endif()

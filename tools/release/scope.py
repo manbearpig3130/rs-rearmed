@@ -77,7 +77,7 @@ SUITES = {
     "ct.shims":      ("the shims' architectures and names", "ctest", r"^(shim|libstdcxx)\."),
     "linux":         ("the Linux port's table of the Mac game's imports, its first run, its loader and its setup", "cmd",
                       "{py} linux/test_import_census.py && {py} linux/test_first_run.py && {py} linux/test_loader.py"
-                      " && {py} linux/install/test_rs_install.py"),
+                      " && {py} linux/install/test_rs_install.py && {py} linux/install/test_rs_settings.py"),
 }
 
 RECOMP = ("hooks", "inner64", "inner32", "hand32")
@@ -113,7 +113,8 @@ RULES = {
 
     # The installer and the install scripts.
     # (its Settings and switches sheet has the launchers' keys: test_settings.py reads all three)
-    "tools/installer/": rule(BOTH, suites=["settings", "update"], installer=True),
+    # (the Linux installer's Settings and switches page is held to this one's lists: linux/install/rs_settings.py)
+    "tools/installer/": rule(BOTH, suites=["settings", "update", "linux"], installer=True),
     # (what signs a release's installer, and what an installed one checks it with)
     "tools/release/sign.swift": rule(suites=["release", "update"]),
     "tools/play-native/": rule(BOTH, suites=["gamefiles", "cache_overlay", "settings"], installer=True),

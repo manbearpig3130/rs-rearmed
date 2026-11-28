@@ -271,6 +271,9 @@ def paint(dds, tag):
 def build(src, dst, tag_path=TAG):
     """DST: the archive SRC with the tag on its two logos. Complete or not there."""
     tag = read_png(tag_path)
+    with open(src, "rb") as f:
+        if f.read(4) != b"PSAR":
+            raise Failure("%s is not a psarc archive" % src)
     f, block_size, entries, zsizes = psarc_extract.read_archive(src)
     try:
         names = psarc_extract.read_entry(f, block_size, zsizes, entries[0]).decode().split("\n")
