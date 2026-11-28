@@ -67,6 +67,16 @@ _Static_assert(sizeof(stream_format) == 40 && sizeof(time_stamp) == 64 && sizeof
 static double g_rate = 48000.0;
 static uint32_t g_frames = 256;  // the device's buffer: the Mac's default
 
+// RS_AUDIO_FRAMES, the installer's "Output device buffer": the output's buffer in frames, which then stays whatever
+// the game sets, as the Mac's audio module keeps it. Unset, empty or 0: the game's own (256 unless it sets
+// another). Kept within 32 and 4096, as the Mac keeps it within the device's range.
+static uint32_t out_frames(void) {
+  const char *e = getenv("RS_AUDIO_FRAMES");
+  long n = e && *e ? strtol(e, NULL, 10) : 0;
+  if (n <= 0) return g_frames;
+  return n < 32 ? 32 : n > 4096 ? 4096 : (uint32_t)n;
+}
+
 // The inputs: what the backend has, each a device of its own with one input stream. A device keeps its number for
 // the whole run, known by the backend's name for it, so one that goes and comes back is the same device.
 #define MAX_INPUTS 10  // the game opens ten at most
@@ -313,7 +323,7 @@ static int get(uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
       *size = sizeof range;
       return noErr;
     }
-    case FOURCC('f', 's', 'i', 'z'): PUT(uint32_t, g_frames);
+    case FOURCC('f', 's', 'i', 'z'): PUT(uint32_t, out_frames());
     case FOURCC('f', 's', 'z', '#'): {
       struct { double lo, hi; } range = {16, 4096};
       if (*size < sizeof range) return kBadPropertySize;
@@ -603,7 +613,7 @@ static void *graph_thread(void *arg) {
   struct timespec next;
   clock_gettime(CLOCK_MONOTONIC, &next);
   while (atomic_load(&g->running)) {
-    uint32_t frames = g_frames > 4096 ? 4096 : g_frames;
+    uint32_t frames = out_frames() > 4096 ? 4096 : out_frames();
     graph_render(g, left, right, frames);
     long ns = (long)(1e9 * frames / g_rate);
     next.tv_nsec += ns;
@@ -688,7 +698,7 @@ DW_FUNCTION("_AUGraphSetNodeInputCallback", dw_AUGraphSetNodeInputCallback);
 int dw_AUGraphStart(graph *g) {
   if (!g) return -50;
   if (g->started) return noErr;
-  if (g_backend && g_backend->start(g_rate, g_frames, graph_render, g) == 0) {
+  if (g_backend && g_backend->start(g_rate, out_frames(), graph_render, g) == 0) {
     g->backend = 1;
   } else {
     atomic_store(&g->running, 1);
@@ -699,7 +709,7 @@ int dw_AUGraphStart(graph *g) {
   }
   g->started = 1;
   if (audio_log())
-    fprintf(stderr, "[audio] graph: started, %s, %u frames a call at %.0f Hz\n", g->backend ? g_backend->name : "silent", g_frames, g_rate);
+    fprintf(stderr, "[audio] graph: started, %s, %u frames a call at %.0f Hz\n", g->backend ? g_backend->name : "silent", out_frames(), g_rate);
   return noErr;
 }
 DW_FUNCTION("_AUGraphStart", dw_AUGraphStart);

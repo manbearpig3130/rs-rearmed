@@ -518,6 +518,21 @@ static void test_audio_input(void) {
   CHECK(FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *), "_AudioObjectGetPropertyDataSize")(1, &devices, 0, NULL, &size) == 0 && size == 12);
   size = sizeof list;
   CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 12);  // the two inputs, then the output
+  // The output's buffer is the game's own, or RS_AUDIO_FRAMES while that is set (within 32 and 4096; 0: the game's).
+  struct address out_buffer = {CC('f', 's', 'i', 'z'), CC('o', 'u', 't', 'p'), 0};
+  uint32_t own = 0, chosen = 0;
+  size = 4;
+  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &own) == 0 && own >= 16 && own <= 4096);
+  setenv("RS_AUDIO_FRAMES", "128", 1);
+  size = 4;
+  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == 128);
+  setenv("RS_AUDIO_FRAMES", "8", 1);
+  size = 4;
+  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == 32);
+  setenv("RS_AUDIO_FRAMES", "0", 1);
+  size = 4;
+  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == own);
+  unsetenv("RS_AUDIO_FRAMES");
   size = 4;
   CHECK(get(1, &in_device, 0, NULL, &size, &cable) == 0 && cable == list[0] && cable != 0);
   struct address name = {CC('l', 'n', 'a', 'm'), CC('i', 'n', 'p', 't'), 0}, maker = {CC('l', 'm', 'a', 'k'), CC('i', 'n', 'p', 't'), 0};
