@@ -8,6 +8,9 @@
 
 extern uint32_t (*dw_audio_output_cap)(void);
 extern void (*dw_audio_output_started)(uint32_t frames);
+extern int (*dw_thread_special)(void *(*start)(void *));
+extern void (*dw_thread_begins)(void *(*start)(void *));
+int dw_audio_thread_realtime(void);
 
 _Atomic uint32_t rs_audio_out_frames;
 
@@ -22,7 +25,21 @@ static void started(uint32_t frames) {
                rs_audio_ring_refills());
 }
 
+// The module's third function, the sound engine's thread (ak_lengine_thread), which the Mac runs real-time in the
+// output device's workgroup: here the thread asks the audio backend for real-time scheduling as it starts, as that
+// backend's own threads have it (RS_AUDIO_RT=0: as the original, an ordinary thread). The thread fills the output's
+// ring; late, and the sound crackles.
+static int engine_thread(void *(*start)(void *)) { return (uint64_t)(uintptr_t)start == RC_ADDR(ak_lengine_thread); }
+static void engine_thread_begins(void *(*start)(void *)) {
+  (void)start;
+  if (!rs_audio_env_on("RS_AUDIO_RT", 1)) return;
+  int r = dw_audio_thread_realtime();
+  rs_audio_log("Wwise thread: %s", r == 0 ? "real-time" : "not made real-time (the audio backend could not)");
+}
+
 __attribute__((constructor)) static void audio_glue_init(void) {
   dw_audio_output_cap = cap;
   dw_audio_output_started = started;
+  dw_thread_special = engine_thread;
+  dw_thread_begins = engine_thread_begins;
 }

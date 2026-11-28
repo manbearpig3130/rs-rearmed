@@ -2,6 +2,7 @@
 // 48, attributes 56 in 64), so the image's own storage holds them and most calls are the host's (`same`). Here
 // are the ones where a number, a size or a first use differs. Every returned error number is Darwin's.
 #define _GNU_SOURCE
+#include <stdlib.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <pthread.h>
@@ -199,9 +200,29 @@ DW_FUNCTION("_sched_get_priority_max", dw_sched_get_priority_max);
 // calls (the C library, the OpenGL driver), and glibc takes each thread's thread-local storage out of its stack,
 // more of it with every library loaded, refusing a stack that cannot hold it.
 #define DW_MIN_STACK (1u << 20)
+int (*dw_thread_special)(void *(*start)(void *));
+void (*dw_thread_begins)(void *(*start)(void *));
+struct begun {
+  void *(*start)(void *);
+  void *arg;
+};
+static void *begin_special(void *p) {
+  struct begun b = *(struct begun *)p;
+  free(p);
+  if (dw_thread_begins) dw_thread_begins(b.start);
+  return b.start(b.arg);
+}
+
 int dw_pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start)(void *), void *arg) {
   size_t size = 0;
   int r;
+  if (dw_thread_special && dw_thread_special(start)) {  // a thread with something to do as it starts (dw.h)
+    struct begun *b = malloc(sizeof *b);
+    if (b) {
+      b->start = start, b->arg = arg;
+      start = begin_special, arg = b;
+    }
+  }
   if (attr && !pthread_attr_getstacksize(attr, &size) && size < DW_MIN_STACK) {
     pthread_attr_t larger = *attr;  // the game's own is left as it set it
     pthread_attr_setstacksize(&larger, DW_MIN_STACK);

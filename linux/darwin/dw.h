@@ -77,10 +77,19 @@ typedef struct {
   // A count that goes up whenever an input may have come or gone (NULL: the backend is never told). The layer
   // looks at it a few times a second while the game listens for its device list's changes.
   unsigned (*changes)(void);
+  // The calling thread made a real-time one, as the backend's own audio threads are: 0 when it is (NULL: no way).
+  int (*realtime)(void);
 } dw_audio_backend;
 void dw_audio_set_backend(const dw_audio_backend *backend);
 // The game's side of the output, where there is one (linux/src/audio_glue.c; none in a test of the layer alone):
 // the most frames a call may ask of the game's ring, and the size the output started with.
+// The calling thread real-time through the backend (dw_audio_backend.realtime): 0 when it is.
+int dw_audio_thread_realtime(void);
+// A thread of the game that wants something done as it starts (dw_pthread.c): SPECIAL says which, by its start
+// routine, and BEGINS is then called in the new thread before that routine. The audio module's engine thread
+// (linux/src/audio_glue.c).
+extern int (*dw_thread_special)(void *(*start)(void *));
+extern void (*dw_thread_begins)(void *(*start)(void *));
 extern uint32_t (*dw_audio_output_cap)(void);
 extern void (*dw_audio_output_started)(uint32_t frames);
 

@@ -7,12 +7,20 @@
 //
 // The inputs are PipeWire's capture devices: listed for the game by their cards' names, and opened as capture
 // streams that feed the game's input procedure.
+#define _GNU_SOURCE
 #include <pipewire/pipewire.h>
+#include <dlfcn.h>
+#include <errno.h>
+#include <pthread.h>
+#include <sched.h>
 #include <spa/param/audio/format-utils.h>
 #include <stdatomic.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "dw.h"
 #include "rsl.h"
@@ -326,6 +334,7 @@ static int level_set(const dw_audio_input *input, float level) { return rsl_alsa
 // looks at while the game listens for changes of its device list (dw.h).
 static struct {
   struct pw_thread_loop *loop;
+  struct pw_context *context;
   struct pw_core *core;
   struct pw_registry *registry;
   struct spa_hook listener;
@@ -356,22 +365,108 @@ static void watch_global_remove(void *data, uint32_t id) {
 
 static const struct pw_registry_events k_watch_events = {PW_VERSION_REGISTRY_EVENTS, .global = watch_global, .global_remove = watch_global_remove};
 
-static unsigned changes(void) {
-  if (!w.started) {
-    w.started = 1;
-    pw_init(NULL, NULL);
-    w.loop = pw_thread_loop_new("rs-audio-watch", NULL);
-    struct pw_context *context = w.loop ? pw_context_new(pw_thread_loop_get_loop(w.loop), NULL, 0) : NULL;
-    w.core = context ? pw_context_connect(context, NULL, 0) : NULL;
-    if (w.core) {
-      w.registry = pw_core_get_registry(w.core, PW_VERSION_REGISTRY, 0);
-      pw_registry_add_listener(w.registry, &w.listener, &k_watch_events, NULL);
-      pw_thread_loop_start(w.loop);
-    }
+static pthread_once_t g_watch_once = PTHREAD_ONCE_INIT;
+static void watch_start(void) {
+  pw_init(NULL, NULL);
+  w.loop = pw_thread_loop_new("rs-audio-watch", NULL);
+  w.context = w.loop ? pw_context_new(pw_thread_loop_get_loop(w.loop), NULL, 0) : NULL;
+  w.core = w.context ? pw_context_connect(w.context, NULL, 0) : NULL;
+  if (w.core) {
+    w.registry = pw_core_get_registry(w.core, PW_VERSION_REGISTRY, 0);
+    pw_registry_add_listener(w.registry, &w.listener, &k_watch_events, NULL);
   }
+  if (w.loop) pw_thread_loop_start(w.loop);
+}
+
+static unsigned changes(void) {
+  pthread_once(&g_watch_once, watch_start);
   return atomic_load(&w.count);
 }
 
-static const dw_audio_backend k_backend = {"PipeWire", start, stop, inputs, capture_start, capture_stop, level_get, level_set, changes};
+// The calling thread real-time, as PipeWire's own audio threads are: by the scheduler itself where the user may ask
+// it (a limit on real-time priority above none), else through RTKit, the system service a desktop has for it, which
+// gives round robin at up to 20 to a thread whose process has a limit on its real-time run time and that gives the
+// policy up on a fork. (PipeWire's own helper for this serves only threads it made itself.) As PipeWire does, the
+// desktop's portal is asked first (the session's D-Bus: it speaks to RTKit for the session's programs, also one
+// started from another session, which RTKit itself turns away), then RTKit on the system's D-Bus; with the D-Bus
+// library every system with PipeWire has, loaded when it is first wanted.
+static int rtkit_realtime(int system_bus, const char *service, const char *path, const char *interface, pid_t tid, unsigned priority) {
+  static void *lib;
+  static void *(*bus_get_private)(int, void *), *(*message_new)(const char *, const char *, const char *, const char *);
+  static int (*append_args)(void *, int, ...);
+  static void *(*send_and_block)(void *, void *, int, void *);
+  static void (*message_unref)(void *), (*connection_close)(void *), (*connection_unref)(void *), (*error_init)(void *),
+      (*error_free)(void *), (*set_exit)(void *, int);
+  if (!lib) {
+    lib = dlopen("libdbus-1.so.3", RTLD_NOW | RTLD_LOCAL);
+    if (!lib) return -ENOENT;
+    bus_get_private = dlsym(lib, "dbus_bus_get_private"), message_new = dlsym(lib, "dbus_message_new_method_call");
+    append_args = dlsym(lib, "dbus_message_append_args"), send_and_block = dlsym(lib, "dbus_connection_send_with_reply_and_block");
+    message_unref = dlsym(lib, "dbus_message_unref"), connection_close = dlsym(lib, "dbus_connection_close");
+    connection_unref = dlsym(lib, "dbus_connection_unref"), error_init = dlsym(lib, "dbus_error_init");
+    error_free = dlsym(lib, "dbus_error_free"), set_exit = dlsym(lib, "dbus_connection_set_exit_on_disconnect");
+  }
+  if (!bus_get_private || !message_new || !append_args || !send_and_block || !message_unref || !connection_close ||
+      !connection_unref || !error_init || !error_free)
+    return -ENOSYS;
+  uint64_t error[8];  // a DBusError, with room to spare
+  error_init(error);
+  void *bus = bus_get_private(system_bus ? 1 : 0, error);
+  if (!bus) {
+    error_free(error);
+    return -ECONNREFUSED;
+  }
+  if (set_exit) set_exit(bus, 0);
+  int r = -EIO;
+  void *call = message_new(service, path, interface, "MakeThreadRealtimeWithPID");
+  if (call) {
+    uint64_t process = (uint64_t)getpid(), thread = (uint64_t)tid;
+    uint32_t prio = priority;
+    if (append_args(call, 't', &process, 't', &thread, 'u', &prio, 0)) {
+      void *reply = send_and_block(bus, call, 2000, error);
+      if (reply) {
+        message_unref(reply);
+        r = 0;
+      } else {
+        const char *name = ((const char **)error)[0], *message = ((const char **)error)[1];  // (a DBusError's first two)
+        if (getenv("RS_AUDIO_LOG"))
+          fprintf(stderr, "[audio] %s, priority %u: %s (%s)\n", service, prio, message ? message : "refused", name ? name : "no reason given");
+        r = -EPERM;
+      }
+    }
+    message_unref(call);
+  }
+  error_free(error);
+  connection_close(bus);
+  connection_unref(bus);
+  return r;
+}
+
+static int realtime(void) {
+  struct sched_param none = {0}, rr = {.sched_priority = 20};
+  struct rlimit limit;
+  if (!sched_setscheduler(0, SCHED_RR | SCHED_RESET_ON_FORK, &rr)) return 0;  // the user may ask the scheduler itself
+  // RTKit's conditions: the policy given up on a fork, and a limit on the process's real-time run time (200 ms,
+  // PipeWire's own figure, where there is none or a longer one).
+  sched_setscheduler(0, SCHED_OTHER | SCHED_RESET_ON_FORK, &none);
+  if (!getrlimit(RLIMIT_RTTIME, &limit) && (limit.rlim_max == RLIM_INFINITY || limit.rlim_max > 200000)) {
+    limit.rlim_cur = limit.rlim_max = 200000;  // (both: RTKit looks at the hard one; PipeWire sets the same two)
+    setrlimit(RLIMIT_RTTIME, &limit);
+  }
+  pid_t tid = (pid_t)syscall(SYS_gettid);
+  if (getenv("RS_AUDIO_LOG")) {
+    getrlimit(RLIMIT_RTTIME, &limit);
+    fprintf(stderr, "[audio] asking for a real-time thread %d: run-time limit %lld/%lld us, policy 0x%x\n", (int)tid,
+            (long long)limit.rlim_cur, (long long)limit.rlim_max, sched_getscheduler(0));
+  }
+  int r = -1;
+  for (unsigned priority = 20; priority >= 5 && r; priority /= 2) {
+    r = rtkit_realtime(0, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Realtime", tid, priority);
+    if (r) r = rtkit_realtime(1, "org.freedesktop.RealtimeKit1", "/org/freedesktop/RealtimeKit1", "org.freedesktop.RealtimeKit1", tid, priority);
+  }
+  return r;
+}
+
+static const dw_audio_backend k_backend = {"PipeWire", start, stop, inputs, capture_start, capture_stop, level_get, level_set, changes, realtime};
 
 void rsl_audio_pipewire(void) { dw_audio_set_backend(&k_backend); }

@@ -524,8 +524,9 @@ static int devices_changed(uint32_t object, uint32_t count, const void *addresse
 static void test_audio_input(void) {
   struct address { uint32_t selector, scope, element; };
 #define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
-  static const dw_audio_backend backend = {"test", backend_start, backend_stop, backend_inputs, backend_capture_start, backend_capture_stop,
-                                           backend_level_get, backend_level_set, backend_changes};
+  static const dw_audio_backend backend = {.name = "test", .start = backend_start, .stop = backend_stop, .inputs = backend_inputs,
+                                           .capture_start = backend_capture_start, .capture_stop = backend_capture_stop,
+                                           .level_get = backend_level_get, .level_set = backend_level_set, .changes = backend_changes};
   dw_audio_set_backend(&backend);
   int (*get)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *) =
       FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *), "_AudioObjectGetPropertyData");
@@ -787,7 +788,7 @@ static void test_audio(void) {
   CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
 
   // with a backend: no clock thread; the backend asks for the sound and gets what the game's callback filled
-  static const dw_audio_backend backend = {"test", backend_start, backend_stop, NULL, NULL, NULL, NULL, NULL, NULL};
+  static const dw_audio_backend backend = {.name = "test", .start = backend_start, .stop = backend_stop};
   dw_audio_set_backend(&backend);
   CHECK(FN(int (*)(void **), "_NewAUGraph")(&graph) == 0);
   CHECK(add(graph, &out_desc, &out_node) == 0 && add(graph, &mixer_desc, &mixer_node) == 0);

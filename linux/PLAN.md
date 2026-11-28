@@ -751,4 +751,12 @@ Proposed; none is final before the step that tests it.
   whose device went while it was open has its capture ended, and a capture is not moved to another device.
   In the layer's test: a made-up interface pulled out while its input runs. With PipeWire: a virtual input made
   to appear while the game ran, and the game was told. Not tried by hand: a cable plugged in and pulled out.
+- **2026-11-29, the engine thread real-time.** The audio module's third function, the sound engine's thread,
+  which the Mac runs real-time in the output device's workgroup: here the layer calls the audio backend as that
+  thread starts (`dw_thread_special`), and the backend asks for round robin at 20 as PipeWire's own threads have
+  it: the scheduler itself where the user's limits allow, else the desktop's portal, else RTKit, over D-Bus with
+  the system's own library (PipeWire's helper for this serves only threads it made). `RS_AUDIO_RT=0`: an
+  ordinary thread, as the original. Seen granted where PipeWire's own threads are; in a session RTKit turns
+  away (a remote login) both stay ordinary. To do: the game's ten inputs are ten PipeWire loops, each with a
+  real-time thread of its own, of the 25 RTKit gives a user; one loop for all streams would do.
 

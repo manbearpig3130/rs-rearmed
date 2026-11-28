@@ -816,6 +816,7 @@ static void *graph_thread(void *arg) {
 }
 
 void dw_audio_set_backend(const dw_audio_backend *backend) { g_backend = backend; }
+int dw_audio_thread_realtime(void) { return g_backend && g_backend->realtime ? g_backend->realtime() : -1; }
 
 int dw_NewAUGraph(graph **out) {
   *out = calloc(1, sizeof(graph));
