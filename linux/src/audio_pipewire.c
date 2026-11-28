@@ -110,7 +110,7 @@ static void stop(void) {
 // class Audio/Source with their properties. An ALSA device is named as its card is ("Rocksmith USB Guitar
 // Adapter": the name the game knows the cable by), its maker is what the card's long name has in front of that
 // ("Hercules"), and its model is the name with the USB ids, as CoreAudio's model identifier is.
-#define MAX_FOUND 16
+#define MAX_FOUND 48  // sources and sinks
 static struct {
   struct pw_main_loop *loop;
   struct pw_core *core;
@@ -123,6 +123,7 @@ static struct {
     int have;
   } nodes[MAX_FOUND];
   int n;
+  int sink_cards[MAX_FOUND], nsinks;  // the ALSA cards that have an output: an input of one is an interface's
 } e;
 
 static void copy(char *to, size_t n, const char *from) { snprintf(to, n, "%s", from ? from : ""); }
@@ -132,6 +133,12 @@ static void node_info(void *data, const struct pw_node_info *info) {
   if (!info || !info->props || e.nodes[i].have) return;
   const struct spa_dict *p = info->props;
   const char *cls = spa_dict_lookup(p, "media.class"), *uid = spa_dict_lookup(p, "node.name");
+  if (cls && !strcmp(cls, "Audio/Sink")) {
+    const char *card = spa_dict_lookup(p, "api.alsa.pcm.card");
+    if (card && e.nsinks < MAX_FOUND) e.sink_cards[e.nsinks++] = atoi(card);
+    e.nodes[i].have = -1;  // (heard, and no input)
+    return;
+  }
   if (!cls || strcmp(cls, "Audio/Source") || !uid) return;
   dw_audio_input *in = &e.nodes[i].input;
   const char *card = spa_dict_lookup(p, "api.alsa.card.name"), *nick = spa_dict_lookup(p, "node.nick");
@@ -171,7 +178,7 @@ static void registry_global(void *data, uint32_t id, uint32_t permissions, const
   (void)data, (void)permissions, (void)version;
   if (strcmp(type, PW_TYPE_INTERFACE_Node) || e.n == MAX_FOUND) return;
   const char *cls = props ? spa_dict_lookup(props, "media.class") : NULL;
-  if (!cls || strcmp(cls, "Audio/Source")) return;
+  if (!cls || (strcmp(cls, "Audio/Source") && strcmp(cls, "Audio/Sink"))) return;
   int i = e.n++;
   e.nodes[i].have = 0;
   e.nodes[i].proxy = pw_registry_bind(e.registry, id, type, PW_VERSION_NODE, 0);
@@ -204,7 +211,11 @@ static int inputs(dw_audio_input *list, int max) {
       pw_main_loop_run(e.loop);
     }
     for (int i = 0; i < e.n; i++) {
-      if (e.nodes[i].have && n < max) list[n++] = e.nodes[i].input;
+      if (e.nodes[i].have > 0 && n < max) {
+        list[n] = e.nodes[i].input;
+        for (int k = 0; k < e.nsinks; k++) list[n].outputs |= list[n].card >= 0 && e.sink_cards[k] == list[n].card;
+        n++;
+      }
       if (e.nodes[i].proxy) pw_proxy_destroy(e.nodes[i].proxy);
     }
     pw_proxy_destroy((struct pw_proxy *)e.registry);

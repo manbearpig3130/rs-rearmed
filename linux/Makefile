@@ -84,6 +84,17 @@ $(OUT)/native/online_stub.o: $(GAME)/src/online_stub.cpp $(OUT)/target/rc_target
 	    -I$(OUT)/target -I$(RUNTIME) -I$(GAME)/include -I../shims/include -c -o $@ $<
 LAYER_OBJ = $(LAYER:%.c=$(OUT)/%.o)
 
+# The guitar input's policy, the Mac app's own source (shims/coreaudio/rs_audio_input.c: the settings file, the
+# list's entries, the level), compiled as it is with compat's CoreAudio names; the audio layer uses it.
+POLICY = ../shims/coreaudio
+POLICY_OBJ = $(OUT)/darwin/rs_audio_input.o
+$(POLICY_OBJ): $(POLICY)/rs_audio_input.c $(POLICY)/rs_audio_input.h $(POLICY)/rs_audio_host.h $(wildcard compat/*/*.h compat/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -fno-strict-aliasing -pthread $(CFLAGS) -Icompat -I$(POLICY) -c -o $@ $<
+$(OUT)/darwin/dw_audio.o: ALL_CFLAGS += -Icompat -I$(POLICY)
+OBJ += $(POLICY_OBJ)
+LAYER_OBJ += $(POLICY_OBJ)
+
 # The shell (the window, the frame loop, input) is in the program where SDL 3 is there to build with: the Mac
 # shell's C half and the app's seam from their own sources, and src/shell.c.
 SDL_LIBS := $(shell pkg-config --libs sdl3 2>/dev/null)

@@ -73,6 +73,10 @@ int main(int argc, char **argv, char **envp) {
   else snprintf(home, sizeof home, "%s/.local/share/rs-rearmed", user ? user : "");
   snprintf(dir, sizeof dir, "%s/steam", home);
   setenv("RS_STEAM_DATA_DIR", dir, 0);
+  // The guitar input's settings file, in that folder (the Mac's is in its own; shims/coreaudio/rs_audio_input.h).
+  snprintf(dir, sizeof dir, "%s/guitar-input.ini", home);
+  setenv("RS_AUDIO_INPUT_FILE", dir, 0);
+  setenv("RS_NATIVE_HOME", home, 0);  // (where the level's "calibration has run" mark is kept)
   // The renderer's library on OpenGL (its Metal backend is the Mac's), and the Cg library's cache of program
   // pairs out of the Mac's ~/Library.
   setenv("RS_GL_BACKEND", "gl", 1);

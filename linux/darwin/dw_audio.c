@@ -14,6 +14,7 @@
 #define _GNU_SOURCE
 #include <math.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,8 @@
 
 #include "dw.h"
 #include "dw_cf.h"
+#include "rs_audio_host.h"   // the Mac app's audio policy (shims/coreaudio), compiled as it is: its switches and log
+#include "rs_audio_input.h"  // the guitar input's settings, the list's entries and the level
 
 #define FOURCC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
 enum {
@@ -79,13 +82,26 @@ static uint32_t out_frames(void) {
 
 // The inputs: what the backend has, each a device of its own with one input stream. A device keeps its number for
 // the whole run, known by the backend's name for it, so one that goes and comes back is the same device.
-#define MAX_INPUTS 10  // the game opens ten at most
+// The inputs the game is shown are entries, as the Mac app's are (shims/coreaudio/rs_audio_input.h, whose rules
+// these are and whose code decides them: the settings file and its switches, how many entries each device gets,
+// the level): the Real Tone Cable first, then each channel of an audio interface as an input of its own
+// ("HX Stomp channel 5"), then the rest, ten in all, as the game's list holds ten and does not scroll. An entry
+// of a channel is a device of one channel to the game: what it hears is that channel of what the device
+// captured. A device whose channel the settings name (guitar-input.ini's Channel, RS_AUDIO_INPUT_CHANNEL) is one
+// entry, of that channel. RS_AUDIO_INPUT=0: the devices as they are.
+#define MAX_INPUTS 32  // the entries there have been in a run (the game opens ten at most)
 #define DEVICE_IN(i) (0x110 + (uint32_t)(i))
 #define STREAM_IN(i) (0x210 + (uint32_t)(i))
 typedef int (*io_proc)(uint32_t device, const void *now, const void *input, const void *input_time, void *output,
                        const void *output_time, void *client);
 typedef struct {
-  dw_audio_input info;
+  dw_audio_input info;  // the device it is of
+  char name[176], uid[208];  // the entry's own: "<name> channel 5", "<uid>#5"
+  int channel;          // the channel it is (from 0), or -1: the device as it is
+  int take;             // the channel the game hears of it, alone (from 0), or -1: every channel, as captured
+  int shown;            // the channels the game is told it has
+  float fixed;          // the settings' gain (GainDb, RS_AUDIO_INPUT_GAIN_DB), 1 without
+  int order;            // its place in the list, as the entries were last counted
   int present;
   uint32_t frames;  // its buffer, as the game set it
   float volume;     // 'volm', as the game set it
@@ -100,16 +116,82 @@ static int g_ninputs;
 static const dw_audio_backend *g_backend;
 static pthread_mutex_t g_inputs_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// What the shared policy asks of its host (rs_audio_host.h): the switches' reading and the log. The calls it has
+// for a device are for its own list of CoreAudio devices, which Linux does not use: no device answers them.
+int rs_audio_env_on(const char *name, int dflt) {
+  const char *e = getenv(name);
+  return !e || !*e ? dflt : !strchr("0nNfF", e[0]);
+}
+int rs_audio_log_on(void) { return rs_audio_env_on("RS_AUDIO_LOG", 0); }
+void rs_audio_log(const char *fmt, ...) {
+  if (!rs_audio_log_on()) return;
+  va_list ap;
+  va_start(ap, fmt);
+  flockfile(stderr);
+  fputs("[rs-audio] ", stderr);
+  vfprintf(stderr, fmt, ap);
+  fputc('\n', stderr);
+  funlockfile(stderr);
+  va_end(ap);
+}
+int rs_audio_dev_get(AudioObjectID dev, AudioObjectPropertySelector sel, void *out, UInt32 size) {
+  (void)dev, (void)sel, (void)out, (void)size;
+  return 0;
+}
+void rs_audio_dev_name(AudioObjectID dev, char *buf, size_t n) {
+  (void)dev;
+  snprintf(buf, n, "?");
+}
+int rs_audio_has_output(AudioObjectID dev) { return (void)dev, 0; }
+int rs_audio_channels(AudioObjectID dev, AudioObjectPropertyScope scope) { return (void)dev, (void)scope, 0; }
+
+static int cable_named(const dw_audio_input *in) {
+  const char *vid = strcasestr(in->model, ":12BA:");  // "<product>:<VID>:<PID>": 12BA makes other game hardware too
+  return strstr(in->name, "Rocksmith USB Guitar Adapter") || (vid && strtoul(vid + 6, NULL, 16) == 0xff);
+}
+
+// Where a device goes in the list, as the Mac ranks it: the cable, an interface (a USB device that plays as well
+// as records), the machine's own input, another (a USB microphone, a webcam), a virtual one (no hardware).
+static int rank_of(const dw_audio_input *in) {
+  if (cable_named(in)) return RS_AUDIO_RANK_CABLE;
+  if (!in->usb) return in->card < 0 ? RS_AUDIO_RANK_VIRTUAL : RS_AUDIO_RANK_BUILT_IN;
+  return in->outputs ? RS_AUDIO_RANK_INTERFACE : RS_AUDIO_RANK_OTHER;
+}
+
 static void refresh_inputs(void) {
   if (!g_backend || !g_backend->inputs) return;
-  dw_audio_input list[MAX_INPUTS];
-  int n = g_backend->inputs(list, MAX_INPUTS);
+  enum { MAX_DEVICES = 16 };
+  dw_audio_input list[MAX_DEVICES];
+  int n = g_backend->inputs(list, MAX_DEVICES);
+  if (n > MAX_DEVICES) n = MAX_DEVICES;
+  // The entries: (device, channel or -1), in the order the game is to list them.
+  struct { int dev, channel; } entry[MAX_INPUTS];
+  rs_audio_input settings[MAX_DEVICES];
+  int count = 0, budget = rs_audio_entries_budget();
+  for (int i = 0; i < n; i++) rs_audio_input_for(list[i].name, &settings[i]);
+  if (budget > 0) {
+    int rank[MAX_DEVICES], want[MAX_DEVICES], got[MAX_DEVICES];
+    for (int i = 0; i < n; i++) {
+      rank[i] = rank_of(&list[i]);
+      want[i] = rank[i] == RS_AUDIO_RANK_INTERFACE && settings[i].channel < 0 && list[i].channels >= 2 ? list[i].channels : 1;
+    }
+    rs_audio_entry_counts(rank, want, n, budget, got);
+    for (int r = 0; r < RS_AUDIO_RANKS; r++)
+      for (int i = 0; i < n; i++)
+        for (int c = 0; rank[i] == r && c < got[i] && count < MAX_INPUTS; c++) entry[count].dev = i, entry[count++].channel = got[i] < 2 ? -1 : c;
+  } else {
+    for (int i = 0; i < n && count < MAX_INPUTS; i++) entry[count].dev = i, entry[count++].channel = -1;
+  }
   pthread_mutex_lock(&g_inputs_lock);
   for (int i = 0; i < g_ninputs; i++) g_inputs[i].present = 0;
-  for (int k = 0; k < n; k++) {
+  for (int k = 0; k < count; k++) {
+    const dw_audio_input *in = &list[entry[k].dev];
+    char uid[sizeof g_inputs[0].uid];
+    if (entry[k].channel < 0) snprintf(uid, sizeof uid, "%s", in->uid);
+    else snprintf(uid, sizeof uid, "%.190s#%d", in->uid, entry[k].channel + 1);
     int at = -1;
     for (int i = 0; i < g_ninputs; i++)
-      if (!strcmp(g_inputs[i].info.uid, list[k].uid)) at = i;
+      if (!strcmp(g_inputs[i].uid, uid)) at = i;
     if (at < 0 && g_ninputs < MAX_INPUTS) {
       at = g_ninputs++;
       memset(&g_inputs[at], 0, sizeof g_inputs[at]);
@@ -118,8 +200,20 @@ static void refresh_inputs(void) {
       g_inputs[at].gain = 1.0f;
     }
     if (at < 0) continue;
-    g_inputs[at].info = list[k];
-    g_inputs[at].present = 1;
+    input_device *d = &g_inputs[at];
+    d->info = *in;
+    snprintf(d->uid, sizeof d->uid, "%s", uid);
+    d->channel = entry[k].channel;
+    if (d->channel < 0) snprintf(d->name, sizeof d->name, "%s", in->name);
+    else snprintf(d->name, sizeof d->name, "%.150s channel %d", in->name, d->channel + 1);
+    // What the game hears of it: the entry's channel; else the one the settings name, of a device it then takes
+    // as of one channel; else the device as it is, of which the game reads the first (or the second: its
+    // MonoToStereoChannel).
+    d->take = d->channel >= 0 ? d->channel : rs_audio_input_channel(&settings[entry[k].dev], (uint32_t)in->channels, in->name);
+    d->shown = d->take >= 0 ? 1 : in->channels;
+    d->fixed = settings[entry[k].dev].gain;
+    d->order = k;
+    d->present = 1;
   }
   pthread_mutex_unlock(&g_inputs_lock);
 }
@@ -129,16 +223,16 @@ static void refresh_inputs(void) {
 // its own for it (18 dB of range on its USB mixer), and the game's level is that control's place in its range, as
 // CoreAudio's volume scalar is. On any other input the hardware's level is the player's own setting, or there is
 // none: there the level is a gain of ours on what is captured, 0.375 (where the game starts a device) being
-// unity and 1 being +24 dB.
+// unity and 1 being +24 dB, and it counts once calibration has run with it (rs_audio_input.h: a level saved
+// before then meant nothing). RS_AUDIO_INPUT_LEVEL=0: no gain of ours.
 static int is_cable(const input_device *d) { return strstr(d->info.name, "Rocksmith USB") != NULL; }
 static int hardware_level(const input_device *d) {
   float level;
   return is_cable(d) && g_backend && g_backend->level_get && g_backend->level_set && g_backend->level_get(&d->info, &level);
 }
 static float software_gain(const input_device *d) {
-  if (hardware_level(d)) return 1.0f;
-  float v = d->volume;
-  return v <= 0.375f ? v / 0.375f : powf(10.0f, 24.0f * (v - 0.375f) / 0.625f / 20.0f);
+  if (hardware_level(d) || !rs_audio_level_on()) return 1.0f;
+  return rs_audio_level_applied(d->volume);
 }
 
 static input_device *input_of(uint32_t obj) {
@@ -200,16 +294,17 @@ static stream_format device_format(void) {
 // device; the backend converts what the hardware gives.
 static int get_input(input_device *d, uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
   int input = a->scope != SCOPE_OUTPUT;  // nothing in the output scope
-  stream_format f = {g_rate, FOURCC('l', 'p', 'c', 'm'), 0x1 | 0x8, 4u * (uint32_t)d->info.channels, 1,
-                     4u * (uint32_t)d->info.channels, (uint32_t)d->info.channels, 32, 0};
+  stream_format f = {g_rate, FOURCC('l', 'p', 'c', 'm'), 0x1 | 0x8, 4u * (uint32_t)d->shown, 1,
+                     4u * (uint32_t)d->shown, (uint32_t)d->shown, 32, 0};
   switch (a->selector) {
-    case FOURCC('l', 'n', 'a', 'm'): PUT(void *, dw_cf_string(d->info.name));
+    case FOURCC('l', 'n', 'a', 'm'): PUT(void *, dw_cf_string(d->name));
     case FOURCC('l', 'm', 'a', 'k'): PUT(void *, dw_cf_string(d->info.maker));
-    case FOURCC('u', 'i', 'd', ' '): PUT(void *, dw_cf_string(d->info.uid));
+    case FOURCC('u', 'i', 'd', ' '): PUT(void *, dw_cf_string(d->uid));
     case FOURCC('m', 'u', 'i', 'd'):
       if (!d->info.model[0]) return kUnknownProperty;
       PUT(void *, dw_cf_string(d->info.model));
-    case FOURCC('t', 'r', 'a', 'n'): PUT(uint32_t, d->info.usb ? FOURCC('u', 's', 'b', ' ') : FOURCC('b', 'l', 't', 'n'));
+    case FOURCC('t', 'r', 'a', 'n'):
+      PUT(uint32_t, d->info.usb ? FOURCC('u', 's', 'b', ' ') : d->info.card < 0 ? FOURCC('v', 'i', 'r', 't') : FOURCC('b', 'l', 't', 'n'));
     case FOURCC('l', 'i', 'v', 'n'): PUT(uint32_t, 1);
     case FOURCC('g', 'o', 'i', 'n'): PUT(uint32_t, d->capture != NULL);
     case FOURCC('n', 's', 'r', 't'): PUT(double, g_rate);
@@ -238,7 +333,7 @@ static int get_input(input_device *d, uint32_t obj, const prop_address *a, uint3
       PUT(uint32_t, STREAM_IN(obj - DEVICE_IN(0)));
     case FOURCC('s', 'l', 'a', 'y'): {
       if (*size < 24) return kBadPropertySize;
-      struct { uint32_t count; audio_buffer buffer; } list = {a->scope == SCOPE_INPUT ? 1u : 0u, {a->scope == SCOPE_INPUT ? (uint32_t)d->info.channels : 0u, 0, NULL}};
+      struct { uint32_t count; audio_buffer buffer; } list = {a->scope == SCOPE_INPUT ? 1u : 0u, {a->scope == SCOPE_INPUT ? (uint32_t)d->shown : 0u, 0, NULL}};
       memcpy(out, &list, 24);
       *size = 24;
       return noErr;
@@ -264,8 +359,9 @@ static int get(uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
       case FOURCC('d', 'e', 'v', '#'): {  // the devices: the inputs, then the output
         refresh_inputs();
         uint32_t list[MAX_INPUTS + 1], n = 0;
-        for (int i = 0; i < g_ninputs; i++)
-          if (g_inputs[i].present) list[n++] = DEVICE_IN(i);
+        for (int place = 0; place < MAX_INPUTS; place++)  // in the list's order, whenever each entry first came
+          for (int i = 0; i < g_ninputs; i++)
+            if (g_inputs[i].present && g_inputs[i].order == place) list[n++] = DEVICE_IN(i);
         list[n++] = DEVICE_OUT;
         if (*size < n * 4) n = *size / 4;
         memcpy(out, list, n * 4);
@@ -277,7 +373,7 @@ static int get(uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
       case FOURCC('d', 'I', 'n', ' '):                               // the default input: the first, or none (kAudioObjectUnknown)
         refresh_inputs();
         for (int i = 0; i < g_ninputs; i++)
-          if (g_inputs[i].present) PUT(uint32_t, DEVICE_IN(i));
+          if (g_inputs[i].present && g_inputs[i].order == 0) PUT(uint32_t, DEVICE_IN(i));
         PUT(uint32_t, 0);
     }
     return kUnknownProperty;
@@ -285,8 +381,8 @@ static int get(uint32_t obj, const prop_address *a, uint32_t *size, void *out) {
   if (input_of(obj)) return get_input(input_of(obj), obj, a, size, out);
   if (obj >= STREAM_IN(0) && obj < STREAM_IN(MAX_INPUTS) && input_of(obj - STREAM_IN(0) + DEVICE_IN(0))) {
     input_device *d = input_of(obj - STREAM_IN(0) + DEVICE_IN(0));
-    stream_format f = {g_rate, FOURCC('l', 'p', 'c', 'm'), 0x1 | 0x8, 4u * (uint32_t)d->info.channels, 1,
-                       4u * (uint32_t)d->info.channels, (uint32_t)d->info.channels, 32, 0};
+    stream_format f = {g_rate, FOURCC('l', 'p', 'c', 'm'), 0x1 | 0x8, 4u * (uint32_t)d->shown, 1,
+                       4u * (uint32_t)d->shown, (uint32_t)d->shown, 32, 0};
     switch (sel) {
       case FOURCC('l', 't', 'n', 'c'): PUT(uint32_t, 0);
       case FOURCC('s', 'd', 'i', 'r'): PUT(uint32_t, 1);  // an input stream
@@ -422,8 +518,9 @@ int dw_AudioObjectSetPropertyData(uint32_t obj, const prop_address *a, uint32_t 
     if (level > 1) level = 1;
     d->volume = level;
     if (hardware_level(d)) g_backend->level_set(&d->info, level);
+    else if (rs_audio_level_on()) rs_audio_level_set((uintptr_t)d, level);  // (a run of these is calibration)
     d->gain = software_gain(d);
-    if (audio_log()) fprintf(stderr, "[audio] input \"%s\": level %.3f (%s)\n", d->info.name, (double)level, hardware_level(d) ? "the hardware's control" : "a gain of ours");
+    if (audio_log()) fprintf(stderr, "[audio] input \"%s\": level %.3f (%s)\n", d->name, (double)level, hardware_level(d) ? "the hardware's control" : "a gain of ours");
     r = noErr;
   }
   note("set", obj, a, r == noErr);
@@ -457,14 +554,19 @@ static void input_captured(void *ctx, const float *samples, uint32_t frames) {
   clock_gettime(CLOCK_MONOTONIC, &now);
   time_stamp when = {.sample_time = d->sample, .host_time = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec,
                      .rate_scalar = 1.0, .flags = 1 | 2 | 4};
-  static __thread float scaled[4096 * 8];
-  float gain = d->gain;
-  if (gain != 1.0f && frames <= 4096) {  // an input whose level is ours to apply
-    uint32_t n = frames * (uint32_t)d->info.channels;
-    for (uint32_t i = 0; i < n; i++) scaled[i] = samples[i] * gain;
-    samples = scaled;
+  // What the game hears: one channel of what was captured, where the entry is of one; the level's gain and the
+  // settings', kept within -1 and 1 as an interface's converter keeps a sample.
+  static __thread float heard[4096 * 8];
+  uint32_t channels = (uint32_t)d->info.channels, shown = (uint32_t)d->shown, clips = 0;
+  float gain = d->gain * d->fixed, peak = 0;
+  if (frames <= 4096 && d->take >= 0) {
+    for (uint32_t i = 0; i < frames; i++) heard[i] = rs_audio_input_apply(samples[i * channels + (uint32_t)d->take], gain, &peak, &clips);
+    samples = heard;
+  } else if (frames <= 4096 && gain != 1.0f) {
+    for (uint32_t i = 0; i < frames * channels; i++) heard[i] = rs_audio_input_apply(samples[i], gain, &peak, &clips);
+    samples = heard;
   }
-  struct { uint32_t count; audio_buffer buffer; } input = {1, {(uint32_t)d->info.channels, frames * 4u * (uint32_t)d->info.channels, (void *)(uintptr_t)samples}};
+  struct { uint32_t count; audio_buffer buffer; } input = {1, {shown, frames * 4u * shown, (void *)(uintptr_t)samples}};
   struct { uint32_t count; audio_buffer buffer; } output = {0, {0, 0, NULL}};
   proc(DEVICE_IN(d - g_inputs), &when, &input, &when, &output, &when, d->client);
   d->sample += frames;
@@ -500,7 +602,7 @@ int dw_AudioDeviceStart(uint32_t device, void *id) {
   d->gain = software_gain(d);
   d->capture = g_backend->capture_start(&d->info, g_rate, d->frames, input_captured, d);
   if (audio_log() || !d->capture)
-    fprintf(stderr, "[audio] input \"%s\": %s, %u frames a call\n", d->info.name, d->capture ? "started" : "could not be started", d->frames);
+    fprintf(stderr, "[audio] input \"%s\": %s, %u frames a call\n", d->name, d->capture ? "started" : "could not be started", d->frames);
   return d->capture ? noErr : kUnspecified;
 }
 DW_FUNCTION("_AudioDeviceStart", dw_AudioDeviceStart);
@@ -512,7 +614,7 @@ int dw_AudioDeviceStop(uint32_t device, void *id) {
   if (d->capture) {
     g_backend->capture_stop(d->capture);
     d->capture = NULL;
-    if (audio_log()) fprintf(stderr, "[audio] input \"%s\": stopped\n", d->info.name);
+    if (audio_log()) fprintf(stderr, "[audio] input \"%s\": stopped\n", d->name);
   }
   return noErr;
 }

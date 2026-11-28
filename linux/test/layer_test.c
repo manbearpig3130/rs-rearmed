@@ -467,8 +467,13 @@ static int backend_inputs(dw_audio_input *list, int max) {
   memset(&list[1], 0, sizeof list[1]);
   strcpy(list[1].name, "An Interface");
   strcpy(list[1].uid, "alsa_input.test-interface");
-  list[1].channels = 1, list[1].usb = 1, list[1].card = 3;
-  return 2;
+  list[1].channels = 1, list[1].usb = 1, list[1].card = 3;  // (it records and does not play: a microphone)
+  if (max < 3) return 2;
+  memset(&list[2], 0, sizeof list[2]);
+  strcpy(list[2].name, "HX Stomp");  // an audio interface of eight channels
+  strcpy(list[2].uid, "alsa_input.test-stomp");
+  list[2].channels = 8, list[2].usb = 1, list[2].card = 4, list[2].outputs = 1;
+  return 3;
 }
 static void *backend_capture_start(const dw_audio_input *input, double rate, uint32_t frames, dw_audio_capture capture, void *ctx) {
   if (strncmp(input->uid, "alsa_input.test-", 16) || rate != 48000.0) return NULL;
@@ -514,24 +519,30 @@ static void test_audio_input(void) {
   int (*set)(uint32_t, const struct address *, uint32_t, const void *, uint32_t, const void *) =
       FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t, const void *), "_AudioObjectSetPropertyData");
   struct address devices = {CC('d', 'e', 'v', '#'), CC('g', 'l', 'o', 'b'), 0}, in_device = {CC('d', 'I', 'n', ' '), CC('g', 'l', 'o', 'b'), 0};
-  uint32_t list[8], size = 0, cable = 0;
-  CHECK(FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *), "_AudioObjectGetPropertyDataSize")(1, &devices, 0, NULL, &size) == 0 && size == 12);
+  uint32_t list[16], size = 0, cable = 0;
+  // RS Re-ARMed's folder, for the guitar input's settings file and the mark that calibration has run
+  char home[] = "/tmp/rs-layer-test-XXXXXX";
+  CHECK(mkdtemp(home) != NULL);
+  setenv("RS_NATIVE_HOME", home, 1);
+  // The list: the cable, each of the interface's eight channels as an input of its own, the microphone; then the
+  // output. Ten inputs, as the game's list holds ten.
+  CHECK(FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *), "_AudioObjectGetPropertyDataSize")(1, &devices, 0, NULL, &size) == 0 && size == 44);
   size = sizeof list;
-  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 12);  // the two inputs, then the output
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 44);
   // The output's buffer is the game's own, or RS_AUDIO_FRAMES while that is set (within 32 and 4096; 0: the game's).
   struct address out_buffer = {CC('f', 's', 'i', 'z'), CC('o', 'u', 't', 'p'), 0};
   uint32_t own = 0, chosen = 0;
   size = 4;
-  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &own) == 0 && own >= 16 && own <= 4096);
+  CHECK(get(list[10], &out_buffer, 0, NULL, &size, &own) == 0 && own >= 16 && own <= 4096);
   setenv("RS_AUDIO_FRAMES", "128", 1);
   size = 4;
-  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == 128);
+  CHECK(get(list[10], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == 128);
   setenv("RS_AUDIO_FRAMES", "8", 1);
   size = 4;
-  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == 32);
+  CHECK(get(list[10], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == 32);
   setenv("RS_AUDIO_FRAMES", "0", 1);
   size = 4;
-  CHECK(get(list[2], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == own);
+  CHECK(get(list[10], &out_buffer, 0, NULL, &size, &chosen) == 0 && chosen == own);
   unsetenv("RS_AUDIO_FRAMES");
   size = 4;
   CHECK(get(1, &in_device, 0, NULL, &size, &cable) == 0 && cable == list[0] && cable != 0);
@@ -581,8 +592,9 @@ static void test_audio_input(void) {
   CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(0x999, proc_id) == (int)CC('!', 'o', 'b', 'j'));
 
   // another input has no control the game may move: its level is a gain on the samples, unity at 0.375 and
-  // +24 dB at 1
-  uint32_t other = list[1];
+  // +24 dB at 1, once calibration has run with it (a run of level changes on one input; a level saved before
+  // then meant nothing, and the input is at unity)
+  uint32_t other = list[9];
   volume = 1.0f;
   CHECK(set(other, &level, 0, NULL, 4, &volume) == 0 && g_hardware_level == 0.375f);  // the cable's is not touched
   size = 4;
@@ -593,12 +605,96 @@ static void test_audio_input(void) {
   CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(other, proc_id) == 0);
   for (int i = 0; i < 64; i++) samples[i] = 0.01f;
   if (g_capture) g_capture(g_capture_ctx, samples, 64);
-  CHECK(g_io_calls == 1 && fabsf(g_io_first - 0.01f * 15.8489f) < 1e-4f);  // +24 dB
+  CHECK(g_io_calls == 1 && g_io_first == 0.01f);  // not calibrated yet: unity
+  for (int step = 0; step < 6; step++) {  // calibration: the level raised in small steps
+    volume = 0.4f + 0.1f * (float)step;
+    CHECK(set(other, &level, 0, NULL, 4, &volume) == 0);
+  }
+  volume = 1.0f;
+  CHECK(set(other, &level, 0, NULL, 4, &volume) == 0);
+  if (g_capture) g_capture(g_capture_ctx, samples, 64);
+  CHECK(g_io_calls == 2 && fabsf(g_io_first - 0.01f * 15.8489f) < 1e-4f);  // +24 dB
+  for (int i = 0; i < 64; i++) samples[i] = 0.5f;
+  if (g_capture) g_capture(g_capture_ctx, samples, 64);
+  CHECK(g_io_calls == 3 && g_io_first == 1.0f);  // kept within -1 and 1, as a converter keeps a sample
+  for (int i = 0; i < 64; i++) samples[i] = 0.01f;
   volume = 0.375f;
   CHECK(set(other, &level, 0, NULL, 4, &volume) == 0);
   if (g_capture) g_capture(g_capture_ctx, samples, 64);
-  CHECK(g_io_calls == 2 && g_io_first == 0.01f);  // unity
+  CHECK(g_io_calls == 4 && g_io_first == 0.01f);  // unity
   CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(other, proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceDestroyIOProcID")(other, proc_id) == 0);
+
+  // the interface's channels: each an input of one channel, named for it, that hears that channel alone
+  uint32_t fifth = list[5];
+  size = sizeof string;
+  CHECK(get(list[1], &name, 0, NULL, &size, &string) == 0 && string);
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(string, text, sizeof text, 0x600) && !strcmp(text, "HX Stomp channel 1"));
+  FN(void (*)(void *), "_CFRelease")(string);
+  size = sizeof string;
+  CHECK(get(fifth, &name, 0, NULL, &size, &string) == 0 && string);
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(string, text, sizeof text, 0x600) && !strcmp(text, "HX Stomp channel 5"));
+  FN(void (*)(void *), "_CFRelease")(string);
+  size = sizeof channels;
+  CHECK(get(fifth, &in_layout, 0, NULL, &size, &channels) == 0 && channels.count == 1 && channels.channels == 1);
+  static float wide[64 * 8];
+  for (int i = 0; i < 64; i++)
+    for (int c = 0; c < 8; c++) wide[i * 8 + c] = (float)(c + 1) / 10.0f;
+  g_io_calls = 0;
+  CHECK(set(fifth, &buffer, 0, NULL, 4, &frames) == 0);
+  CHECK(FN(int (*)(uint32_t, void *, void *, void **), "_AudioDeviceCreateIOProcID")(fifth, (void *)io_proc, &g_io_calls, &proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(fifth, proc_id) == 0);
+  if (g_capture) g_capture(g_capture_ctx, wide, 64);
+  CHECK(g_io_calls == 1 && g_io_first == 0.5f && g_io_last == 0.5f);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(fifth, proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceDestroyIOProcID")(fifth, proc_id) == 0);
+
+  // the settings file names the interface's channel and a gain: one entry, of that channel, 6 dB up
+  char settings_path[256];
+  snprintf(settings_path, sizeof settings_path, "%s/guitar-input.ini", getenv("RS_NATIVE_HOME"));
+  FILE *settings_file = fopen(settings_path, "w");
+  CHECK(settings_file != NULL);
+  if (settings_file) {
+    fputs("[ hx stomp ]\nChannel=3\nGainDb=6\n", settings_file);
+    fclose(settings_file);
+  }
+  setenv("RS_AUDIO_INPUT_FILE", settings_path, 1);
+  size = sizeof list;
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 16);  // the cable, the interface, the microphone; the output
+  size = sizeof string;
+  CHECK(get(list[1], &name, 0, NULL, &size, &string) == 0 && string);
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(string, text, sizeof text, 0x600) && !strcmp(text, "HX Stomp"));
+  FN(void (*)(void *), "_CFRelease")(string);
+  g_io_calls = 0;
+  CHECK(set(list[1], &buffer, 0, NULL, 4, &frames) == 0);
+  CHECK(FN(int (*)(uint32_t, void *, void *, void **), "_AudioDeviceCreateIOProcID")(list[1], (void *)io_proc, &g_io_calls, &proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(list[1], proc_id) == 0);
+  if (g_capture) g_capture(g_capture_ctx, wide, 64);
+  CHECK(g_io_calls == 1 && fabsf(g_io_first - 0.3f * 1.99526f) < 1e-4f);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(list[1], proc_id) == 0);
+  // a switch wins over the file, for every device; and with RS_AUDIO_INPUT=0 the devices are as they are
+  setenv("RS_AUDIO_INPUT_CHANNEL", "2", 1);
+  size = sizeof list;
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 16);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(list[1], proc_id) == 0);
+  if (g_capture) g_capture(g_capture_ctx, wide, 64);
+  CHECK(g_io_calls == 2 && fabsf(g_io_first - 0.2f * 1.99526f) < 1e-4f);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(list[1], proc_id) == 0);
+  unsetenv("RS_AUDIO_INPUT_CHANNEL");
+  setenv("RS_AUDIO_INPUT", "0", 1);
+  size = sizeof list;
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 16);
+  size = sizeof channels;
+  CHECK(get(list[2], &in_layout, 0, NULL, &size, &channels) == 0 && channels.count == 1 && channels.channels == 8);  // (the backend's order)
+  unsetenv("RS_AUDIO_INPUT");
+  unsetenv("RS_AUDIO_INPUT_FILE");
+  remove(settings_path);
+  char mark[256];
+  snprintf(mark, sizeof mark, "%s/input-level-calibrated", home);
+  CHECK(access(mark, F_OK) == 0);  // calibration was seen, and kept
+  remove(mark);
+  rmdir(home);
+  unsetenv("RS_NATIVE_HOME");
   dw_audio_set_backend(NULL);
 #undef CC
 }

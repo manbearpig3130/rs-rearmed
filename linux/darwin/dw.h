@@ -57,6 +57,7 @@ typedef struct {
   char model[192];            // name and USB ids, as CoreAudio's model identifier has them; or empty
   int channels, usb;
   int card;                   // its ALSA card's number, or -1
+  int outputs;                // its device plays as well as records (an audio interface, not a microphone)
 } dw_audio_input;
 // What an open input hears: FRAMES frames, the channels interleaved, on the backend's audio thread.
 typedef void (*dw_audio_capture)(void *ctx, const float *samples, uint32_t frames);

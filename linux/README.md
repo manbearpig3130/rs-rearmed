@@ -10,7 +10,7 @@ input through PipeWire and its videos (on Bazzite, 2026-11-28: a player calibrat
 song), and the Mac app's built-in fixes module whole (no intro screens, the batched DLC mounting, the frame-rate
 fixes). The game's files come from the player's own Steam: `install/rs_install.py` has Steam download the Mac
 game and the account's DLC, makes RS Re-ARMed's copy and starts the game ([below](#set-up-and-play-x86-64)).
-Not there yet: mods, an audio interface's channels as separate inputs, and
+An audio interface's channels are listed as inputs of their own, as on the Mac. Not there yet: mods, and
 anything for arm64, which is investigated only.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
@@ -143,6 +143,7 @@ another place), laid out as the Mac app's home:
 | `steam/` | the saves. They start as a copy of Steam's own (`userdata/<account>/221680/remote`, where the Windows game played through Steam keeps the same files), without the stored Ubisoft sign-in; Steam's are never written |
 | `settings.env`, `options.env` | the built-in mods switched off (`RS_MODS_INTRO=0`) and the options set (`RS_AUDIO_FRAMES=128`), written by the installer's Settings and switches page or by hand: [the Mac's list](../docs/mac/INSTALL.md), of which `install/rs_settings.py` says what the Linux build has; the environment wins |
 | `app/` | a copy of the AppImage, which the applications menu's entry starts |
+| `guitar-input.ini` | per device, by its name: `[HX Stomp]`, `Channel=5`, `GainDb=0` ([the Mac's file](../docs/mac/INSTALL.md), read by the same code); yours to write. Without it the game lists each channel of an interface as an input of its own |
 | `logs/` | `last-run.log`, when the game is started with no terminal |
 
 **Each start** does what the Mac launcher does: the game stays offline (`[Net] AutoLogin=0` and no browser, forced

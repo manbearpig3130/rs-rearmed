@@ -13,8 +13,8 @@ page is what to do about it, in what order, and what has been done. The editions
   has calibrated and played a song with the cable (2026-11-28): no crackle, the notes detected, the latency as
   good as they know it. The built-in fixes module runs whole, at hook points and mid points. The game's files are
   set up from the player's Steam, and the game started from them, by `install/rs_install.py`
-  ([X4](#x4-install-and-play)). The title logo is made there too, and the window goes full screen. Not there: mods
-  and edits, an interface's channels as inputs, anything for arm64.
+  ([X4](#x4-install-and-play)). The title logo is made there too, the window goes full screen, and an interface's
+  channels are inputs of their own. Not there: mods and edits, anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -705,3 +705,13 @@ Proposed; none is final before the step that tests it.
   half). A start with a newer program makes the copy's menu overlay again (its tool's hash is kept beside it),
   where the Mac's installer would have. Candidates for rows of their own later, each needing work in the
   renderer's OpenGL backend: anti-aliasing, texture filtering, a render scale.
+- **2026-11-28, the guitar input.** The Mac app's policy file (`shims/coreaudio/rs_audio_input.c`) is compiled
+  as it is, with `compat`'s CoreAudio names, and the audio layer shows the game its entries: the cable, each
+  channel of an interface as an input of one channel ("HX Stomp channel 5"), the rest, ten in all; a device
+  whose channel `guitar-input.ini` or `RS_AUDIO_INPUT_CHANNEL` names is one entry of that channel; a gain from
+  the same settings; samples kept within -1 and 1. The level of an input that is not the cable is the Mac's rule
+  now: a gain of ours that counts once calibration has run with it (`input-level-calibrated` in the home
+  folder), and `RS_AUDIO_INPUT_LEVEL=0` leaves it out. An interface is a USB device that plays as well as
+  records (PipeWire's sinks tell); a USB microphone is not one. Checked in the layer's test with a made-up
+  interface of eight channels; **not yet with a real interface**. `RS_AUDIO_INPUT_TRIM` (the game's own queue
+  of input buffers, a hook in the game's code) is not in.
