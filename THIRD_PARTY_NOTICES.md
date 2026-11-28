@@ -10,6 +10,7 @@ included.
 | libpng | 1.5.13 (altered) | https://github.com/pnggroup/libpng, tag v1.5.13 | libpng licence | `shims/game/third_party/libpng-1.5.13` |
 | libjpeg | IJG 8d (15-Jan-2012) | https://www.ijg.org/files/jpegsrc.v8d.tar.gz | IJG licence | `shims/game/third_party/jpeg-8d` |
 | FFmpeg + Bink 2 decoder patch | FFmpeg 7.1.2 | https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz (downloaded at build time) | LGPL-2.1-or-later | `shims/bink/build-ffmpeg.sh`, `shims/bink/third_party/ffmpeg-bink2.patch` |
+| SDL 3 (the Linux package only) | the build system's (3.4.20 in the build of 2026-11-28) | https://libsdl.org | zlib licence | not in this repo: `make -C linux appdir` copies the build system's `libSDL3.so.0` into the packaged Linux build, unchanged |
 | rs-mac-fixes (behaviour only) | commit `2a05c31` | https://github.com/glebb/rs-mac-fixes | MIT; no upstream code is included | `tools/ws7/recomp/overrides/mods/mods.c`, `mods_shared.c` beside it, `win-x86/shims/win32_overrides.c` |
 | RSMods (behaviour only: the Direct Connect, Enumerate and Exit Game menu entries) | — | https://github.com/Lovrom8/RSMods | upstream has no licence file; no upstream code or resources are included | `tools/play-native/cache_overlay.py`, `shims/steam/src/enumerate.h` |
 | RSBypass (behaviour only) | — | https://github.com/aik002/RSBypass | upstream has no licence file; no upstream code is included | `tools/ws7/recomp/overrides/mods/mods.c`, `win-x86/shims/win32_overrides.c` |
@@ -43,6 +44,14 @@ Copyright (C) 1991-2012, Thomas G. Lane, Guido Vollbeding. IJG licence: see "LEG
 `shims/game/third_party/jpeg-8d/README`. Only the library sources are included, with `jmemnobs.c`
 and `jconfig.txt` as `jconfig.h`.
 
+## SDL 3 (the Linux package)
+
+Copyright (C) Sam Lantinga. zlib licence (https://www.libsdl.org/license.php). SDL is not stored in this repo
+and its source is not altered: the Linux build links the build system's SDL 3 dynamically (`linux/src/shell.c`:
+the window, the keyboard and the mouse), and the packaged build (`make -C linux appdir`, the AppImage) carries a
+copy of that library beside the program for systems that have none. The Mac and Learn & Play builds do not use
+it.
+
 ## FFmpeg 7.1.2 + Bink 2 decoder
 
 FFmpeg is not stored in this repo. `shims/bink/build-ffmpeg.sh` downloads the 7.1.2 release tarball
@@ -59,6 +68,10 @@ FFmpeg is linked only into the Bink shim, `libBink2Macx64.dylib`, a separate dyn
 can rebuild it against a modified FFmpeg (edit `build-ffmpeg.sh` or the patch, then rebuild the
 `bink2` target) and replace the dylib; nothing else links FFmpeg. Learn & Play doesn't use it: that edition
 translates the game's own `bink2w32.dll`.
+
+The Linux build is the same: FFmpeg is linked only into `libBink2.so` (`make -C linux bink`, with
+`linux/bink/build-ffmpeg.sh`, which takes the version, the checksum and the patch from the Mac's script), a
+separate library beside the program in the packaged build too, where it can be replaced the same way.
 
 ## rs-mac-fixes
 

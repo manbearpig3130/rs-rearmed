@@ -310,6 +310,15 @@ with Linux's answers set from outside, so the Mac's code and its tests are untou
 - **With no terminal** the setup's progress and Steam's steps are in a window (zenity), and so is what went
   wrong.
 
+**Done (2026-11-28): the packaged build.** `make -C linux appdir` lays the program, its libraries, the setup and
+the Mac's tools it uses out as an AppImage's folder (`usr/bin/rs-rearmed` the command, `usr/lib/rs-rearmed` the
+program with its libraries beside it, as it looks for them, `usr/share/rs-rearmed` the setup); `make -C linux
+appimage` packs it with appimagetool 1.9.1 and the runtime of 2025-11-08, each downloaded once and checked
+against its SHA-256. 3.2 MB, nothing of the game in it. On the Bazzite host (not the build's container) it set
+the game up in the player's real folder and started it. The build system's SDL 3 is carried, the one library a
+system may lack; the system's Python 3 runs the setup. Built on Fedora 45 it needs glibc 2.44: a build on an
+older base (a container with an older distribution, SDL 3 from source) is the next step for other systems.
+
 Not done: the title logo (`tools/loadscreen` needs its Python packages), the account's ticket-based choice when
 several accounts use one Steam (the library's own choice, the last signed in, stands), the RS1 DLC asked of
 Steam (the package cache answers), a copy on another drive than the home folder.
@@ -656,3 +665,6 @@ Proposed; none is final before the step that tests it.
   the runtime's general form (`rc_call_guest_regs`) is there too; `test/call_test.c` checks up to twelve, both
   kinds, the results and the stack's alignment. Checked in the game with scripted keys: both screens open, and
   their rows move and change.
+- **2026-11-28, the AppImage.** The packaged build, and the player's first run of it on the Bazzite PC: the
+  setup into the real folder (the game found, 312 files cloned, the image decrypted; the DLC had come in the
+  test before), then the game.

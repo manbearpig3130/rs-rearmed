@@ -23,7 +23,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [patch-sites.tsv](patch-sites.tsv) | every hook point and mid point, with whether a jump can be written there (`check_patch_sites.py` makes and checks it) |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
-| `install` | the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`) |
+| `install` | the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`); and the packaged build's launcher, desktop entry, icon and AppImage step |
 | `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |
 | `gl` | `libRSSystemGL.so`: Mesa as the renderer's OpenGL backend expects Apple's OpenGL (CGL over EGL, Apple's identity) |
 
@@ -93,6 +93,20 @@ python3 linux/install/rs_install.py status    # what is set up, and where
 python3 linux/install/rs_install.py run -- --size 1920x1080     # the game, with arguments for rs-rearmed
 python3 linux/install/test_rs_install.py      # its test (ctest: linux.install), on any machine
 ```
+
+**As an AppImage**, one file that holds the program, its libraries and the setup, and nothing of the game:
+
+```sh
+make -C linux all gl bink appimage            # build/linux/RS_Re-ARMed-<version>-x86_64.AppImage (3 MB)
+./RS_Re-ARMed-1.20.0-x86_64.AppImage          # the game, after the setup when there has been none
+./RS_Re-ARMed-1.20.0-x86_64.AppImage status   # and setup, refresh, run -- ARGS, as above
+```
+
+Started from a terminal it says what it does there; started from the desktop, the setup's progress and Steam's
+steps are in a window (zenity), and the game's output is in `logs/last-run.log`. `make -C linux appdir` makes the
+same thing as a folder (`build/linux/AppDir`), which runs from wherever it is: `AppDir/AppRun`. It carries the
+build system's SDL 3 and uses the system's Python 3, C and C++ libraries, PipeWire, ALSA and OpenGL. It runs on
+systems as new as the one it was built on (Bazzite 45 so far: glibc 2.44); a build on an older base is to come.
 
 **The setup** asks the running Steam for the Mac game (`download_depot`, the console command, sent on Steam's own
 command line, so nothing is typed; 6.9 GB into Steam's `steamapps/content`), then for each DLC the account owns,
