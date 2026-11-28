@@ -96,7 +96,8 @@ int main(int argc, char **argv, char **envp) {
     int n = rsl_install_overrides();
     if (n < 0) return 1;
     printf("replaced: %d game functions with native ones (the online services, offline; the built-in fixes)\n", n);
-    printf("hook points: %d\n", rsl_install_hooks());
+    int hooks = rsl_install_hooks();
+    printf("hook points: %d; mid points with a hook: %d\n", hooks, rsl_install_mids());
   }
   rsl_report_binding(stdout);
   if (bind_only) return 0;

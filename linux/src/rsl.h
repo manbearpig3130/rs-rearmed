@@ -84,6 +84,8 @@ int rsl_install_overrides(void);
 int rsl_hook_point(uint64_t address, int index, const char *name);
 // Every hook point of the tables. How many were put in.
 int rsl_install_hooks(void);
+// The mid points (rc_mid.h) that have a hook. How many were put in.
+int rsl_install_mids(void);
 uint64_t rsl_image_end(void);  // the end of the loaded image (loader.c)
 void rsl_direct_image(uint64_t lo, uint64_t hi);  // the runtime's variables for where the image is (direct.c)
 

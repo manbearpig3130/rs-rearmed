@@ -34,7 +34,7 @@ NATIVE_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-funct
     -fno-strict-aliasing -pthread $(CFLAGS) -Isrc -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) \
     -I$(OVERRIDES) -I$(OVERRIDES)/gen -I$(GAME)/include -I../shims/include
 NATIVE_OBJ = $(OUT)/native/direct.o $(OUT)/native/patch.o $(OUT)/native/online_glue.o $(OUT)/native/online.o \
-    $(OUT)/native/online_stub.o $(OUT)/native/rc_hook.o $(OUT)/native/rc_target.o $(OUT)/native/compat.o \
+    $(OUT)/native/online_stub.o $(OUT)/native/rc_hook.o $(OUT)/native/rc_mid.o $(OUT)/native/rc_target.o $(OUT)/native/compat.o \
     $(MODS_SRC:$(OVERRIDES)/mods/%.c=$(OUT)/native/mods_%.o)
 # The built-in fixes (overrides/mods), compiled as they are, with the runtime's hook points (rc_hook.c) and the
 # target's tables by name (rc_target.c, which targets.py writes beside rc_target_names.h).
@@ -42,11 +42,17 @@ MODS_SRC = $(sort $(wildcard $(OVERRIDES)/mods/*.c))
 $(OUT)/target/hooks.inc: $(TARGET)/names/hooks.list
 	@mkdir -p $(OUT)/target
 	sed -n 's/^\([a-z][a-z0-9_]*\).*/HOOK(\1)/p' $< > $@
-# (-O0: rc_hook.c has weak, constant defaults for the tables another file gives it, the hook points' among them;
-# optimizing, gcc reads a default's value where it is used, and the hook points would number none.)
+# (-O0, and for rc_mid.c below: each has weak, constant defaults for the tables another file gives it, the hook
+# points' among them; optimizing, gcc reads a default's value where it is used, and the points would number none.)
 $(OUT)/native/rc_hook.o: $(RUNTIME)/rc_hook.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
+$(OUT)/native/rc_mid.o: $(RUNTIME)/rc_mid.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
+$(OUT)/target/mids.inc: gen_mids.py patch-sites.tsv $(TARGET)/mac-x64/mids.map
+	@mkdir -p $(OUT)/target
+	$(PYTHON) gen_mids.py $@
 $(OUT)/native/rc_target.o: $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $(OUT)/target/rc_target.c
@@ -62,7 +68,8 @@ $(OUT)/target/overrides_online.inc: $(TARGET)/names/overrides/online.list
 $(OUT)/native/direct.o: src/direct.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
-$(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc $(OUT)/target/hooks.inc
+$(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc $(OUT)/target/hooks.inc \
+    $(OUT)/target/mids.inc
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
 $(OUT)/native/online_glue.o: $(OVERRIDES)/src/online_glue.c $(OUT)/target/rc_target_names.h

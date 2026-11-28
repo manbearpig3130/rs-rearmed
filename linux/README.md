@@ -9,8 +9,8 @@ run as it is.
 tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
 its intro, its title screen and its menus, with its sound and the guitar's input through PipeWire and its videos
 (on Bazzite, 2026-11-28: a player calibrated a Real Tone Cable and played a song). Of the Mac app's built-in
-fixes, those that hook a function are in (no intro screens, for one); those inside a function are not, and
-there is no install yet.
+fixes module, all is in (no intro screens, the batched DLC mounting, the frame-rate fixes); mods do not load,
+and there is no install yet.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -19,6 +19,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [X86-64.md](X86-64.md) | what differs on x86-64: the game's code runs as it is, and what that takes |
 | [PLAN.md](PLAN.md) | the steps, what each proves and needs, the open questions, the risks, and a log of what was done |
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
+| [patch-sites.tsv](patch-sites.tsv) | every hook point and mid point, with whether a jump can be written there (`check_patch_sites.py` makes and checks it) |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
 | `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |

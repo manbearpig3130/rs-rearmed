@@ -107,33 +107,3 @@ void ov_native_vtable(void *obj) { (void)obj; }
 void *ov_fn(uint64_t p) { return (void *)(uintptr_t)p; }
 void ov_alias_add(uint64_t vmaddr, void *native) { (void)vmaddr, (void)native; }
 void rc_native_register_sret(const void *fn) { (void)fn; }
-
-// --- mid points and edits: not in this build yet ---
-// A mid point is a hook before one instruction inside a function, and an edit other instructions in the place of
-// some (rc_mid.h). Both are made by the translator where the game is translated; here they need the instruction
-// at the point moved, with the registers handed over whole, which is the next step after the hook points. Until
-// then no point is here: rc_mid_add_name says so once for each name and answers -1, as it does on a game that
-// has no such point, and the code that asked goes on without it.
-#include "rc_mid.h"
-
-uint8_t rc_edit_on[RC_EDIT_GROUPS];
-uint8_t rc_mid_on[RC_MID_POINTS];
-
-int rc_mid_add_name(const char *name, rc_mid_fn fn, void *user) {
-  (void)fn, (void)user;
-  fprintf(stderr, "[rs-rearmed] mid point %s: not in this build yet\n", name ? name : "(null)");
-  return -1;
-}
-int rc_mid_is_none(int point) { return (void)point, 0; }
-int rc_mid_value(int point, const char *value) { return (void)point, (void)value, -1; }
-int rc_mid_cont(int point, const char *cont) { return (void)point, (void)cont, -1; }
-uint64_t rc_mid_get(const rc_mid_frame *f, int value) { return (void)f, (void)value, 0; }
-void rc_mid_set(rc_mid_frame *f, int value, uint64_t v) { (void)f, (void)value, (void)v; }
-double rc_mid_get_f(const rc_mid_frame *f, int value) { return (void)f, (void)value, 0; }
-void rc_mid_set_f(rc_mid_frame *f, int value, double v) { (void)f, (void)value, (void)v; }
-int rc_edit_enable(const char *group) {
-  fprintf(stderr, "[rs-rearmed] edits %s: not in this build yet\n", group ? group : "(null)");
-  return -1;
-}
-int rc_edit_is_on(const char *group) { return (void)group, 0; }
-

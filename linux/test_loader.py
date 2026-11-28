@@ -20,6 +20,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_import_table  # noqa: E402
+import gen_mids  # noqa: E402
 import import_census as census  # noqa: E402
 import test_first_run as made_up  # noqa: E402
 
@@ -42,6 +43,31 @@ class Table(unittest.TestCase):
             kind, want, _ = rows[(lib, sym)]
             self.assertEqual((classes[int(cls)], call), (want, "1" if kind == "call" else "0"))
         self.assertIn("#define RSL_CLASS_SAME %d\n" % classes.index("same"), text)
+
+    def test_the_mid_points_table(self):
+        """mids.map's lines as the build takes them: the address, the continuations in their order, and a point
+        patch-sites.tsv says no jump can be written at."""
+        text = ("# a comment\n"
+                "one    0x100000010  (void *a@rdi)  # nothing more\n"
+                "two    0x100000020  (uint32_t n@rax, void *t@rbx) -> grace=0x100000079, other=0x100000080  # two ways on\n"
+                "three  none this game needs no call here\n"
+                "four   0x100000030  ()\n")
+        pts = gen_mids.points(text)
+        self.assertEqual(pts, [("one", 0x100000010, []), ("two", 0x100000020, [0x100000079, 0x100000080]), ("four", 0x100000030, [])])
+        unsafe = gen_mids.unsafe_sites("# head\none\t0x100000010\t5\tyes\t\nfour\t0x100000030\t7\tno\ta branch lands inside\n")
+        self.assertEqual(unsafe, {"four"})
+        out = gen_mids.table(pts, unsafe)
+        self.assertIn('MID("two", 0x100000020ull, 1, 0x100000079ull, 0x100000080ull, 0x0ull', out)
+        self.assertIn('MID("four", 0x100000030ull, 0, 0x0ull', out)
+        # the repository's own: every point of mids.map with an address is in patch-sites.tsv
+        with open(gen_mids.MAP, encoding="utf-8") as f:
+            real = gen_mids.points(f.read())
+        with open(gen_mids.SITES, encoding="utf-8") as f:
+            listed = {l.split("\t")[0]: l.split("\t") for l in f if l.strip() and not l.startswith("#")}
+        self.assertGreater(len(real), 100)
+        for name, addr, _ in real:
+            self.assertIn(name, listed)
+            self.assertEqual(int(listed[name][1], 16), addr, name)
 
     def test_the_layer_answers_only_what_the_table_gives_it(self):
         """Every name the layer registers is an import of the table, and not one the table calls the host's own."""
@@ -240,9 +266,11 @@ class Picture(unittest.TestCase):
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         out, err = r.stdout.decode(), r.stderr.decode()
         self.assertEqual(r.returncode, 0, out + err)
-        # nine functions of the online services and nine of the built-in fixes are replaced, and every hook point is in
-        self.assertIn("replaced: 18 game functions with native ones", out)
-        self.assertIn("hook points: 21", out)
+        # nine functions of the online services and the eleven of the built-in fixes are replaced; every hook point
+        # is in, and the thirteen mid points the fixes have hooks on
+        self.assertIn("replaced: 20 game functions with native ones", out)
+        self.assertIn("hook points: 21; mid points with a hook: 13", out)
+        self.assertNotIn("left as it is", err)
 
         def light(frame):
             with open("%s.%06d.ppm" % (picture, frame), "rb") as f:

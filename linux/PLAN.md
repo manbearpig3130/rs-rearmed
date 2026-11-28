@@ -285,7 +285,7 @@ a container (distrobox), since the host has no compiler.
 
 ### X5. Fixes and mods
 
-**Hook points and the fixes module are in; mid points and edits are not** (2026-11-28).
+**Hook points, mid points and the whole fixes module are in; edits and mods are not** (2026-11-28).
 
 - **A hook point** is a 5-byte jump at the function's entry to a stub near the image (`src/patch.c`). The stub
   makes an `rc_ctx` of the CPU's registers and calls the runtime's own `rc_hook_call`; its `orig` runs the
@@ -302,11 +302,23 @@ a container (distrobox), since the host has no compiler.
   eleven functions it replaces are replaced (the keyboard's two, the mouse wheel, the thread priority, the path
   MD5 cache, the JSON-number hash's three, the `.sng` signature check, whose override runs the game's own
   check for other callers through its moved start).
-- **Not in**: mid points (a hook before one instruction inside a function) and edits. `rc_mid_add_name` answers
-  that the point is not here, with a line, as on a game without it, and the module goes on without those fixes:
-  the batched DLC mounting (whose two overrides are left out with it), the frame-rate fixes, the tuner's skip
-  offer, the manifest and file-system fixes. They need the instruction at the point moved and the registers
-  handed over whole and taken back: the next step here. Mods (`.dylib` files) do not load.
+- **A mid point** (a hook before one instruction inside a function) is the same jump, to a stub that steps over
+  the 128 bytes a function may use below its stack pointer, saves the flags and every register into an `rc_ctx`,
+  calls the runtime's own `rc_mid_call` (`rc_mid.c`, compiled as it is), takes the registers and flags back, and
+  goes on: to the moved instruction and then the rest, or to the continuation a hook chose. The mover reads more
+  kinds here (compares, branches, calls through memory, SSE arithmetic); a short branch becomes its long form.
+  A continuation that lands among the covered instructions goes to the moved copy: `fs_exists` skips the call
+  at its point that way. Only a point that has a hook is patched: the fixes' thirteen, all of which go in, and
+  with them the two functions of the batched DLC mounting. The module then says: frame rate on at 8 of 8
+  points, the Guitarcade Skip Tuner on, 12 options in Adv Display Settings.
+- **Where a jump may be written** is not told by the bytes at the site: a branch of the function could land
+  inside the five bytes. `linux/check_patch_sites.py` reads each site's whole function with the recompiler's
+  disassembler and writes `linux/patch-sites.tsv` (address, bytes covered, yes or no; none of the game's bytes).
+  Of the 157 sites of the tables (21 hook points, 136 mid points) a jump cannot be written at five, all of the
+  Seven-String mod's; the build leaves such a point alone, with a line. They would need another way in (a
+  breakpoint, or the instructions before the point moved as well).
+- **Not in**: edits (other instructions in the place of some: 620, all rearmed-mods'), and mods themselves, which
+  are Mach-O libraries. The runtime's switches for edits are there and nothing applies them.
 - **Three things the build needed**: gcc reads a weak constant's default where it is used when optimizing, so
   `rc_hook.c` is built at `-O0` for the hook points' table to be the one `patch.c` gives; the fixes name the
   C++ allocator as Mach-O writes it (`__Znwm`); and `rc_nofile.h` asks `sysctlbyname` for the open-file limit
@@ -600,3 +612,6 @@ Proposed; none is final before the step that tests it.
 - **2026-11-28, a song, and the first fixes.** The player calibrated again (no notice this time) and played a
   song through headphones: no crackle, the notes detected, the latency at least as good as on Windows by his
   ear. Then hook points in the patch engine, and the fixes module compiled as it is: the intro is skipped.
+- **2026-11-28, mid points.** The 13 mid points of the built-in fixes, through the runtime's `rc_mid.c`; the
+  table of where a jump can be written, from the recompiler's disassembler. One fault on the way: a
+  continuation inside the bytes a jump covers, now sent to the moved copy. The whole fixes module runs.
