@@ -133,8 +133,9 @@ all: $(OUT)/rs-rearmed $(OUT)/libsteam_api.so
 # The renderer's libraries need OpenGL's and EGL's headers (on Bazzite: in a distrobox): `make -C linux gl`.
 gl: $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
 
+# (The run path: a packaged build has its own SDL 3 beside the program, for a system without one.)
 $(OUT)/rs-rearmed: $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS) $(PW_LIBS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS) $(PW_LIBS) -Wl,-rpath,'$$ORIGIN'
 
 # The project's replacement libraries, from the sources the Mac app builds them from (shims/), each a shared
 # library beside the program. compat/ has the few macOS functions they call.
@@ -265,9 +266,48 @@ check: $(OUT)/rs-rearmed $(OUT)/layer_test check-steam
 	@if [ -f "$(IMAGE)" ]; then $(OUT)/rs-rearmed --image "$(IMAGE)" --init-only; \
 	 else echo "no image at $(IMAGE): the game's initializers not run"; fi
 
+# --- the packaged build -------------------------------------------------------------------------------------
+#
+# `make -C linux appdir`: the program, its libraries and the setup (install/rs_install.py with the Mac's tools it
+# uses) as one relocatable folder, laid out as an AppImage's: usr/bin/rs-rearmed is the command (install/launch.sh),
+# usr/lib/rs-rearmed the program with its libraries beside it (and the build system's SDL 3: the one library a
+# system may lack; PipeWire's, ALSA's and OpenGL's are the system's own), usr/share/rs-rearmed the setup.
+# `make -C linux appimage` makes the AppImage of it with appimagetool, downloaded once (install/appimage.sh).
+# Nothing of the game is in either: the setup gets the game from the user's own Steam.
+APPDIR = $(OUT)/AppDir
+APPLIB = $(APPDIR)/usr/lib/rs-rearmed
+APPSHARE = $(APPDIR)/usr/share/rs-rearmed
+APP_VERSION := $(shell cat ../VERSION)
+APP_PROGRAMS = rs-rearmed libsteam_api.so libRSSystemGL.so libRSOpenGL.so libCg.so libBink2.so
+SDL_SO := $(shell pkg-config --variable=libdir sdl3 2>/dev/null)/libSDL3.so.0
+appdir: all gl bink
+	rm -rf $(APPDIR)
+	mkdir -p $(APPLIB) $(APPDIR)/usr/bin $(APPSHARE)/tools/play-native $(APPSHARE)/tools/steamless \
+	    $(APPSHARE)/tools/targets/mac-x64 $(APPDIR)/usr/share/applications $(APPDIR)/usr/share/icons/hicolor/scalable/apps
+	for f in $(APP_PROGRAMS); do strip --strip-debug -o $(APPLIB)/$$f $(OUT)/$$f || exit 1; done
+	chmod 755 $(APPLIB)/rs-rearmed
+	cp -L $(SDL_SO) $(APPLIB)/
+	install -m 755 install/launch.sh $(APPDIR)/usr/bin/rs-rearmed
+	install -m 644 install/rs_install.py ../VERSION ../LICENSE ../THIRD_PARTY_NOTICES.md $(APPSHARE)/
+	install -m 644 ../tools/play-native/gamefiles.py ../tools/play-native/cache_overlay.py ../tools/play-native/psarc_key.py \
+	    $(APPSHARE)/tools/play-native/
+	install -m 644 ../tools/steamless/decrypt.py $(APPSHARE)/tools/steamless/
+	install -m 644 ../tools/targets/targets.py $(APPSHARE)/tools/targets/
+	install -m 644 ../tools/targets/mac-x64/target.toml $(APPSHARE)/tools/targets/mac-x64/
+	install -m 644 install/rs-rearmed.desktop $(APPDIR)/usr/share/applications/
+	install -m 644 install/rs-rearmed.svg $(APPDIR)/usr/share/icons/hicolor/scalable/apps/
+	sed 's/^Exec=.*/&\nX-AppImage-Version=$(APP_VERSION)/' install/rs-rearmed.desktop > $(APPDIR)/rs-rearmed.desktop
+	cp install/rs-rearmed.svg $(APPDIR)/rs-rearmed.svg
+	ln -s rs-rearmed.svg $(APPDIR)/.DirIcon
+	ln -s usr/bin/rs-rearmed $(APPDIR)/AppRun
+
+appimage: appdir
+	sh install/appimage.sh $(APPDIR) $(OUT)/RS_Re-ARMed-$(APP_VERSION)-x86_64.AppImage $(OUT)/appimagetool
+
 clean:
 	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/shell $(OUT)/native $(OUT)/shims $(OUT)/imports_table.inc $(OUT)/rs-rearmed \
-	    $(OUT)/layer_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
+	    $(OUT)/layer_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so \
+	    $(APPDIR)
 
-.PHONY: all gl bink check check-steam check-gl clean
+.PHONY: all gl bink check check-steam check-gl appdir appimage clean
 -include $(OBJ:.o=.d) $(OUT)/test/layer_test.d

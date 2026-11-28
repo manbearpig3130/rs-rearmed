@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- RS Re-ARMed's icon: an orange guitar pick on a dark tile, as tools/installer/make-icon.swift draws the Mac
+     installer's (without its arrow). Our own artwork: no game assets are used. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#343a4a"/>
+      <stop offset="1" stop-color="#12141c"/>
+    </linearGradient>
+    <linearGradient id="pick" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb240"/>
+      <stop offset="1" stop-color="#d64816"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <path d="M512 823C370 738 240 538 262 388C290 168 734 168 762 388C784 538 654 738 512 823Z" fill="#000" fill-opacity="0.35"/>
+  <path d="M512 809C370 724 240 524 262 374C290 154 734 154 762 374C784 524 654 724 512 809Z" fill="url(#pick)"/>
+</svg>

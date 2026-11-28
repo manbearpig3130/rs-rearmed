@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=RS Re-ARMed
+GenericName=Rocksmith 2014
+Comment=Rocksmith 2014, from your own Steam copy of the game
+Exec=rs-rearmed
+Icon=rs-rearmed
+Terminal=false
+Categories=Game;Music;
+Keywords=rocksmith;guitar;bass;
+StartupWMClass=rs-rearmed
