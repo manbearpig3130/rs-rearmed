@@ -35,6 +35,21 @@ void rs_crypto_dsa_verify(rc_ctx *c) { rsl_sng_verify_original(c); }
 // is, as there is one, and the fixes' settings menu shows its renderer row locked.
 int rsp_renderer_env_given(void) { return 1; }
 
+// The Mac shell's way to hand a changed switch on as the game runs (rsp_present.h), which is for its Metal
+// presentation and renderer: 0, the switch is read as the process starts. Linux's own rows are that kind.
+int rsp_live_switch(const char *name, const char *value) {
+  (void)name, (void)value;
+  return 0;
+}
+
+// The calling thread's context (rc.h). Where the game's code is translated it holds the thread's registers between
+// calls; here the registers are the CPU's and nothing reads it. The fixes name it where they set a register for a
+// call into Learn & Play's game, which this one is not.
+rc_ctx *rc_thread_ctx(void) {
+  static _Thread_local rc_ctx c;
+  return &c;
+}
+
 // A call with the argument registers loaded: rdi the function, rsi six integer arguments, rdx eight SSE ones (64
 // bits each: a float in the low half), rcx where rax, rdx, xmm0 and xmm1 go, r8 the arguments that go on the
 // stack and r9 how many (8 bytes each, in argument order: the callee finds the first just above its return

@@ -24,6 +24,20 @@ typedef struct {
   AudioBuffer mBuffers[1];
 } AudioBufferList;
 
+// (what the policy's header names of the system's calls, which the Mac's test input stands in for: types alone)
+typedef unsigned char Boolean;
+typedef uint32_t AudioObjectPropertyElement;
+typedef struct {
+  AudioObjectPropertySelector mSelector;
+  AudioObjectPropertyScope mScope;
+  AudioObjectPropertyElement mElement;
+} AudioObjectPropertyAddress;
+typedef struct AudioTimeStamp AudioTimeStamp;
+typedef OSStatus (*AudioObjectPropertyListenerProc)(AudioObjectID object, UInt32 count, const AudioObjectPropertyAddress *addresses, void *client);
+typedef OSStatus (*AudioDeviceIOProc)(AudioObjectID device, const AudioTimeStamp *now, const AudioBufferList *in, const AudioTimeStamp *in_time,
+                                      AudioBufferList *out, const AudioTimeStamp *out_time, void *client);
+typedef AudioDeviceIOProc AudioDeviceIOProcID;
+
 #define RS_FOURCC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
 enum {
   kAudioObjectPropertyScopeInput = RS_FOURCC('i', 'n', 'p', 't'),

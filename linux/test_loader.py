@@ -414,9 +414,9 @@ class Picture(unittest.TestCase):
         self.assertEqual(r.returncode, 0, out + err)
         # nine functions of the online services, two of the audio module and the eleven of the built-in fixes are
         # replaced; every hook point
-        # is in, and the thirteen mid points the fixes have hooks on
-        self.assertIn("replaced: 22 game functions with native ones", out)
-        self.assertIn("hook points: 21; mid points with a hook: 13", out)
+        # is in, and the twenty-five mid points the fixes have hooks on
+        self.assertIn("replaced: 24 game functions with native ones", out)
+        self.assertIn("hook points: 21; mid points with a hook: 25", out)
         self.assertNotIn("left as it is", err)
 
         def light(frame):
