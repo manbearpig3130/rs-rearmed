@@ -211,6 +211,15 @@ static void on_fault(int sig, siginfo_t *si, void *ctx) {
   if (g_survey) rsl_report_survey(stderr);
   dprintf(2, "[rs-rearmed] %s: address 0x%llx, at 0x%llx (%s)%s\n", strsignal(sig), (unsigned long long)addr,
           (unsigned long long)pc, pc >= g_info.lo && pc < g_info.hi ? "the game's code" : "not the game's code", in);
+  // Outside the game: which library or mod, and where in it, and who called (the frames that keep a frame pointer)
+  Dl_info where;
+  if (!(pc >= g_info.lo && pc < g_info.hi) && dladdr((void *)(uintptr_t)pc, &where) && where.dli_fname) {
+    const char *base = strrchr(where.dli_fname, '/');
+    dprintf(2, "[rs-rearmed]   in %s at +0x%llx", base ? base + 1 : where.dli_fname,
+            (unsigned long long)(pc - (uint64_t)(uintptr_t)where.dli_fbase));
+    if (where.dli_sname) dprintf(2, " (%s + 0x%llx)", where.dli_sname, (unsigned long long)(pc - (uint64_t)(uintptr_t)where.dli_saddr));
+    dprintf(2, "\n");
+  }
   _exit(4);
 }
 
