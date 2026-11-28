@@ -138,6 +138,8 @@ static void node_info(void *data, const struct pw_node_info *info) {
   const char *name = card ? card : nick ? nick : spa_dict_lookup(p, "node.description");
   const char *longname = spa_dict_lookup(p, "alsa.long_card_name"), *ids = spa_dict_lookup(p, "alsa.components");
   const char *channels = spa_dict_lookup(p, "audio.channels"), *bus = spa_dict_lookup(p, "device.bus");
+  const char *alsa_card = spa_dict_lookup(p, "api.alsa.pcm.card");
+  in->card = alsa_card ? atoi(alsa_card) : -1;
   copy(in->name, sizeof in->name, name ? name : uid);
   copy(in->uid, sizeof in->uid, uid);
   in->maker[0] = 0;
@@ -296,6 +298,15 @@ static void capture_stop(void *handle) {
   free(c);
 }
 
-static const dw_audio_backend k_backend = {"PipeWire", start, stop, inputs, capture_start, capture_stop};
+// The input's own level: its ALSA card's capture control.
+#ifdef RSL_HAVE_ALSA
+static int level_get(const dw_audio_input *input, float *level) { return rsl_alsa_level_get(input->card, level); }
+static int level_set(const dw_audio_input *input, float level) { return rsl_alsa_level_set(input->card, level); }
+#else
+#define level_get NULL
+#define level_set NULL
+#endif
+
+static const dw_audio_backend k_backend = {"PipeWire", start, stop, inputs, capture_start, capture_stop, level_get, level_set};
 
 void rsl_audio_pipewire(void) { dw_audio_set_backend(&k_backend); }

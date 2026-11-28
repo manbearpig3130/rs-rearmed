@@ -251,11 +251,19 @@ identifier, channels, name, maker, buffer range, rate and formats, sets a 128-fr
 procedure and starts it; that opens a capture stream on the node asking for 128 frames, and PipeWire gives 128
 (2.7 ms) on the Bazzite PC. The game opened the cable and the PC's own analog input, and at the calibration
 screen its meter follows the cable. The FFT its note detection runs is `dw_accelerate.c` (vDSP's
-`vDSP_fft_zop`, radix 2, vDSP's scaling). Not done: the input's level (`volm` is kept and read back, and the
-hardware's level is whatever the system has it at), devices coming and going while the game runs (the list is
+`vDSP_fft_zop`, radix 2, vDSP's scaling). Not done: devices coming and going while the game runs (the list is
 read again when the game asks, and no listener is told), each channel of an interface as an input of its own
 and the rest of the app's device policy (`shims/coreaudio`, the `audio` override module), and real-time
 scheduling for the game's audio thread.
+
+**The input's level** (2026-11-28, from a player's first calibration on Linux). The game sets a level from 0 to 1
+on an input (`volm`), starting a device at 0.375 and raising it during calibration. On the Mac that moves the
+cable's own gain. Linux leaves the cable's capture control at its top, +10 dB of a range from -8 to +10, and
+with the level not applied the guitar came in 11 dB hotter than the game expects: calibration passed on a soft
+strum, and the game reported a sudden change of signal when it ended. Now, as the Mac app has it: the cable's
+level is its ALSA capture control, the level being the control's place in its range (`src/audio_alsa.c`; 0.375
+is step 14 of 37, -1.2 dB), read back from the hardware; any other input's level is a gain of ours on what is
+captured, unity at 0.375 and +24 dB at 1.
 
 [arm64's step 3](#3-sound-and-the-guitar) as it is: the audio layer on PipeWire, the FFT, latency measured, here
 against the same machine's Proton route as well.
@@ -554,3 +562,9 @@ Proposed; none is final before the step that tests it.
   capture devices as the game's inputs, the Bink library over FFmpeg built for Linux, and vDSP's FFT. The
   scripted new-player flow reaches the calibration screen with its video playing and its meter live; 9,900
   frames without a fault. The loader then answers 583 imports, and the 98 left are the stubs.
+- **2026-11-28, played.** A player calibrated with the cable on the Bazzite PC: notes are detected. The cable
+  was too sensitive and calibration ended with the game's notice of a sudden change: the input's level was not
+  applied. It is now (the cable's hardware control; a gain for other inputs). For a first song, the account's
+  purchased DLC was copied into the game's `dlc` folder with the list of the DLC it owns in
+  `.rearmed/steam_shim.ini`, as the Mac install records it; the Steam library then reports them owned. Getting
+  DLC through Steam on Linux is the install's work (X4).

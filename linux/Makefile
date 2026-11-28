@@ -76,7 +76,17 @@ SHELL_OBJ += $(OUT)/shell/audio_pipewire.o
 $(OUT)/shell/audio_pipewire.o: src/audio_pipewire.c src/rsl.h darwin/dw.h
 	@mkdir -p $(OUT)/shell
 	$(CC) -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -pthread $(CFLAGS) $(shell pkg-config --cflags libpipewire-0.3) \
-	    -Isrc -Idarwin -c -o $@ $<
+	    $(PW_ALSA_FLAG) -Isrc -Idarwin -c -o $@ $<
+# The cable's level, where ALSA is there to build with: its card's capture control.
+ALSA_LIBS := $(shell pkg-config --libs alsa 2>/dev/null)
+ifneq ($(ALSA_LIBS),)
+PW_ALSA_FLAG = -DRSL_HAVE_ALSA
+PW_LIBS += $(ALSA_LIBS)
+SHELL_OBJ += $(OUT)/shell/audio_alsa.o
+$(OUT)/shell/audio_alsa.o: src/audio_alsa.c src/rsl.h
+	@mkdir -p $(OUT)/shell
+	$(CC) -std=gnu11 -Wall -Wextra -pthread $(CFLAGS) $(shell pkg-config --cflags alsa) -Isrc -c -o $@ $<
+endif
 endif
 $(OUT)/shell/shell.o: src/shell.c src/rsl.h $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/shell

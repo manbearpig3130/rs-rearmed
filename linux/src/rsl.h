@@ -68,6 +68,10 @@ void *rsl_shim_function(const char *library, const char *name);
 
 // --- sound (audio_pipewire.c, where PipeWire is there to build with) ---
 void rsl_audio_pipewire(void);  // the game's sound goes to PipeWire from the next start of its audio graph
+// An ALSA card's capture level, 0 to 1 over its control's range (audio_alsa.c, where ALSA is there to build
+// with). Each returns 1 when the card has the control.
+int rsl_alsa_level_get(int card, float *level);
+int rsl_alsa_level_set(int card, float level);
 
 // --- native functions in the place of game functions (patch.c) ---
 struct rc_ctx;

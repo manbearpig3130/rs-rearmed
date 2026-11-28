@@ -12,6 +12,7 @@
 //
 // RS_AUDIO_LOG=1 logs every question once; a question with no answer is always logged once.
 #define _GNU_SOURCE
+#include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -78,6 +79,7 @@ typedef struct {
   int present;
   uint32_t frames;  // its buffer, as the game set it
   float volume;     // 'volm', as the game set it
+  float gain;       // what that is as a gain on the samples (1 where the hardware has the level)
   io_proc proc;
   void *client;
   void *capture;    // the backend's handle while it runs
@@ -103,12 +105,30 @@ static void refresh_inputs(void) {
       memset(&g_inputs[at], 0, sizeof g_inputs[at]);
       g_inputs[at].frames = 128;     // an input's buffer on the Mac
       g_inputs[at].volume = 0.375f;  // where the game starts a device
+      g_inputs[at].gain = 1.0f;
     }
     if (at < 0) continue;
     g_inputs[at].info = list[k];
     g_inputs[at].present = 1;
   }
   pthread_mutex_unlock(&g_inputs_lock);
+}
+
+// An input's level, as the Mac app has it. The game sets a level from 0 to 1 on a device ('volm'): calibration
+// raises it in small steps until the meter is right, and a profile keeps it. The Real Tone Cable has a control of
+// its own for it (18 dB of range on its USB mixer), and the game's level is that control's place in its range, as
+// CoreAudio's volume scalar is. On any other input the hardware's level is the player's own setting, or there is
+// none: there the level is a gain of ours on what is captured, 0.375 (where the game starts a device) being
+// unity and 1 being +24 dB.
+static int is_cable(const input_device *d) { return strstr(d->info.name, "Rocksmith USB") != NULL; }
+static int hardware_level(const input_device *d) {
+  float level;
+  return is_cable(d) && g_backend && g_backend->level_get && g_backend->level_set && g_backend->level_get(&d->info, &level);
+}
+static float software_gain(const input_device *d) {
+  if (hardware_level(d)) return 1.0f;
+  float v = d->volume;
+  return v <= 0.375f ? v / 0.375f : powf(10.0f, 24.0f * (v - 0.375f) / 0.625f / 20.0f);
 }
 
 static input_device *input_of(uint32_t obj) {
@@ -217,9 +237,12 @@ static int get_input(input_device *d, uint32_t obj, const prop_address *a, uint3
     case FOURCC('p', 'f', 't', ' '):  // the hardware's own format: the same, as far as the game is told
       if (!input) return kUnknownProperty;
       PUT(stream_format, f);
-    case FOURCC('v', 'o', 'l', 'm'):  // the input's level, as the game last set it
+    case FOURCC('v', 'o', 'l', 'm'): {  // the input's level: the cable's own control, or what the game last set
       if (!input) return kUnknownProperty;
-      PUT(float, d->volume);
+      float level = d->volume;
+      if (hardware_level(d) && g_backend->level_get(&d->info, &level)) d->volume = level;
+      PUT(float, level);
+    }
   }
   return kUnknownProperty;
 }
@@ -382,7 +405,15 @@ int dw_AudioObjectSetPropertyData(uint32_t obj, const prop_address *a, uint32_t 
     if (frames >= 16 && frames <= 4096) input_of(obj)->frames = frames, r = noErr;
     else r = kUnspecified;
   } else if (input_of(obj) && a->selector == FOURCC('v', 'o', 'l', 'm') && size == 4) {
-    memcpy(&input_of(obj)->volume, in, 4);  // kept for the game to read back; the hardware's level is the system's
+    input_device *d = input_of(obj);
+    float level;
+    memcpy(&level, in, 4);
+    if (level < 0) level = 0;
+    if (level > 1) level = 1;
+    d->volume = level;
+    if (hardware_level(d)) g_backend->level_set(&d->info, level);
+    d->gain = software_gain(d);
+    if (audio_log()) fprintf(stderr, "[audio] input \"%s\": level %.3f (%s)\n", d->info.name, (double)level, hardware_level(d) ? "the hardware's control" : "a gain of ours");
     r = noErr;
   }
   note("set", obj, a, r == noErr);
@@ -416,6 +447,13 @@ static void input_captured(void *ctx, const float *samples, uint32_t frames) {
   clock_gettime(CLOCK_MONOTONIC, &now);
   time_stamp when = {.sample_time = d->sample, .host_time = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec,
                      .rate_scalar = 1.0, .flags = 1 | 2 | 4};
+  static __thread float scaled[4096 * 8];
+  float gain = d->gain;
+  if (gain != 1.0f && frames <= 4096) {  // an input whose level is ours to apply
+    uint32_t n = frames * (uint32_t)d->info.channels;
+    for (uint32_t i = 0; i < n; i++) scaled[i] = samples[i] * gain;
+    samples = scaled;
+  }
   struct { uint32_t count; audio_buffer buffer; } input = {1, {(uint32_t)d->info.channels, frames * 4u * (uint32_t)d->info.channels, (void *)(uintptr_t)samples}};
   struct { uint32_t count; audio_buffer buffer; } output = {0, {0, 0, NULL}};
   proc(DEVICE_IN(d - g_inputs), &when, &input, &when, &output, &when, d->client);
@@ -449,6 +487,7 @@ int dw_AudioDeviceStart(uint32_t device, void *id) {
   if (!d) return device == DEVICE_OUT ? noErr : kBadObject;
   if (d->capture) return noErr;
   if (!d->proc || !g_backend || !g_backend->capture_start) return kIllegalOperation;
+  d->gain = software_gain(d);
   d->capture = g_backend->capture_start(&d->info, g_rate, d->frames, input_captured, d);
   if (audio_log() || !d->capture)
     fprintf(stderr, "[audio] input \"%s\": %s, %u frames a call\n", d->info.name, d->capture ? "started" : "could not be started", d->frames);

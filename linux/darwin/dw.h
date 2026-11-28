@@ -56,6 +56,7 @@ typedef struct {
   char uid[192];              // the backend's own name for it, the same at every start
   char model[192];            // name and USB ids, as CoreAudio's model identifier has them; or empty
   int channels, usb;
+  int card;                   // its ALSA card's number, or -1
 } dw_audio_input;
 // What an open input hears: FRAMES frames, the channels interleaved, on the backend's audio thread.
 typedef void (*dw_audio_capture)(void *ctx, const float *samples, uint32_t frames);
@@ -67,6 +68,10 @@ typedef struct {
   // An input opened: CAPTURE is called with FRAMES frames at a time. A handle for capture_stop, or NULL.
   void *(*capture_start)(const dw_audio_input *input, double rate, uint32_t frames, dw_audio_capture capture, void *ctx);
   void (*capture_stop)(void *handle);
+  // The input's own level control, where its hardware has one: 0 to 1 over the control's range, as CoreAudio's
+  // volume scalar is. Each returns 1 when the hardware has the control (NULL: none ever).
+  int (*level_get)(const dw_audio_input *input, float *level);
+  int (*level_set)(const dw_audio_input *input, float level);
 } dw_audio_backend;
 void dw_audio_set_backend(const dw_audio_backend *backend);
 

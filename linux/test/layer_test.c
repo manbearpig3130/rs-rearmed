@@ -462,15 +462,33 @@ static int backend_inputs(dw_audio_input *list, int max) {
   strcpy(list[0].maker, "Hercules");
   strcpy(list[0].uid, "alsa_input.test-cable");
   strcpy(list[0].model, "Rocksmith USB Guitar Adapter:12BA:00FF");
-  list[0].channels = 1, list[0].usb = 1;
-  return 1;
+  list[0].channels = 1, list[0].usb = 1, list[0].card = 2;
+  if (max < 2) return 1;
+  memset(&list[1], 0, sizeof list[1]);
+  strcpy(list[1].name, "An Interface");
+  strcpy(list[1].uid, "alsa_input.test-interface");
+  list[1].channels = 1, list[1].usb = 1, list[1].card = 3;
+  return 2;
 }
 static void *backend_capture_start(const dw_audio_input *input, double rate, uint32_t frames, dw_audio_capture capture, void *ctx) {
-  if (strcmp(input->uid, "alsa_input.test-cable") || rate != 48000.0) return NULL;
+  if (strncmp(input->uid, "alsa_input.test-", 16) || rate != 48000.0) return NULL;
   g_capture = capture, g_capture_ctx = ctx, g_capture_frames = frames;
   return &g_capture;
 }
 static void backend_capture_stop(void *handle) { g_capture_stopped += handle == &g_capture; }
+
+// The cable's own level control, as its hardware has it; the other input has none.
+static float g_hardware_level = 1.0f;  // where Linux leaves the cable: its control's top
+static int backend_level_get(const dw_audio_input *input, float *level) {
+  if (!strstr(input->name, "Rocksmith USB")) return 0;
+  *level = g_hardware_level;
+  return 1;
+}
+static int backend_level_set(const dw_audio_input *input, float level) {
+  if (!strstr(input->name, "Rocksmith USB")) return 0;
+  g_hardware_level = level;
+  return 1;
+}
 
 // The game's I/O procedure on an input device: the input as a list of one buffer, no output.
 static int g_io_calls;
@@ -488,7 +506,8 @@ static int io_proc(uint32_t device, const void *now, const void *input, const vo
 static void test_audio_input(void) {
   struct address { uint32_t selector, scope, element; };
 #define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
-  static const dw_audio_backend backend = {"test", backend_start, backend_stop, backend_inputs, backend_capture_start, backend_capture_stop};
+  static const dw_audio_backend backend = {"test", backend_start, backend_stop, backend_inputs, backend_capture_start, backend_capture_stop,
+                                           backend_level_get, backend_level_set};
   dw_audio_set_backend(&backend);
   int (*get)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *) =
       FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *, void *), "_AudioObjectGetPropertyData");
@@ -496,9 +515,9 @@ static void test_audio_input(void) {
       FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t, const void *), "_AudioObjectSetPropertyData");
   struct address devices = {CC('d', 'e', 'v', '#'), CC('g', 'l', 'o', 'b'), 0}, in_device = {CC('d', 'I', 'n', ' '), CC('g', 'l', 'o', 'b'), 0};
   uint32_t list[8], size = 0, cable = 0;
-  CHECK(FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *), "_AudioObjectGetPropertyDataSize")(1, &devices, 0, NULL, &size) == 0 && size == 8);
+  CHECK(FN(int (*)(uint32_t, const struct address *, uint32_t, const void *, uint32_t *), "_AudioObjectGetPropertyDataSize")(1, &devices, 0, NULL, &size) == 0 && size == 12);
   size = sizeof list;
-  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 8);  // the input, then the output
+  CHECK(get(1, &devices, 0, NULL, &size, list) == 0 && size == 12);  // the two inputs, then the output
   size = 4;
   CHECK(get(1, &in_device, 0, NULL, &size, &cable) == 0 && cable == list[0] && cable != 0);
   struct address name = {CC('l', 'n', 'a', 'm'), CC('i', 'n', 'p', 't'), 0}, maker = {CC('l', 'm', 'a', 'k'), CC('i', 'n', 'p', 't'), 0};
@@ -527,9 +546,12 @@ static void test_audio_input(void) {
   size = 4;
   CHECK(get(cable, &transport, 0, NULL, &size, &tran) == 0 && tran == CC('u', 's', 'b', ' '));
   CHECK(set(cable, &buffer, 0, NULL, 4, &frames) == 0);
-  float volume = 0.75f, read_back = 0;
+  // the cable's level is its hardware's control: read from it (Linux leaves it at the top), and set on it
+  float volume = 0.375f, read_back = 0;
   size = 4;
-  CHECK(set(cable, &level, 0, NULL, 4, &volume) == 0 && get(cable, &level, 0, NULL, &size, &read_back) == 0 && read_back == 0.75f);
+  CHECK(get(cable, &level, 0, NULL, &size, &read_back) == 0 && read_back == 1.0f);
+  CHECK(set(cable, &level, 0, NULL, 4, &volume) == 0 && g_hardware_level == 0.375f);
+  CHECK(get(cable, &level, 0, NULL, &size, &read_back) == 0 && read_back == 0.375f);
 
   // the guitar's input: a procedure made on the device, started, and called with what the backend captures
   void *proc_id = NULL;
@@ -542,6 +564,26 @@ static void test_audio_input(void) {
   CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(cable, proc_id) == 0 && g_capture_stopped == 1);
   CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceDestroyIOProcID")(cable, proc_id) == 0);
   CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(0x999, proc_id) == (int)CC('!', 'o', 'b', 'j'));
+
+  // another input has no control the game may move: its level is a gain on the samples, unity at 0.375 and
+  // +24 dB at 1
+  uint32_t other = list[1];
+  volume = 1.0f;
+  CHECK(set(other, &level, 0, NULL, 4, &volume) == 0 && g_hardware_level == 0.375f);  // the cable's is not touched
+  size = 4;
+  CHECK(get(other, &level, 0, NULL, &size, &read_back) == 0 && read_back == 1.0f);
+  g_io_calls = 0;
+  CHECK(set(other, &buffer, 0, NULL, 4, &frames) == 0);
+  CHECK(FN(int (*)(uint32_t, void *, void *, void **), "_AudioDeviceCreateIOProcID")(other, (void *)io_proc, &g_io_calls, &proc_id) == 0);
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStart")(other, proc_id) == 0);
+  for (int i = 0; i < 64; i++) samples[i] = 0.01f;
+  if (g_capture) g_capture(g_capture_ctx, samples, 64);
+  CHECK(g_io_calls == 1 && fabsf(g_io_first - 0.01f * 15.8489f) < 1e-4f);  // +24 dB
+  volume = 0.375f;
+  CHECK(set(other, &level, 0, NULL, 4, &volume) == 0);
+  if (g_capture) g_capture(g_capture_ctx, samples, 64);
+  CHECK(g_io_calls == 2 && g_io_first == 0.01f);  // unity
+  CHECK(FN(int (*)(uint32_t, void *), "_AudioDeviceStop")(other, proc_id) == 0);
   dw_audio_set_backend(NULL);
 #undef CC
 }
@@ -601,7 +643,7 @@ static void test_audio(void) {
   CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
 
   // with a backend: no clock thread; the backend asks for the sound and gets what the game's callback filled
-  static const dw_audio_backend backend = {"test", backend_start, backend_stop, NULL, NULL, NULL};
+  static const dw_audio_backend backend = {"test", backend_start, backend_stop, NULL, NULL, NULL, NULL, NULL};
   dw_audio_set_backend(&backend);
   CHECK(FN(int (*)(void **), "_NewAUGraph")(&graph) == 0);
   CHECK(add(graph, &out_desc, &out_node) == 0 && add(graph, &mixer_desc, &mixer_node) == 0);
