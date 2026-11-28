@@ -651,7 +651,8 @@ def opengl_facts(say):
                 notes.append("%s: EGL does not start" % label)
                 continue
             cfg, n = c_void_p(), c_int()
-            want = ints(0x3033, 0x0001, 0x3040, 0x0008, 0x3038) if pbuffer else ints(0x3040, 0x0008, 0x3038)
+            # EGL_SURFACE_TYPE: a pbuffer, or none at all (left out, EGL asks for a window, which surfaceless has not)
+            want = ints(0x3033, 0x0001 if pbuffer else 0, 0x3040, 0x0008, 0x3038)
             if not egl.eglBindAPI(0x30A2) or not egl.eglChooseConfig(dpy, want, ctypes.byref(cfg), 1, ctypes.byref(n)) or not n.value:
                 notes.append("%s: no config for desktop OpenGL" % label)
                 egl.eglTerminate(dpy)
@@ -696,7 +697,10 @@ def machine(out=None):
     say("System: %s; kernel %s; %s; pages of %d bytes; Python %s; C library %s"
         % (distro, platform.release(), platform.machine(), os.sysconf("SC_PAGE_SIZE"), platform.python_version(),
            " ".join(platform.libc_ver()) or "?"))
-    say("Session: %s on %s" % (os.environ.get("XDG_SESSION_TYPE", "?"), os.environ.get("XDG_CURRENT_DESKTOP", "?")))
+    shown = os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")
+    say("Session: %s on %s%s" % (os.environ.get("XDG_SESSION_TYPE", "?"), os.environ.get("XDG_CURRENT_DESKTOP", "?"),
+                                "" if shown or not LINUX else " (no display in this shell: a terminal on the desktop"
+                                " answers for the session itself)"))
     if platform.machine() not in ("x86_64", "AMD64"):
         say("The game's code: not runnable as it is here (%s); this machine would need the translated build" % platform.machine())
     # where the image wants to be, and executable memory

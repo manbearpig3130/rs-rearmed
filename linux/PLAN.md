@@ -5,7 +5,8 @@ page is what to do about it, in what order, and what has been done. The editions
 
 ## Status
 
-- **Investigated, not built** (2026-11-26, from 1.20.0). Nothing of RS Re-ARMed compiles for or runs on Linux yet.
+- **Investigated, not built** (2026-11-26, from 1.20.0). Nothing of RS Re-ARMed compiles for Linux yet; the game's
+  own initializers have run there ([the first run](#x0-the-first-run-with-nothing-built), 2026-11-28).
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), and the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`).
@@ -17,14 +18,15 @@ page is what to do about it, in what order, and what has been done. The editions
 - **Asked for** (2026-11-27, the project's issue 18): a Linux build, by a player on Bazzite with KDE, as an
   AppImage.
 - **The machines in mind**: for x86-64 a PC with Bazzite, the image-based Fedora the request came from; for arm64
-  an Apple silicon Mac with Fedora Asahi Remix. Neither is at hand yet where this is written: each step comes
-  with a script that runs its check and says what it found.
+  an Apple silicon Mac with Fedora Asahi Remix. The Bazzite PC is at hand since 2026-11-28 (an AMD Ryzen 5 PRO
+  4650GE with its integrated Radeon graphics; Bazzite 45, glibc 2.44, Mesa 26.3.1, PipeWire 1.6.11); the Mac is
+  not yet.
 - **The first run** (2026-11-28): `first_run.py` maps the image, answers its imports and runs its 3,487 static
   initializers in a Python process, with nothing built. In an Intel process on a Mac, against macOS's own
   libraries, all of them run, and they call 16 imports: 11 the table has as `same`, and five more
   (`pthread_mutexattr_settype`, `sched_get_priority_min` and `max`, `__bzero`, `pthread_key_create`), which
-  have stand-ins in the script. The same rule as Linux's, tried on the Mac's libraries, gets through too. Not
-  yet run on Linux ([X0](#x0-the-first-run-with-nothing-built)).
+  have stand-ins in the script. **On Bazzite the same**: 3,487 of 3,487, the same 16 imports, against glibc and
+  the system's libstdc++ ([X0](#x0-the-first-run-with-nothing-built)).
 - **x86-64** (2026-11-26): the Mac game's code can run there as it is, and the translated C also passes a compile
   check for it ([X86-64.md](X86-64.md)). Proposed to come first ([below](#two-hosts-one-order)).
 
@@ -67,6 +69,22 @@ On the machine itself, with Python and Steam alone:
   is named.
 
 Done when: all 3,487 initializers run on x86-64 Linux, and the machine's report is in hand.
+
+**Done 2026-11-28 on Bazzite**, with the image decrypted on a Mac and copied over; the download through Steam on
+Linux is not tried yet. The run: 3,487 of 3,487, and the same 16 imports with the same counts as on the Mac. The
+report:
+
+| Asked | Bazzite 45, AMD Renoir graphics |
+|---|---|
+| The image's place | 0x100000000 is free, and memory may be made executable |
+| The `same` imports | 259 of 259 found in the host's libraries (GNU libstdc++: 93 of 93) |
+| OpenGL | a compatibility context from EGL with no window: 4.6 on Mesa 26.3.1 (radeonsi), GLSL 4.60 |
+| The game's extensions | all six: the ARB vertex and fragment programs, `EXT_gpu_program_parameters`, S3TC, `EXT_bgra`, `ARB_get_program_binary` |
+| Vulkan | 1.4 (RADV), were Zink ever wanted |
+| Sound | PipeWire 1.6.11 at 48,000 Hz; its quantum is 1,024 frames by default and 32 at the least, so 128 and 256 are for the game to ask |
+| Libraries on the host | `libpipewire-0.3`, `libjack`, `libasound` and `libSDL3` are all there |
+| AppImage | `/dev/fuse` and `fusermount3` are there |
+| To build with | `gcc` and the C library's headers on the host itself (enough for X1); no headers for EGL, SDL or PipeWire, so the later steps build in a distrobox |
 
 ### X1. The game's initializers run
 
@@ -233,9 +251,9 @@ To find out:
 4. **Which imports a session reaches** (step 0), and whether the two locale calls and the Ethernet address read
    are among them.
 5. **The cable's name** as ALSA gives it, against the name the game looks for.
-6. **x86-64**: is 0x100000000 free in a Linux process as expected, and may memory be made executable there
-   (`first_run.py --machine` asks both); can LLVM's Mach-O linker make the test programs with no macOS SDK; how
-   fast is the translated game there against the original.
+6. **x86-64**: can LLVM's Mach-O linker make the test programs with no macOS SDK; how fast is the translated game
+   there against the original. (Answered on Bazzite, 2026-11-28: 0x100000000 is free in a Linux process, and
+   memory may be made executable.)
 14. **Who can download the Mac depot.** The game on Steam is one app with a Windows and a Mac depot, and an
     account that has it for the Mac has both; whether every account that bought it for Windows does is for the
     console to say (`missing license for depot`). Learn & Play's license has no Mac download
@@ -341,3 +359,10 @@ Proposed; none is final before the step that tests it.
   libraries the same; an import with no answer stops it by name. The rune table the script makes for
   `_DefaultRuneLocale` equals macOS's own for all 256 characters, and macOS gives 15 and 47 as the priority range
   of every policy. Next: X0 on a Bazzite machine.
+- **2026-11-28, X0 on Bazzite.** A PC with Bazzite 45 (KDE, Wayland; AMD Renoir graphics). With the decrypted image
+  copied from the Mac: `import_census.py --check` agrees, `first_run.py` runs 3,487 of 3,487 initializers with the
+  same 16 imports and counts as on the Mac, and both tests pass there (the three that need an x86-64 process
+  included). The machine's report is in [X0](#x0-the-first-run-with-nothing-built): the address free, a
+  compatibility context with all six extensions, PipeWire at 48 kHz. The report's OpenGL question had a mistake
+  this run found: asked for no surface type, EGL looks for a window config, which a surfaceless display has not;
+  it now asks for none. Not yet tried: `download_depot` in Steam on Linux. Next: X1's loader.

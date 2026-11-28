@@ -5,8 +5,9 @@ an Apple silicon Mac running Fedora Asahi Remix, where the game would otherwise 
 virtual machine and gets the same translated code as on macOS; and an x86-64 desktop, where the game's own code can
 run as it is.
 
-**Nothing here builds or runs yet.** This folder holds the investigation of what the port takes, the plan, and one
-tool. The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
+**Nothing here builds yet.** This folder holds the investigation of what the port takes, the plan, and two tools.
+The game's own initializers have run on x86-64 Linux (Bazzite) through one of them, `first_run.py`. The work is on
+the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
 |---|---|
