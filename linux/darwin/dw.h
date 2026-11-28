@@ -49,13 +49,14 @@ void dw_display_set_modes(const int (*modes)[2], int n);
 // then calls RENDER on its own audio thread whenever it wants FRAMES more frames (at most 4096), which fills the
 // two channels with what the game plays. Without one, a thread calls it on the clock and drops the sound.
 typedef void (*dw_audio_render)(void *ctx, float *left, float *right, uint32_t frames);
+#define DW_AUDIO_MAX_CHANNELS 32  // of one input device: a mixer's interface has twelve and more
 // An input the backend has: a capture device as the game is to see it. The game knows the Real Tone Cable by
 // "Rocksmith USB" in its name or maker.
 typedef struct {
   char name[128], maker[64];  // "Rocksmith USB Guitar Adapter", "Hercules"
   char uid[192];              // the backend's own name for it, the same at every start
   char model[192];            // name and USB ids, as CoreAudio's model identifier has them; or empty
-  int channels, usb;
+  int channels, usb;          // (channels: up to DW_AUDIO_MAX_CHANNELS)
   int card;                   // its ALSA card's number, or -1
   int outputs;                // its device plays as well as records (an audio interface, not a microphone)
 } dw_audio_input;

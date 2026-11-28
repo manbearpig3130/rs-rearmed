@@ -113,6 +113,7 @@ typedef struct {
   io_proc proc;
   void *client;
   void *capture;    // the backend's handle while it runs
+  float *heard;     // room for a buffer of what the game hears, when that is not what was captured as it is
   double sample;
 } input_device;
 static input_device g_inputs[MAX_INPUTS];
@@ -560,13 +561,15 @@ static void input_captured(void *ctx, const float *samples, uint32_t frames) {
                      .rate_scalar = 1.0, .flags = 1 | 2 | 4};
   // What the game hears: one channel of what was captured, where the entry is of one; the level's gain and the
   // settings', kept within -1 and 1 as an interface's converter keeps a sample.
-  static __thread float heard[4096 * 8];
+  float *heard = d->heard;
   uint32_t channels = (uint32_t)d->info.channels, shown = (uint32_t)d->shown, clips = 0;
   float gain = d->gain * d->fixed, peak = 0;
-  if (frames <= 4096 && d->take >= 0) {
+  if (!heard || frames > 4096) {
+    // (no room: as captured)
+  } else if (d->take >= 0) {
     for (uint32_t i = 0; i < frames; i++) heard[i] = rs_audio_input_apply(samples[i * channels + (uint32_t)d->take], gain, &peak, &clips);
     samples = heard;
-  } else if (frames <= 4096 && gain != 1.0f) {
+  } else if (gain != 1.0f) {
     for (uint32_t i = 0; i < frames * channels; i++) heard[i] = rs_audio_input_apply(samples[i], gain, &peak, &clips);
     samples = heard;
   }
@@ -604,6 +607,7 @@ int dw_AudioDeviceStart(uint32_t device, void *id) {
   if (d->capture) return noErr;
   if (!d->proc || !g_backend || !g_backend->capture_start) return kIllegalOperation;
   d->gain = software_gain(d);
+  if (!d->heard) d->heard = malloc(sizeof(float) * 4096 * DW_AUDIO_MAX_CHANNELS);  // (kept: an entry is opened again and again)
   d->capture = g_backend->capture_start(&d->info, g_rate, d->frames, input_captured, d);
   if (audio_log() || !d->capture)
     fprintf(stderr, "[audio] input \"%s\": %s, %u frames a call\n", d->name, d->capture ? "started" : "could not be started", d->frames);

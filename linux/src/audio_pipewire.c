@@ -167,7 +167,7 @@ static void node_info(void *data, const struct pw_node_info *info) {
   }
   in->channels = channels ? atoi(channels) : 1;
   if (in->channels < 1) in->channels = 1;
-  if (in->channels > 8) in->channels = 8;
+  if (in->channels > DW_AUDIO_MAX_CHANNELS) in->channels = DW_AUDIO_MAX_CHANNELS;
   in->usb = bus && !strcmp(bus, "usb");
   e.nodes[i].have = 1;
 }
@@ -235,7 +235,7 @@ struct capture {
   dw_audio_capture capture;
   void *ctx;
   uint32_t frames, channels, have, told;
-  float queue[8192 * 8];
+  float queue[8192 * DW_AUDIO_MAX_CHANNELS];
 };
 
 static void on_capture(void *data) {

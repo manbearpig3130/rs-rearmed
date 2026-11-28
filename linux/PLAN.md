@@ -737,3 +737,11 @@ Proposed; none is final before the step that tests it.
   before the mid points are written). No branch lands inside any of the ranges. With the 5 mid points a jump
   cannot be written at ([patch-sites.tsv](patch-sites.tsv), all Seven-String's), that is the work Seven-String
   needs here; Plain Packages needs its two edits.
+- **2026-11-28, a real interface.** A mixer with a 12-channel USB input (TC-Helicon Blender) on the Bazzite PC:
+  the game lists "Blender channel 1" to "channel 10" and opens them, 128 frames each. An input may have up to 32
+  channels now (it was eight; the layer's buffer for what the game hears is the entry's own, not a thread's).
+  The device itself needed help below the game: it sends no audio until it is sent the standard request that
+  sets its sampling frequency, which Linux's USB audio driver leaves out for a device that already reports the
+  rate; found with the kernel's USB monitor and by asking the device directly. That is the system's to fix (a
+  request at plug-in, or a quirk in the kernel's driver), not the port's.
+
