@@ -1797,8 +1797,9 @@ def ask_steam(steam, apps):
     """{"account": id, "apps": [...]}: which of APPS the account logged in to the running Steam owns (the id is
     None when Valve's library has no way to it). When Steam can't say, {"error": why}."""
     lib = steam_api_library(steam)
-    if not lib:
-        return {"error": "Valve's library is not in the Steam app"}
+    if not lib:  # (Steam for Linux has no copy of it of its own: there Steam's files are the answer)
+        return {"error": "the Steam app has no copy of Valve's library to ask it with" if sys.platform == "darwin"
+                else "Steam for Linux comes without Valve's library to ask it with", "unasked": True}
     try:
         r = subprocess.run([sys.executable, "-I", "-c", ASK_STEAM, lib, ASK_MARK], input=json.dumps(sorted(apps)),
                            capture_output=True, text=True, timeout=ASK_TIMEOUT, cwd=steam,
@@ -1901,7 +1902,9 @@ def rs1_owned(steam, dest, account, say=lambda text: None):
             % (state.name or "another account", name))
     else:
         answer = ask_steam(steam, apps) or {"error": "no answer"}
-        if "error" in answer:
+        if answer.get("unasked"):
+            say(RS1 + "Steam was not asked: %s, so Steam's files answer." % answer["error"])
+        elif "error" in answer:
             say(RS1 + "Steam was asked and gave no answer (%s)." % answer["error"])
         elif answer["account"] not in (account, None):  # None: Steam's log named the account, just above
             say(RS1 + "Steam answered for another account than %s; the answer is not used." % name)

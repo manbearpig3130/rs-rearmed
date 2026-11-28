@@ -397,7 +397,9 @@ class AskSteam(Base):
         self.assertEqual(self.library(init=0), {"error": "SteamAPI_InitSafe failed"})
         self.assertIn("SteamAPI_SteamApps_v008", self.library(apps="SteamAPI_SteamApps")["error"])
         os.environ["RS_STEAM_REAL_LIB"] = os.path.join(self.tmp, "none.dylib")
-        self.assertIn("not in the Steam app", gamefiles.ask_steam(self.steam, {1})["error"])
+        answer = gamefiles.ask_steam(self.steam, {1})
+        self.assertIn("Valve's library", answer["error"])
+        self.assertTrue(answer["unasked"])  # (said as "Steam was not asked", not as an answer that failed)
 
 
 class ArchiveKey(Base):
