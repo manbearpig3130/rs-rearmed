@@ -49,8 +49,8 @@ $(OUT)/target/hooks.inc: $(TARGET)/names/hooks.list
 $(OUT)/native/rc_hook.o: $(RUNTIME)/rc_hook.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
-# (rc_edit_enable there is the translated build's, where an edit group is a switch the translated code reads: here
-# it would say "on" and change nothing. The program has its own, src/patch.c.)
+# (rc_edit_enable there is the translated build's, where an edit group is a switch the translated code reads. The
+# program has its own, src/patch.c, which asks that one whether the group may go on and then writes the edits.)
 $(OUT)/native/rc_mid.o: $(RUNTIME)/rc_mid.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -O0 -Drc_edit_enable=rc_edit_enable_translated -c -o $@ $<
@@ -63,6 +63,9 @@ $(OUT)/native/rc_mods.o: $(RUNTIME)/rc_mods.c $(OUT)/target/rc_target_names.h
 $(OUT)/target/mids.inc: gen_mids.py patch-sites.tsv $(TARGET)/mac-x64/mids.map
 	@mkdir -p $(OUT)/target
 	$(PYTHON) gen_mids.py $@
+$(OUT)/target/edits.inc: gen_edits.py patch-edits.tsv $(TARGET)/targets.py $(TARGET)/mac-x64/edits.map
+	@mkdir -p $(OUT)/target
+	$(PYTHON) gen_edits.py $@
 $(OUT)/native/rc_target.o: $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $(OUT)/target/rc_target.c
@@ -91,7 +94,7 @@ $(OUT)/native/direct.o: src/direct.c $(OUT)/target/rc_target_names.h
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
 $(OUT)/native/patch.o: src/patch.c src/rsl.h $(OUT)/target/rc_target_names.h $(OUT)/target/overrides_online.inc $(OUT)/target/hooks.inc \
     $(OUT)/target/overrides_audio.inc \
-    $(OUT)/target/mids.inc
+    $(OUT)/target/mids.inc $(OUT)/target/edits.inc
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
 $(OUT)/native/online_glue.o: $(OVERRIDES)/src/online_glue.c $(OUT)/target/rc_target_names.h
@@ -288,6 +291,10 @@ $(OUT)/layer_test: $(OUT)/test/layer_test.o $(LAYER_OBJ)
 $(OUT)/call_test: test/call_test.c $(OUT)/native/direct.o
 	$(CC) -std=gnu11 -Wall -Wextra -O2 -g -o $@ $^ $(LIBS)
 
+# What the program writes into the game's code (src/patch.c: edits, mid points), on code of the test's own.
+$(OUT)/patch_test: test/patch_test.c src/patch.c src/rsl.h
+	$(CC) $(NATIVE_CFLAGS) -o $@ $<
+
 $(OUT)/imports_table.inc: darwin-imports.tsv gen_import_table.py import_census.py
 	@mkdir -p $(OUT)
 	$(PYTHON) gen_import_table.py $@
@@ -305,9 +312,10 @@ $(OUT)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(ALL_CFLAGS) -MMD -MP -c -o $@ $<
 
-check: $(OUT)/rs-rearmed $(OUT)/layer_test $(OUT)/call_test check-steam
+check: $(OUT)/rs-rearmed $(OUT)/layer_test $(OUT)/call_test $(OUT)/patch_test check-steam
 	$(OUT)/layer_test
 	$(OUT)/call_test
+	$(OUT)/patch_test
 	@if [ -f "$(IMAGE)" ]; then $(OUT)/rs-rearmed --image "$(IMAGE)" --init-only; \
 	 else echo "no image at $(IMAGE): the game's initializers not run"; fi
 
@@ -354,7 +362,7 @@ appimage: appdir
 
 clean:
 	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/shell $(OUT)/native $(OUT)/shims $(OUT)/imports_table.inc $(OUT)/rs-rearmed \
-	    $(OUT)/layer_test $(OUT)/call_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so \
+	    $(OUT)/layer_test $(OUT)/call_test $(OUT)/patch_test $(OUT)/libsteam_api.so $(GLDIR) $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so \
 	    $(APPDIR)
 
 .PHONY: all gl bink check check-steam check-gl appdir appimage clean

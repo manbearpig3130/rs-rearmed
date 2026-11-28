@@ -9,10 +9,19 @@
 // A hook point (rc_hook.h) runs hooks before and after the function. Its stub makes the same context and calls
 // rc_hook_call, whose `orig` runs the function from the context: the instructions the jump covered, moved, then
 // the rest where it is.
+//
+// A mid point (rc_mid.h) runs hooks before one instruction inside a function, and an edit group (rc_mid.h) puts
+// other instructions in the place of some: both further down, with the same jump and the same moving of what it
+// covers, or a breakpoint where no jump can be written.
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE  // the instruction pointer in a signal's context (REG_RIP)
+#endif
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <ucontext.h>
 #include <unistd.h>
 
 #include "rc.h"
@@ -241,21 +250,97 @@ static uint8_t *far_jump_with(uint16_t movabs, uint64_t value, void *target) {
   return s;
 }
 
-// The game's code at ADDRESS becomes `jmp STUB` (5 bytes).
-static int write_jump(uint64_t address, const uint8_t *stub, const char *name) {
-  uint8_t jump[5] = {0xe9, 0, 0, 0, 0};
-  put32(jump + 1, (int64_t)(uintptr_t)stub - (int64_t)(address + 5));
-  uint64_t page = (uint64_t)sysconf(_SC_PAGESIZE) - 1, lo = address & ~page, hi = (address + sizeof jump + page) & ~page;
+// BYTES written at ADDRESS: the game's code, which is made writable for it, or a stub of ours, which is. While an
+// edit group is being written the old bytes are kept, to put back if a later edit of the group cannot be done.
+#define MAX_UNDO 1024
+static struct {
+  uint64_t address;
+  uint8_t n, old[79];
+} g_undo[MAX_UNDO];
+static int g_nundo, g_undo_on;
+
+static int in_stubs(uint64_t address) {
+  return g_near && address >= (uint64_t)(uintptr_t)g_near && address < (uint64_t)(uintptr_t)g_near + NEAR_SIZE;
+}
+
+static int write_code(uint64_t address, const uint8_t *bytes, size_t n, const char *name) {
+  if (in_stubs(address)) {
+    memcpy((void *)address, bytes, n);
+    return 0;
+  }
+  if (g_undo_on) {
+    if (g_nundo == MAX_UNDO || n > sizeof g_undo[0].old) {
+      fprintf(stderr, "[rs-rearmed] %s: more changes than one group may have\n", name);
+      return -1;
+    }
+    g_undo[g_nundo].address = address, g_undo[g_nundo].n = (uint8_t)n;
+    memcpy(g_undo[g_nundo++].old, (const void *)address, n);
+  }
+  uint64_t page = (uint64_t)sysconf(_SC_PAGESIZE) - 1, lo = address & ~page, hi = (address + n + page) & ~page;
   if (mprotect((void *)lo, hi - lo, PROT_READ | PROT_WRITE)) {
     fprintf(stderr, "[rs-rearmed] the game's code at 0x%llx (%s) cannot be written: ", (unsigned long long)address, name);
     perror(NULL);
     return -1;
   }
-  memcpy((void *)address, jump, sizeof jump);
+  memcpy((void *)address, bytes, n);
   if (mprotect((void *)lo, hi - lo, PROT_READ | PROT_EXEC)) {
     perror("[rs-rearmed] the game's code cannot be made executable again");
     return -1;
   }
+  return 0;
+}
+
+// The code at ADDRESS becomes `jmp STUB` (5 bytes).
+static int write_jump(uint64_t address, const uint8_t *stub, const char *name) {
+  uint8_t jump[5] = {0xe9, 0, 0, 0, 0};
+  put32(jump + 1, (int64_t)(uintptr_t)stub - (int64_t)(address + 5));
+  return write_code(address, jump, sizeof jump, name);
+}
+
+// Where no jump can be written (something in the function goes to an address inside the five bytes: linux/
+// patch-sites.tsv, patch-edits.tsv), the one byte at ADDRESS becomes a breakpoint, and the signal it raises goes on
+// at STUB with every register as it was. That costs a signal each time the place is reached, so it is the way in
+// only where the jump is not.
+#define MAX_TRAPS 64
+static struct {
+  uint64_t address;
+  const uint8_t *stub;
+} g_traps[MAX_TRAPS];
+static int g_ntraps;
+
+static void on_trap(int sig, siginfo_t *info, void *context) {
+  (void)sig, (void)info;
+  ucontext_t *u = context;
+  uint64_t at = (uint64_t)u->uc_mcontext.gregs[REG_RIP] - 1;
+  for (int i = 0; i < g_ntraps; i++)
+    if (g_traps[i].address == at) {
+      u->uc_mcontext.gregs[REG_RIP] = (greg_t)(uintptr_t)g_traps[i].stub;
+      return;
+    }
+  signal(SIGTRAP, SIG_DFL);  // not one of ours: as it would have been without this handler
+  raise(SIGTRAP);
+}
+
+static int write_trap(uint64_t address, const uint8_t *stub, const char *name) {
+  static const uint8_t int3 = 0xcc;
+  if (g_ntraps == MAX_TRAPS) {
+    fprintf(stderr, "[rs-rearmed] %s: no more breakpoints than %d\n", name, MAX_TRAPS);
+    return -1;
+  }
+  if (!g_ntraps) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = on_trap;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGTRAP, &sa, NULL)) {
+      perror("[rs-rearmed] no handler for breakpoints");
+      return -1;
+    }
+  }
+  g_traps[g_ntraps].address = address, g_traps[g_ntraps].stub = stub;
+  if (write_code(address, &int3, 1, name)) return -1;
+  g_ntraps++;
   return 0;
 }
 
@@ -277,13 +362,14 @@ int rsl_override(uint64_t address, void (*native)(rc_ctx *), const char *name) {
 // linux/check_patch_sites.py.
 //
 // The length of the instruction at P, or -1. *DISP: the offset in it of a 32-bit distance from the instruction's end
-// to correct, or -1. *SHORT: 1 for a branch with an 8-bit distance.
-static int instruction(const uint8_t *p, int *disp, int *short_branch) {
+// to correct, or -1. *SHORT: 1 for a branch with an 8-bit distance. *BRANCH: 1 when the distance is to code (a
+// branch's or a call's), 0 when to data.
+static int instruction(const uint8_t *p, int *disp, int *short_branch, int *branch) {
   int i = 0, word = 0, wide = 0, modrm = 0, imm = 0;
-  *disp = -1, *short_branch = 0;
-  for (; p[i] == 0x66 || p[i] == 0xf2 || p[i] == 0xf3; i++) {
+  *disp = -1, *short_branch = 0, *branch = 0;
+  for (; p[i] == 0x66 || p[i] == 0xf2 || p[i] == 0xf3 || p[i] == 0x2e; i++) {  // (0x2e and a row of 0x66: a long no-op's)
     if (p[i] == 0x66) word = 1;
-    if (i == 3) return -1;
+    if (i == 12) return -1;
   }
   if ((p[i] & 0xf0) == 0x40) wide = (p[i++] >> 3) & 1;  // REX
   uint8_t op = p[i++];
@@ -291,7 +377,7 @@ static int instruction(const uint8_t *p, int *disp, int *short_branch) {
     uint8_t op2 = p[i++];
     if (op2 == 0x0b) return i;  // ud2
     if (op2 >= 0x80 && op2 <= 0x8f) {  // a conditional jump, long form
-      *disp = i;
+      *disp = i, *branch = 1;
       return i + 4;
     }
     static const uint8_t k[] = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x1f, 0x28, 0x29, 0x2a, 0x2c, 0x2d, 0x2e, 0x2f, 0x51,
@@ -303,10 +389,11 @@ static int instruction(const uint8_t *p, int *disp, int *short_branch) {
   } else if ((op >= 0x50 && op <= 0x5f) || op == 0x90 || op == 0x98 || op == 0x99 || op == 0xc3 || op == 0xc9) {
     // push, pop, nop, cdqe, cdq, ret, leave: one byte
   } else if ((op >= 0x70 && op <= 0x7f) || op == 0xeb) {  // a conditional jump or a jump, short form
-    *short_branch = 1;
+    if (i != 1) return -1;  // with a prefix: not one the long form below is written for
+    *short_branch = *branch = 1;
     return i + 1;
   } else if (op == 0xe8 || op == 0xe9) {  // call, jmp: a distance from the instruction's end
-    *disp = i;
+    *disp = i, *branch = 1;
     return i + 4;
   } else if (op == 0xc2) {
     imm = 2;  // ret n
@@ -348,87 +435,120 @@ static int instruction(const uint8_t *p, int *disp, int *short_branch) {
 
 // Every place instructions were moved from, with where each instruction went: an address inside the bytes a jump
 // covers is no longer code, and whoever means to go there (a mid point's continuation that skips the first of two
-// covered instructions) goes to the moved copy instead.
-#define MAX_MOVED 512
-static struct {
+// covered instructions, an edit's branch to the instruction after its range) goes to the moved copy instead.
+#define MAX_MOVED 1024
+#define MOVED_MOST 12
+typedef struct {
   uint64_t address;
   int covered, n;
   uint8_t *to;
-  uint8_t from_off[12], to_off[12];
-} g_moved[MAX_MOVED];
+  uint16_t from_off[MOVED_MOST], to_off[MOVED_MOST];
+} moved;
+static moved g_moved[MAX_MOVED];
 static int g_nmoved;
 
-// Where to go for ADDRESS: itself, or the moved copy of the instruction that was there.
+// Where to go for ADDRESS among M's covered bytes: the moved copy of the instruction that was there; ADDRESS
+// itself outside them (the first covered byte is outside: the jump is there); 0 inside an instruction or among
+// bytes that were replaced, not moved.
+static uint64_t moved_in(const moved *m, uint64_t address) {
+  if (address <= m->address || address >= m->address + (uint64_t)m->covered) return address;
+  for (int k = 0; k < m->n; k++)
+    if (m->address + m->from_off[k] == address) return (uint64_t)(uintptr_t)(m->to + m->to_off[k]);
+  return 0;
+}
+
+// Where to go for ADDRESS: itself, or the moved copy of the instruction that was there (and the copy's copy, where
+// a jump was since written over the copy: a mid point at an instruction an edit moved).
 static uint64_t moved_address(uint64_t address) {
-  for (int i = 0; i < g_nmoved; i++) {
-    if (address <= g_moved[i].address || address >= g_moved[i].address + (uint64_t)g_moved[i].covered) continue;
-    for (int k = 0; k < g_moved[i].n; k++)
-      if (g_moved[i].address + g_moved[i].from_off[k] == address) return (uint64_t)(uintptr_t)(g_moved[i].to + g_moved[i].to_off[k]);
-    fprintf(stderr, "[rs-rearmed] 0x%llx is inside an instruction that a jump covers: nothing can go on there\n", (unsigned long long)address);
-    return 0;
+  for (int again = 0; again < 4; again++) {
+    uint64_t at = address;
+    for (int i = 0; i < g_nmoved && at == address; i++) at = moved_in(&g_moved[i], address);
+    if (!at) {
+      fprintf(stderr, "[rs-rearmed] 0x%llx is inside an instruction that a jump covers: nothing can go on there\n", (unsigned long long)address);
+      return 0;
+    }
+    if (at == address) return at;
+    address = at;
   }
   return address;
 }
 
-// The instructions at ADDRESS that a 5-byte jump covers, moved to TO (room for 96 bytes), then a jump to the first
-// not covered. How many bytes were covered, or -1 with a line.
-static int move_code(uint64_t address, uint8_t *to, const char *name) {
+// How many bytes the moved form of an instruction of N bytes takes: a short branch becomes its long form.
+static int moved_size(const uint8_t *p, int n, int short_branch) { return !short_branch ? n : p[0] == 0xeb ? 5 : 6; }
+
+// The instruction P (N bytes: `instruction` gave DISP, SHORT_BRANCH and BRANCH), which is or stands at the address
+// HERE, written at TO to do there what it does at HERE. A branch into SELF's covered bytes goes to the moved copy.
+// How many bytes were written, or -1; *FIXES counts the instructions that had a distance corrected.
+static int move_one(const uint8_t *p, int n, int disp, int short_branch, int branch, uint64_t here, uint8_t *to, const moved *self,
+                    int *fixes) {
+  int64_t there = (int64_t)(uintptr_t)to;
+  if (!short_branch && disp < 0) {
+    memcpy(to, p, (size_t)n);
+    return n;
+  }
+  int32_t d = (int8_t)p[1];
+  if (!short_branch) memcpy(&d, p + disp, 4);
+  int64_t target = (int64_t)here + n + d, distance;
+  if (branch && !(target = (int64_t)moved_in(self, (uint64_t)target))) return -1;
+  int w = moved_size(p, n, short_branch);
+  if (short_branch) {
+    disp = w - 4;
+    if (p[0] == 0xeb) to[0] = 0xe9;
+    else to[0] = 0x0f, to[1] = (uint8_t)(0x80 | (p[0] & 0x0f));
+  } else {
+    memcpy(to, p, (size_t)n);
+  }
+  distance = target - (there + w);
+  if (distance != (int32_t)distance) return -1;
+  put32(to + disp, distance);
+  ++*fixes;
+  return w;
+}
+
+// The instructions at ADDRESS that a 5-byte jump covers (LEAST 5), or the one there (LEAST 1, for a breakpoint),
+// moved to TO (room for ROOM bytes), then a jump to the first not covered. How many bytes were covered, or -1 with
+// a line.
+static int move_code(uint64_t address, uint8_t *to, int room, const char *name, int least) {
   const uint8_t *from = (const uint8_t *)address;
-  int done = 0, w = 0, n, disp, short_branch;
-  while (done < 5) {  // how far the jump reaches, first: a covered branch may not land inside it
-    if ((n = instruction(from + done, &disp, &short_branch)) < 0 || done + n > 40) {
+  int done = 0, w = 0, n, disp, short_branch, branch, fixes = 0;
+  if (g_nmoved == MAX_MOVED) return -1;
+  moved *m = &g_moved[g_nmoved];
+  m->address = address, m->to = to, m->n = 0;
+  while (done < least) {  // how far the jump reaches, first: a covered branch may go to a covered instruction
+    if ((n = instruction(from + done, &disp, &short_branch, &branch)) < 0 || done + n > 40 || m->n == MOVED_MOST) {
       fprintf(stderr, "[rs-rearmed] %s at 0x%llx: its instruction at +%d is not one this build moves (bytes %02x %02x %02x %02x): left as it is\n",
               name, (unsigned long long)address, done, from[done], from[done + 1], from[done + 2], from[done + 3]);
       return -1;
     }
-    done += n;
+    m->from_off[m->n] = (uint16_t)done, m->to_off[m->n++] = (uint16_t)w;
+    w += moved_size(from + done, n, short_branch), done += n;
   }
-  int covered = done;
-  if (g_nmoved == MAX_MOVED) return -1;
-  g_moved[g_nmoved].address = address, g_moved[g_nmoved].covered = covered, g_moved[g_nmoved].to = to, g_moved[g_nmoved].n = 0;
-  for (done = 0; done < covered; done += n) {
-    n = instruction(from + done, &disp, &short_branch);
-    int64_t here = (int64_t)(address + (uint64_t)done), there = (int64_t)(uintptr_t)(to + w);
-    if (g_moved[g_nmoved].n < 12) {
-      g_moved[g_nmoved].from_off[g_moved[g_nmoved].n] = (uint8_t)done;
-      g_moved[g_nmoved].to_off[g_moved[g_nmoved].n++] = (uint8_t)w;
+  m->covered = done;
+  if (w + 5 > room) {
+    fprintf(stderr, "[rs-rearmed] %s at 0x%llx: its moved instructions take more room than a stub has: left as it is\n", name,
+            (unsigned long long)address);
+    return -1;
+  }
+  for (done = 0, w = 0; done < m->covered; done += n) {
+    n = instruction(from + done, &disp, &short_branch, &branch);
+    int put = move_one(from + done, n, disp, short_branch, branch, address + (uint64_t)done, to + w, m, &fixes);
+    if (put < 0) {
+      fprintf(stderr, "[rs-rearmed] %s at 0x%llx: its instruction at +%d goes where this build cannot send it: left as it is\n", name,
+              (unsigned long long)address, done);
+      return -1;
     }
-    if (short_branch) {
-      int64_t target = here + 2 + (int8_t)from[done + 1];
-      if (target > (int64_t)address && target < (int64_t)address + covered) {
-        fprintf(stderr, "[rs-rearmed] %s at 0x%llx: a branch of the covered instructions lands among them: left as it is\n", name,
-                (unsigned long long)address);
-        return -1;
-      }
-      if (from[done] == 0xeb) {
-        to[w] = 0xe9;
-        put32(to + w + 1, target - (there + 5));
-        w += 5;
-      } else {
-        to[w] = 0x0f, to[w + 1] = (uint8_t)(0x80 | (from[done] & 0x0f));
-        put32(to + w + 2, target - (there + 6));
-        w += 6;
-      }
-      continue;
-    }
-    memcpy(to + w, from + done, (size_t)n);
-    if (disp >= 0) {
-      int32_t d;
-      memcpy(&d, from + done + disp, 4);
-      put32(to + w + disp, (int64_t)d + (here - there));
-    }
-    w += n;
+    w += put;
   }
   to[w] = 0xe9;
-  put32(to + w + 1, (int64_t)(address + (uint64_t)covered) - (int64_t)(uintptr_t)(to + w + 5));
+  put32(to + w + 1, (int64_t)(address + (uint64_t)m->covered) - (int64_t)(uintptr_t)(to + w + 5));
   g_nmoved++;
-  return covered;
+  return m->covered;
 }
 
 // The first instructions of the function at ADDRESS, moved; then a jump to the rest.
 static uint8_t *moved_start(uint64_t address, const char *name) {
   uint8_t *to = near_take(96);
-  return to && move_code(address, to, name) > 0 ? to : NULL;
+  return to && move_code(address, to, 96, name, 5) > 0 ? to : NULL;
 }
 
 // A hook point: the function at ADDRESS enters rc_hook_call(INDEX), with the function itself as its `orig`.
@@ -550,8 +670,9 @@ __asm__(".text\n"
         "  retq $136\n"
         ".size rsl_mid_entry, .-rsl_mid_entry\n");
 
-// lea rsp, [rsp-128]; push POINT; call [rsl_mid_entry]; then the moved instruction and the jump on.
-static int mid_point(uint64_t address, int point, const char *name) {
+// lea rsp, [rsp-128]; push POINT; call [rsl_mid_entry]; then the moved instruction and the jump on. TRAP: by a
+// breakpoint, where a jump cannot be written.
+static int mid_point(uint64_t address, int point, const char *name, int trap) {
   uint8_t *s = near_take(26 + 96);
   if (!s) return -1;
   static const uint8_t lea[5] = {0x48, 0x8d, 0x64, 0x24, 0x80};
@@ -562,10 +683,192 @@ static int mid_point(uint64_t address, int point, const char *name) {
   put32(s + 12, 2);
   s[16] = 0xeb, s[17] = 0x08;
   put64(s + 18, (uint64_t)(uintptr_t)rsl_mid_entry);
-  if (move_code(address, s + 26, name) < 0) return -1;
-  return write_jump(address, s, name);
+  if (move_code(address, s + 26, 96, name, trap ? 1 : 5) < 0) return -1;
+  return trap ? write_trap(address, s, name) : write_jump(address, s, name);
 }
 
+// --- edits ---
+// An edit (rc_mid.h) is instructions of the game that a mod switches to others, a group at a time. Where the
+// game's code is translated, both forms are translated and the group is a switch the code reads. Here it is bytes
+// to change in the loaded code, when the mod asks (in its constructor, before the game runs and before the mid
+// points are written, so that a mid point among an edit's bytes moves what the edit left):
+//   - bytes inside the range, or new instructions no longer than the range: written there, the rest no-ops;
+//   - new instructions longer than the range: they go to a stub, corrected for where they are now (they were
+//     written as if at the range's address), and the range becomes a jump to it. Under five bytes the jump covers
+//     the instructions after the range too, which are moved behind the new ones as a hook's are;
+//   - where the table says no jump can be written (linux/patch-edits.tsv), a breakpoint, which covers the range
+//     alone.
+// The edits are taken from the highest address down, so a jump that needs the instructions after its range finds
+// them as they will be: the game's, another edit's bytes, or another edit's jump. The table has none of the game's
+// bytes: each edit carries a check of the ones it expects, and how its longer form reads to the tool that made the
+// table; where the program's own reading differs, or anything else stops one edit, every edit of the group is taken
+// back and the group is refused.
+typedef struct {
+  const char *group;
+  uint64_t address;
+  uint8_t range;      // the bytes the edit replaces
+  uint32_t check;     // the first four bytes of the SHA-256 of the game's bytes there
+  uint8_t whole;      // 1: BYTES are new instructions for the range; 0: (offset, length, bytes) changes inside it
+  uint8_t covered;    // the bytes the longer form's jump covers
+  uint8_t fixes;      // the instructions the longer form has corrected
+  uint8_t can;        // 0: no jump can be written there
+  uint16_t size;
+  const uint8_t *bytes;
+} rsl_edit;
+
+static uint32_t rotr(uint32_t x, int n) { return x >> n | x << (32 - n); }
+
+// The first four bytes of the SHA-256 of P[0..N), N under 56 (one block).
+static uint32_t check_of(const uint8_t *p, size_t n) {
+  static const uint32_t k[64] = {
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be,
+      0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa,
+      0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85,
+      0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+      0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+      0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+  uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19}, w[64], v[8];
+  uint8_t block[128] = {0};
+  size_t blocks = n < 56 ? 1 : 2;
+  if (n > 119) return 0;
+  memcpy(block, p, n);
+  block[n] = 0x80;
+  block[blocks * 64 - 2] = (uint8_t)(n * 8 >> 8), block[blocks * 64 - 1] = (uint8_t)(n * 8);
+  for (size_t b = 0; b < blocks; b++) {
+    for (int i = 0; i < 16; i++) {
+      const uint8_t *q = block + b * 64 + i * 4;
+      w[i] = (uint32_t)q[0] << 24 | (uint32_t)q[1] << 16 | (uint32_t)q[2] << 8 | q[3];
+    }
+    for (int i = 16; i < 64; i++) {
+      uint32_t s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ w[i - 15] >> 3, s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ w[i - 2] >> 10;
+      w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    }
+    memcpy(v, h, sizeof v);
+    for (int i = 0; i < 64; i++) {
+      uint32_t s1 = rotr(v[4], 6) ^ rotr(v[4], 11) ^ rotr(v[4], 25), ch = (v[4] & v[5]) ^ (~v[4] & v[6]);
+      uint32_t t1 = v[7] + s1 + ch + k[i] + w[i];
+      uint32_t s0 = rotr(v[0], 2) ^ rotr(v[0], 13) ^ rotr(v[0], 22), maj = (v[0] & v[1]) ^ (v[0] & v[2]) ^ (v[1] & v[2]);
+      memmove(v + 1, v, 7 * sizeof *v);
+      v[4] += t1, v[0] = t1 + s0 + maj;
+    }
+    for (int i = 0; i < 8; i++) h[i] += v[i];
+  }
+  return h[0];
+}
+
+// One edit whose new instructions are longer than its range. 0, or -1 with a line.
+static int edit_longer(const rsl_edit *e, int *traps) {
+  char name[64];
+  snprintf(name, sizeof name, "the %s edit at 0x%llx", e->group, (unsigned long long)e->address);
+  const uint8_t *game = (const uint8_t *)e->address;
+  int n, disp, short_branch, branch, fixes = 0, w = 0, covered = e->range;
+  if (g_nmoved == MAX_MOVED) return -1;
+  moved *m = &g_moved[g_nmoved];
+  m->address = e->address, m->n = 0;
+  for (int at = 0; at < e->size; at += n) {  // the room the new instructions take
+    if ((n = instruction(e->bytes + at, &disp, &short_branch, &branch)) < 0 || at + n > e->size) {
+      fprintf(stderr, "[rs-rearmed] %s: its new instruction at +%d is not one this build moves\n", name, at);
+      return -1;
+    }
+    w += moved_size(e->bytes + at, n, short_branch);
+  }
+  while (e->can && covered < 5) {  // and the instructions after the range that the jump covers
+    if ((n = instruction(game + covered, &disp, &short_branch, &branch)) < 0 || m->n == MOVED_MOST) {
+      fprintf(stderr, "[rs-rearmed] %s: the instruction at +%d, which its jump would cover, is not one this build moves\n", name, covered);
+      return -1;
+    }
+    m->from_off[m->n] = (uint16_t)covered, m->to_off[m->n++] = (uint16_t)w;
+    w += moved_size(game + covered, n, short_branch), covered += n;
+  }
+  if (covered != e->covered) {
+    fprintf(stderr, "[rs-rearmed] %s: its jump covers %d bytes as this build reads them, %d in the table\n", name, covered, e->covered);
+    return -1;
+  }
+  uint8_t *stub = near_take((size_t)w + 5);
+  if (!stub) return -1;
+  m->to = stub, m->covered = covered;
+  w = 0;
+  for (int k = 0, at = 0; at < e->size || k < m->n; at += n) {
+    int ours = at < e->size;  // the new instructions, then the moved ones
+    const uint8_t *p = ours ? e->bytes + at : game + m->from_off[k];
+    uint64_t here = e->address + (ours ? (uint64_t)at : m->from_off[k++]);
+    n = instruction(p, &disp, &short_branch, &branch);
+    int put = move_one(p, n, disp, short_branch, branch, here, stub + w, m, &fixes);
+    if (put < 0) {
+      fprintf(stderr, "[rs-rearmed] %s: an instruction of it goes where this build cannot send it\n", name);
+      return -1;
+    }
+    w += put;
+  }
+  stub[w] = 0xe9;
+  put32(stub + w + 1, (int64_t)(e->address + (uint64_t)covered) - (int64_t)(uintptr_t)(stub + w + 5));
+  if (fixes != e->fixes) {
+    fprintf(stderr, "[rs-rearmed] %s: %d of its instructions hold a distance as this build reads them, %d in the table\n", name, fixes,
+            e->fixes);
+    return -1;
+  }
+  g_nmoved++;
+  uint8_t rest[80];
+  memset(rest, 0x90, sizeof rest);
+  if (!e->can) {
+    ++*traps;
+    return write_trap(e->address, stub, name) || (covered > 1 && write_code(e->address + 1, rest, (size_t)covered - 1, name)) ? -1 : 0;
+  }
+  return write_jump(e->address, stub, name) || (covered > 5 && write_code(e->address + 5, rest, (size_t)covered - 5, name)) ? -1 : 0;
+}
+
+static int edit_one(const rsl_edit *e, int *longer, int *traps) {
+  uint8_t now[64];
+  const uint8_t *game = (const uint8_t *)e->address;
+  if (e->range > sizeof now || check_of(game, e->range) != e->check) {
+    fprintf(stderr, "[rs-rearmed] the %s edit at 0x%llx: the game's %d bytes there are not the ones the table was made for\n", e->group,
+            (unsigned long long)e->address, e->range);
+    return -1;
+  }
+  if (e->whole && e->size > e->range) {
+    ++*longer;
+    return edit_longer(e, traps);
+  }
+  if (e->whole) {
+    memset(now, 0x90, sizeof now);
+    memcpy(now, e->bytes, e->size);
+  } else {
+    memcpy(now, game, e->range);
+    for (int at = 0; at + 2 <= e->size; at += 2 + e->bytes[at + 1]) {
+      if (e->bytes[at] + e->bytes[at + 1] > e->range || at + 2 + e->bytes[at + 1] > e->size) return -1;
+      memcpy(now + e->bytes[at], e->bytes + at + 2, e->bytes[at + 1]);
+    }
+  }
+  return write_code(e->address, now, e->range, e->group);
+}
+
+// Every edit of GROUP in TABLE (COUNT rows, from the highest address down), written into the code: how many, or
+// -1 with a line and the code as it was.
+static int edits_write(const rsl_edit *table, int count, const char *group) {
+  int n = 0, longer = 0, traps = 0, moved_before = g_nmoved, traps_before = g_ntraps;
+  uint8_t *stubs_before = g_near_at;
+  g_nundo = 0, g_undo_on = 1;
+  for (int i = 0; i < count; i++) {
+    if (strcmp(table[i].group, group)) continue;
+    if (edit_one(&table[i], &longer, &traps)) {
+      g_undo_on = 0;
+      while (g_nundo--) write_code(g_undo[g_nundo].address, g_undo[g_nundo].old, g_undo[g_nundo].n, group);
+      g_nundo = 0, g_nmoved = moved_before, g_ntraps = traps_before;
+      if (stubs_before) g_near_at = stubs_before;
+      fprintf(stderr, "[rs-rearmed] edits %s: none of them written (%d were, and are taken back)\n", group, n);
+      return -1;
+    }
+    n++;
+  }
+  g_undo_on = 0;
+  fprintf(stderr, "[rs-rearmed] edits %s: %d written into the game's code, %d of them longer than their range (a jump to them", group, n,
+          longer);
+  if (traps) fprintf(stderr, "; a breakpoint for %d", traps);
+  fprintf(stderr, ")\n");
+  return n;
+}
+
+#ifndef RSL_PATCH_TEST  // (test/patch_test.c: the above on code of the test's own)
 // --- what this build puts in ---
 // The override modules, compiled as they are (tools/ws7/recomp/overrides): `online`, the game never calls home; and
 // of `mods`, the built-in fixes, the functions it replaces whole. And every hook point of the tables.
@@ -653,6 +956,9 @@ uint64_t rsl_mid_dispatch(int point, rc_ctx *c, uint64_t *flags) {
   return go > 0 && go <= RC_MID_MAXCONTS ? g_mid_cont[point][go - 1] : 0;
 }
 
+static int g_mid_traps;
+int rsl_mid_breakpoints(void) { return g_mid_traps; }
+
 int rsl_install_mids(void) {
   int n = 0;
   for (size_t i = 0; i < sizeof k_mids / sizeof *k_mids; i++) {
@@ -660,11 +966,12 @@ int rsl_install_mids(void) {
     for (int k = 0; k < RC_MID_POINTS && rc_target_mids[k].name && point < 0; k++)
       if (!strcmp(rc_target_mids[k].name, k_mids[i].name)) point = k;
     if (point < 0 || !rc_mid_on[point]) continue;  // no hook asked for it
-    if (!k_mids[i].can) {
-      fprintf(stderr, "[rs-rearmed] mid point %s: a branch of its function lands inside a jump there: left as it is\n", k_mids[i].name);
-      continue;
-    }
-    if (mid_point(k_mids[i].address, point, k_mids[i].name)) continue;
+    // Where an edit's jump covers the instruction it is at its moved copy that the point goes in, with a jump:
+    // nothing else goes to a copy. Elsewhere a point the table says no jump can be written at has a breakpoint.
+    uint64_t at = moved_address(k_mids[i].address);
+    int trap = at == k_mids[i].address && !k_mids[i].can;
+    if (!at || mid_point(at, point, k_mids[i].name, trap)) continue;
+    g_mid_traps += trap;
     memcpy(g_mid_cont[point], k_mids[i].cont, sizeof g_mid_cont[point]);
     n++;
   }
@@ -687,13 +994,34 @@ int rsl_load_mods(const char *home, const char *game) {
   return n;
 }
 
-// An edit group (rc_mid.h): instructions of the game a mod switches to others, 620 of them on this game, nearly
-// all Seven-String's. In a translated build the group is a switch the translated code reads; here it is bytes to
-// change in the loaded code, a good part of them longer than what they replace, and that is not written yet
-// (linux/PLAN.md). So a group is refused, with a line, as the interface has a group refused on a game without
-// it: a mod that goes on regardless would have the game's own layouts under its feet.
+// The target's edits (gen_edits.py, from edits.map and patch-edits.tsv), from the highest address down.
+#define BYTES(n, ...) static const uint8_t k_edit_bytes_##n[] = {__VA_ARGS__};
+#define EDIT(group, address, range, check, whole, covered, fixes, can, n)
+#include "edits.inc"
+#undef BYTES
+#undef EDIT
+static const rsl_edit k_edits[] = {
+#define BYTES(n, ...)
+#define EDIT(group, address, range, check, whole, covered, fixes, can, n) \
+  {group, address, range, check, whole, covered, fixes, can, sizeof k_edit_bytes_##n, k_edit_bytes_##n},
+#include "edits.inc"
+#undef BYTES
+#undef EDIT
+};
+
+// A mod switches an edit group on (rc_mid.h), in its constructor. The runtime's own function (rc_mid.c, under
+// another name here: linux/Makefile) says whether the group may be switched on and keeps the switch; the edits are
+// then written, and a group that cannot be written whole is off again and refused, as the interface has a group
+// refused on a game without it: a mod that went on regardless would have the game's own layouts under its feet.
+int rc_edit_enable_translated(const char *group);
+extern const rc_edit_name rc_target_edits[];
+
 int rc_edit_enable(const char *group) {
-  fprintf(stderr, "[rc] edits %s: refused: edit groups are not in the Linux build yet\n", group ? group : "(none)");
+  if (group && rc_edit_is_on(group)) return 0;
+  if (rc_edit_enable_translated(group)) return -1;
+  if (edits_write(k_edits, (int)(sizeof k_edits / sizeof *k_edits), group) >= 0) return 0;
+  for (int k = 0; k < RC_EDIT_GROUPS && rc_target_edits[k].name; k++)
+    if (!strcmp(rc_target_edits[k].name, group)) rc_edit_on[k] = 0;
   return -1;
 }
-
+#endif  // RSL_PATCH_TEST

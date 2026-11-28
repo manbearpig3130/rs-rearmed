@@ -14,7 +14,8 @@ page is what to do about it, in what order, and what has been done. The editions
   good as they know it. The built-in fixes module runs whole, at hook points and mid points. The game's files are
   set up from the player's Steam, and the game started from them, by `install/rs_install.py`
   ([X4](#x4-install-and-play)). The title logo is made there too, the window goes full screen, and an interface's
-  channels are inputs of their own. Not there: mods and edits, anything for arm64.
+  channels are inputs of their own. A mod is loaded and has what the Mac's has: hook points, mid points, edit
+  groups, the files it serves. Not there: the mods of `rearmed-mods` built for Linux, anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -344,7 +345,8 @@ Steam (the package cache answers), a copy on another drive than the home folder.
 
 ### X5. Fixes and mods
 
-**Hook points, mid points and the whole fixes module are in; edits and mods are not** (2026-11-28).
+**Hook points, mid points, edits and the whole fixes module are in, and a mod is loaded; the mods themselves are
+not built for Linux yet** (2026-11-28).
 
 - **A hook point** is a 5-byte jump at the function's entry to a stub near the image (`src/patch.c`). The stub
   makes an `rc_ctx` of the CPU's registers and calls the runtime's own `rc_hook_call`; its `orig` runs the
@@ -373,11 +375,29 @@ Steam (the package cache answers), a copy on another drive than the home folder.
 - **Where a jump may be written** is not told by the bytes at the site: a branch of the function could land
   inside the five bytes. `linux/check_patch_sites.py` reads each site's whole function with the recompiler's
   disassembler and writes `linux/patch-sites.tsv` (address, bytes covered, yes or no; none of the game's bytes).
-  Of the 157 sites of the tables (21 hook points, 136 mid points) a jump cannot be written at five, all of the
-  Seven-String mod's; the build leaves such a point alone, with a line. They would need another way in (a
-  breakpoint, or the instructions before the point moved as well).
-- **Not in**: edits (other instructions in the place of some: 620, all rearmed-mods'), and mods themselves, which
-  are Mach-O libraries. The runtime's switches for edits are there and nothing applies them.
+  It reads the function as the recompiler does (its discovery, which follows a switch's table), with the
+  target's edits in, so an edit's own branches count. Of the 157 sites of the tables (21 hook points, 136 mid
+  points) a jump cannot be written at five, all of the Seven-String mod's.
+- **A breakpoint is the way in at those five**: the one byte at the point becomes `int3`, and the signal's handler
+  goes on at the point's stub with every register as it was. It covers nothing but the instruction itself, so
+  what goes to the instructions after it still lands. It costs a signal each time the point is reached (the five
+  together: 125 times in the game's first hundred frames); should one prove hot in play, the faster forms are a
+  two-byte jump to five free bytes nearby, or the instructions before the point moved as well.
+- **An edit** (other instructions in the place of some: 620 on this game, 618 Seven-String's and 2 Plain
+  Packages') is written into the loaded code when a mod switches its group on, from the highest address down.
+  459 change bytes inside their range and 11 are new instructions that fit it. 150 are longer than their range:
+  the new instructions go to a stub, corrected for where they are now, and the range becomes a jump to them;
+  where the range is under five bytes (80 of them) the jump covers the instructions after it too, which are
+  moved behind the new ones. `linux/patch-edits.tsv` has, for each longer edit, what the jump covers, how many
+  instructions hold a distance to correct, and whether a jump can be written at all (it can at all 150; a
+  breakpoint is written for a `no`). The program compares its own reading with the table's and checks the
+  game's bytes against the edit's check; if one edit of a group cannot be written, those written are taken back
+  and the group is refused, as on a game that has not got it. The mid points are written after the mods have
+  loaded: one among an edit's bytes moves what the edit left, and one at an instruction an edit's jump covers
+  (two of Seven-String's) goes in at the moved copy.
+- **Not in**: the mods themselves, which `rearmed-mods` builds as Mach-O libraries for the Mac. With
+  Seven-String's edits on and no mod behind them the game stops early, as it must: the edits send it to arrays
+  that the mod's hooks fill.
 - **Three things the build needed**: gcc reads a weak constant's default where it is used when optimizing, so
   `rc_hook.c` is built at `-O0` for the hook points' table to be the one `patch.c` gives; the fixes name the
   C++ allocator as Mach-O writes it (`__Znwm`); and `rc_nofile.h` asks `sysctlbyname` for the open-file limit
@@ -386,9 +406,9 @@ Steam (the package cache answers), a copy on another drive than the home folder.
 The built-in fixes and mods are written against the runtime's hook points, mid points and edits. Two ways, decided
 here with figures:
 
-- **Patches**: entry jumps for the 21 hook points and the overrides, the 459 in-place edits as byte patches, and a
-  plan made at build time for the 136 mid points and the 161 edits that replace a range. First the built-in fixes'
-  share (13 mid points), then the mods'.
+- **Patches** (taken): entry jumps for the 21 hook points and the overrides, the 459 in-place edits as byte
+  patches, and a plan made at build time for the 136 mid points and the 161 edits that replace a range. First the
+  built-in fixes' share (13 mid points), then the mods'.
 - **Translate on x86-64 too**: the arm64 mechanism as it is, once arm64's step 1 exists. Measure its speed against
   the original first.
 
@@ -737,6 +757,14 @@ Proposed; none is final before the step that tests it.
   before the mid points are written). No branch lands inside any of the ranges. With the 5 mid points a jump
   cannot be written at ([patch-sites.tsv](patch-sites.tsv), all Seven-String's), that is the work Seven-String
   needs here; Plain Packages needs its two edits.
+- **2026-11-28, edit groups and the last five mid points.** `rc_edit_enable` writes a group into the game's code
+  (`src/patch.c`), and a mid point where no jump can be written has a breakpoint. `check_patch_sites.py` now reads
+  each function with the recompiler's own discovery and makes `patch-edits.tsv` beside `patch-sites.tsv`;
+  `gen_edits.py` makes the build's table from `edits.map` and it. On the PC: all 620 edits written with a test mod
+  that switches both groups on, the program's reading of the 150 longer ones agreeing with the table's; all 136 mid
+  points hooked by a function that changes nothing (five by a breakpoint) and the game starting as it does
+  without; and the forms one by one on code of the test's own (`test/patch_test.c`, in `make check`). What is
+  left for a mod of `rearmed-mods` is its own build: a `.so` from its sources, and whatever of macOS it uses.
 - **2026-11-28, a real interface.** A mixer with a 12-channel USB input (TC-Helicon Blender) on the Bazzite PC:
   the game lists "Blender channel 1" to "channel 10" and opens them, 128 frames each. An input may have up to 32
   channels now (it was eight; the layer's buffer for what the game hears is the entry's own, not a thread's).

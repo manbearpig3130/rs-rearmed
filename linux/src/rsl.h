@@ -84,8 +84,10 @@ int rsl_install_overrides(void);
 int rsl_hook_point(uint64_t address, int index, const char *name);
 // Every hook point of the tables. How many were put in.
 int rsl_install_hooks(void);
-// The mid points (rc_mid.h) that have a hook. How many were put in.
+// The mid points (rc_mid.h) that have a hook. How many were put in, and how many of those by a breakpoint, where
+// no jump can be written (linux/patch-sites.tsv).
 int rsl_install_mids(void);
+int rsl_mid_breakpoints(void);
 // The mods of HOME/mods (or RS_MODS_PATH), loaded from the game's folder GAME (NULL: where the program is):
 // between the hook points and the mid points (direct.c, with the runtime's rc_mods.c). How many there were to try.
 int rsl_load_mods(const char *home, const char *game);

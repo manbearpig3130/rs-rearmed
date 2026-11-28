@@ -19,6 +19,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import gen_edits  # noqa: E402
 import gen_import_table  # noqa: E402
 import gen_mids  # noqa: E402
 import import_census as census  # noqa: E402
@@ -69,6 +70,34 @@ class Table(unittest.TestCase):
             self.assertIn(name, listed)
             self.assertEqual(int(listed[name][1], 16), addr, name)
 
+    def test_the_edits_table(self):
+        """edits.map's lines as the build takes them: from the highest address down, a change inside a range as its
+        offset, length and bytes, and a longer edit with its row of patch-edits.tsv."""
+        rows = gen_edits.longer_rows("# head\n0x100000020\t3\t5\t8\t2\tyes\t\n0x100000040\t2\t6\t2\t0\tno\tsomething goes inside\n")
+        self.assertEqual(rows, {0x100000020: (3, 5, 8, 2, True), 0x100000040: (2, 6, 2, 0, False)})
+        edits = [("one", 0x100000010, 5, "0a0b0c0d", [(1, b"\x07"), (3, b"\x08\x09")], "a"),
+                 ("one", 0x100000020, 3, "11111111", [(None, b"\x01\x02\x03\x04\x05")], "b"),
+                 ("two", 0x100000030, 4, "22222222", [(None, b"\x90\x90")], "c"),
+                 ("two", 0x100000040, 2, "33333333", [(None, bytes(6))], "d")]
+        out = gen_edits.table(edits, rows).splitlines()
+        self.assertEqual([l for l in out if l.startswith("EDIT")],
+                         ['EDIT("two", 0x100000040ull, 2, 0x33333333u, 1, 2, 0, 0, 0)',
+                          'EDIT("two", 0x100000030ull, 4, 0x22222222u, 1, 4, 0, 1, 1)',
+                          'EDIT("one", 0x100000020ull, 3, 0x11111111u, 1, 8, 2, 1, 2)',
+                          'EDIT("one", 0x100000010ull, 5, 0x0a0b0c0du, 0, 5, 0, 1, 3)'])
+        self.assertIn("BYTES(3, 0x01, 0x01, 0x07, 0x03, 0x02, 0x08, 0x09)", out)
+        self.assertIn("BYTES(2, 0x01, 0x02, 0x03, 0x04, 0x05)", out)
+        with self.assertRaises(ValueError):   # a longer edit the image was never asked about
+            gen_edits.table(edits, {0x100000040: rows[0x100000040]})
+        with self.assertRaises(ValueError):   # a row made for another edit
+            gen_edits.table(edits, {**rows, 0x100000020: (3, 9, 8, 2, True)})
+        with self.assertRaises(ValueError):   # a row with no edit
+            gen_edits.table(edits[:1], rows)
+        # the repository's own: every edit is in, the longer ones with a row each
+        real = gen_edits.made()
+        self.assertGreater(real.count("\nEDIT("), 600)
+        self.assertEqual(real.count("\nEDIT("), real.count("\nBYTES("))
+
     def test_the_layer_answers_only_what_the_table_gives_it(self):
         """Every name the layer registers is an import of the table, and not one the table calls the host's own."""
         rows = {sym: cls for (_, sym), (_, cls, _) in census.read_table().items()}
@@ -91,7 +120,7 @@ class Loader(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.out = os.path.join(cls.tmp.name, "out")
         r = subprocess.run(["make", "-C", HERE, "OUT=" + cls.out, cls.out + "/rs-rearmed", cls.out + "/layer_test",
-                            cls.out + "/call_test", cls.out + "/libsteam_api.so"],
+                            cls.out + "/call_test", cls.out + "/patch_test", cls.out + "/libsteam_api.so"],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if r.returncode:
             raise AssertionError("make failed:\n" + r.stdout.decode())
@@ -119,6 +148,12 @@ class Loader(unittest.TestCase):
         r = subprocess.run([os.path.join(self.out, "layer_test")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(r.returncode, 0, r.stdout.decode())
         self.assertIn("all checks passed", r.stdout.decode())
+
+    def test_what_is_written_into_code(self):
+        """An edit group's forms and the mid points' ways in, on code of the test's own (test/patch_test.c)."""
+        r = subprocess.run([os.path.join(self.out, "patch_test")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(r.returncode, 0, r.stdout.decode())
+        self.assertIn("patch test: an edit group's four forms", r.stdout.decode())
 
     def test_calls_into_the_game_pass_their_arguments(self):
         r = subprocess.run([os.path.join(self.out, "call_test")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -299,13 +334,56 @@ class Picture(unittest.TestCase):
         self.assertIn("[rc] mod loaded: test_mod.so", err)
         self.assertIn("[test-mod] on mac-x64: game_frame hooked, the settings folder known", err)
         self.assertIn("no_such_point", err)  # the runtime says a point it has not got
-        # an edit group is refused, and said to be, until the Linux build can change the game's code for one
-        self.assertIn("[rc] edits plain_packages: refused", err)
-        self.assertIn("[test-mod] the edit group was refused", err)
+        # the edit group it switches on is written into the game's code, and the game goes on as before with it
+        self.assertIn("[rc] edits plain_packages: on (2)", err)
+        self.assertIn("[rs-rearmed] edits plain_packages: 2 written into the game's code, 2 of them longer than their range", err)
+        self.assertIn("[test-mod] edit groups on: 1; mid points hooked: 0", err)
         self.assertIn("[test-mod] 100 frames: 100 hooks before, 100 after; the provider was asked for files: yes", err)
         r = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(env, RS_LOAD_MODS="0"))
         self.assertEqual(r.returncode, 0)
         self.assertNotIn("test-mod", r.stderr.decode())  # switched off: none is loaded
+
+    def test_every_edit_and_every_mid_point_goes_in(self):
+        """Every edit of the tables is written when a mod switches its group on, the longer ones read by the program
+        as the tool that made patch-edits.tsv read them, and every mid point takes a hook: by a jump, or by a
+        breakpoint where patch-sites.tsv says no jump can be written. With every point hooked by a function that
+        changes nothing, the game starts as it does without."""
+        if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
+            self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
+        r = subprocess.run(["make", "-C", HERE, "OUT=" + self.out, self.out + "/test/mods/test_mod.so"],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(r.returncode, 0, r.stdout.decode())
+        home = os.path.join(self.tmp.name, "home5")
+        os.makedirs(os.path.join(home, "mods"))
+        shutil.copy(os.path.join(self.out, "test", "mods", "test_mod.so"), os.path.join(home, "mods"))
+        with open(gen_mids.MAP, encoding="utf-8") as f:
+            points = [name for name, _, _ in gen_mids.points(f.read())]
+        with open(gen_mids.SITES, encoding="utf-8") as f:
+            unsafe = gen_mids.unsafe_sites(f.read()) & set(points)
+        edits = gen_edits.made()
+        groups = sorted(set(re.findall(r'^EDIT\("(\w+)"', edits, re.M)))
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen",
+                   RS_AUDIO="silent", RS_TEST_MOD_MIDS=",".join(points))
+        # the tables whole: the image's initializers alone, as the edits change what the game then does
+        r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--init-only"], stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, env=dict(env, RS_TEST_MOD_EDITS=",".join(groups)))
+        out, err = r.stdout.decode(), r.stderr.decode()
+        self.assertEqual(r.returncode, 0, out + err)
+        for g in groups:
+            n = len(re.findall(r'^EDIT\("%s"' % g, edits, re.M))
+            self.assertIn("[rs-rearmed] edits %s: %d written into the game's code" % (g, n), err)
+        self.assertIn("[test-mod] edit groups on: %d; mid points hooked: %d" % (len(groups), len(points)), err)
+        self.assertNotIn("left as it is", err)
+        self.assertIn("mid points with a hook: %d (%d by a breakpoint)" % (len(points), len(unsafe)), out)
+        # and the game's start with every mid point hooked and no edit
+        r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "130"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(env, RS_TEST_MOD_EDITS=""))
+        out, err = r.stdout.decode(), r.stderr.decode()
+        self.assertEqual(r.returncode, 0, out + err)
+        self.assertIn("mid points with a hook: %d (%d by a breakpoint)" % (len(points), len(unsafe)), out)
+        reached = re.search(r"\[test-mod\] 100 frames: 100 hooks before, 100 after; .*mid points reached: (\d+)", err)
+        self.assertTrue(reached, err)
+        self.assertGreater(int(reached.group(1)), 0)
 
     def test_enter_on_the_title_screen_goes_past_the_sign_in(self):
         """The online services are replaced by the offline ones (nine game functions, patched at their entries):

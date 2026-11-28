@@ -1,6 +1,7 @@
 # Where the x86-64 Linux build writes a 5-byte jump into the Mac game's code (linux/src/patch.c): each hook point
 # and mid point of the Mac target's tables, the bytes the jump covers (whole instructions), and whether it can be
-# written: `no` when a branch of the function lands inside those bytes or they pass the function's end.
+# written: `no` when something in the function goes to an address inside those bytes or they pass the function's
+# end (the build then uses a breakpoint there).
 # Made and checked by linux/check_patch_sites.py from the pinned image. name, address, bytes, yes|no, why.
 game_frame	0x10017a020	9	yes	
 input_sink	0x100ba1190	6	yes	
@@ -38,7 +39,7 @@ seven_grid_wirerow_flush	0x10019a1f5	5	yes
 seven_grid_wires_dtor	0x10019faa1	7	yes	
 seven_pm0	0x10023484b	8	yes	
 seven_pr0	0x10021be24	7	yes	
-seven_s3	0x100227ca2	14	no	a branch of the function lands inside
+seven_s3	0x100227ca2	14	no	something in the function goes inside
 seven_pm1	0x100231a42	5	yes	
 seven_s4_input	0x1004347a4	5	yes	
 seven_s1	0x10017aa9e	5	yes	
@@ -49,8 +50,8 @@ seven_pubcl	0x10010f746	5	yes
 seven_puban	0x10010fab0	7	yes	
 seven_pubnl_count	0x10022e0d5	7	yes	
 seven_pubnl_open	0x10022e1c8	8	yes	
-seven_pubwu	0x10019a21d	5	no	a branch of the function lands inside
-seven_pubgb	0x10019c88d	8	no	a branch of the function lands inside
+seven_pubwu	0x10019a21d	5	no	something in the function goes inside
+seven_pubgb	0x10019c88d	8	no	something in the function goes inside
 seven_pubga	0x1001a2d30	6	yes	
 seven_pubedge	0x10043e7d8	9	yes	
 seven_tu8init	0x1005247a8	5	yes	
@@ -94,7 +95,7 @@ seven_cs1_build	0x10010d49f	7	yes
 seven_tj	0x10020e544	6	yes	
 seven_tj_ret	0x10020f424	6	yes	
 seven_tut	0x10020d8ac	7	yes	
-seven_tu_ret	0x10020e454	8	no	a branch of the function lands inside
+seven_tu_ret	0x10020e454	8	no	something in the function goes inside
 seven_tn_ret	0x10053ce7a	10	yes	
 seven_dgb	0x1001ecbdc	8	yes	
 seven_dgm	0x1007d672e	8	yes	
@@ -105,7 +106,7 @@ seven_b2	0x1002a4599	5	yes
 seven_sh7	0x1000146a7	9	yes	
 seven_pl7	0x10043aeee	6	yes	
 seven_sm7	0x1001f4009	6	yes	
-seven_al1	0x1003d5c62	7	no	a branch of the function lands inside
+seven_al1	0x1003d5c62	7	no	something in the function goes inside
 seven_pgh1	0x1008b1a9c	5	yes	
 seven_gkc	0x1001a1dac	5	yes	
 seven_gke	0x1001a5d36	6	yes	

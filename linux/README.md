@@ -11,8 +11,8 @@ song), and the Mac app's built-in fixes module whole (no intro screens, the batc
 fixes). The game's files come from the player's own Steam: `install/rs_install.py` has Steam download the Mac
 game and the account's DLC, makes RS Re-ARMed's copy and starts the game ([below](#set-up-and-play-x86-64)).
 An audio interface's channels are listed as inputs of their own, as on the Mac. Mods load (a `.so` in the home
-folder's `mods`: hook points, mid points, the files a mod serves); a mod's edit groups are not there yet, nor
-anything for arm64, which is investigated only.
+folder's `mods`: hook points, mid points, edit groups, the files a mod serves). Not there yet: the mods of
+`rearmed-mods` built for Linux, and anything for arm64, which is investigated only.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -22,6 +22,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [PLAN.md](PLAN.md) | the steps, what each proves and needs, the open questions, the risks, and a log of what was done |
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
 | [patch-sites.tsv](patch-sites.tsv) | every hook point and mid point, with whether a jump can be written there (`check_patch_sites.py` makes and checks it) |
+| [patch-edits.tsv](patch-edits.tsv) | every edit whose new instructions are longer than its range, with what its jump covers (the same tool) |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
 | `install` | the installer's window (`rs_gui.py`) and its settings (`rs_settings.py`); the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`); and the packaged build's launcher, desktop entry, icon and AppImage step |
