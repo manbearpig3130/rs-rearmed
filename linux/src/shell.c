@@ -198,7 +198,9 @@ int rsl_shell_run(const rsl_shell_options *opt) {
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   int w = opt->width > 0 ? opt->width : 1280, h = opt->height > 0 ? opt->height : 720;
-  SDL_Window *window = SDL_CreateWindow("Rocksmith 2014", w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+  // The title says which Rocksmith this is: the game itself shows no sign of it until the built-in fixes and the
+  // title logo are in (linux/PLAN.md, X5).
+  SDL_Window *window = SDL_CreateWindow("Rocksmith 2014 (RS Re-ARMed)", w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
   SDL_GLContext context = window ? SDL_GL_CreateContext(window) : NULL;
   if (!context || !SDL_GL_MakeCurrent(window, context)) {
     fprintf(stderr, "[rs-rearmed] no window with an OpenGL compatibility context: %s\n", SDL_GetError());
