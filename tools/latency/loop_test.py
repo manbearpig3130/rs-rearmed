@@ -80,15 +80,24 @@ def delays(dry, wet, rate):
 
 
 def choose(channels, rate):
-    """(dry, wet), the two channels with the most starts, the earlier one first; None when there are not two."""
-    found = sorted(((len(onsets(c, rate)), i) for i, c in enumerate(channels)), reverse=True)
-    if len(found) < 2 or found[1][0] < 3:
-        return None
-    a, b = found[0][1], found[1][1]
-    d, _, _ = delays(channels[a], channels[b], rate)
-    back, _, _ = delays(channels[b], channels[a], rate)
-    lead = lambda v: sum(1 for x in v if x > rate // 2000)  # by more than half a millisecond
-    return (a, b) if lead(d) >= lead(back) else (b, a)
+    """(dry, wet): of the channels that have plucks, the two where one follows the other most steadily, by two
+    milliseconds or more (the two sides of a stereo input start together, and are no pair); None when there are
+    none. An interface may carry the guitar more than once (a pedal's output beside it): what the game answers is
+    the one its sound keeps a fixed time behind."""
+    starts = {i: onsets(c, rate) for i, c in enumerate(channels)}
+    have = [i for i, o in starts.items() if len(o) >= 3]
+    best = None
+    for a in have:
+        for b in have:
+            if a == b:
+                continue
+            d = sorted(delays(channels[a], channels[b], rate)[0])
+            if len(d) < max(3, len(starts[a]) // 2) or d[len(d) // 2] < rate // 500:
+                continue
+            spread = d[(3 * len(d)) // 4] - d[len(d) // 4]
+            if best is None or (spread, -len(d)) < best[0]:
+                best = ((spread, -len(d)), (a, b))
+    return best[1] if best else None
 
 
 def report(path, dry=None, wet=None):
