@@ -788,6 +788,26 @@ Proposed; none is final before the step that tests it.
   against a Mac framework (Sunlight, Secondary Monitor, Override Input Volume), the ones that need the Metal
   renderer's render API (note and highway colours), the helpers that are Mac programs (Song Stems, Tone Host),
   and the mods' settings app.
+- **2026-11-28, the Pro Audio profile and a lean input queue.** `latency_test.py --interface` sends clicks
+  through the same cable loop, the game hearing the loop's left channel and its left output muted, so that each
+  start of the game can be measured without a player. Clicks read about 2 ms more than plucks (a click's edge is
+  sharp; a pluck's is not), so the figures below are a little above the ones further down. Each is a separate
+  start of the game:
+
+  | Linux, audio engine setting 1, PipeWire at 128 frames | from the interface's input to its output |
+  |---|---|
+  | the interface's default profile | 27.1, 28.2, 29.0, 29.0, 30.2 ms |
+  | the default profile, `RS_AUDIO_INPUT_LEAN=1` | 26.1 ms, three starts of three |
+  | the Pro Audio profile | 25.4 ms, five starts of five |
+  | the Pro Audio profile, `RS_AUDIO_INPUT_LEAN=1` | **22.7 ms**, eight starts of eight |
+
+  On the default profile PipeWire drives the interface's input and output as two devices, each on its own timer,
+  and where the two fall against each other is set again at each start: the 23.8 ms below was a good start of
+  that lottery. On Pro Audio the two share one clock, so every start is the same; one pluck run for each profile
+  could not show it. The lean queue keeps no spare slot of guitar input (2.7 ms), and waits up to 0.8 ms for a
+  buffer due in that time; without the wait it read the queue empty hundreds of times a start. A
+  64-frame output buffer (`RS_AUDIO_FRAMES=64`) took nothing more off on Pro Audio. A player's three quarters of
+  an hour of songs on Pro Audio with the lean queue: no empty reads in the queue's log, nothing heard.
 - **2026-11-28, the latency a player hears, with a cable, on both systems.** `tools/latency/loop_test.py`: a cable
   from an output of the interface to a spare input, the guitar on another input, and the interface records the
   pluck beside the game's sound through one converter. The same mixer (a 12-channel USB one), the same cable, the
@@ -799,7 +819,7 @@ Proposed; none is final before the step that tests it.
   | Linux (Bazzite, PipeWire at 128 frames, the interface's default profile) | 23.8 ms (23.1 to 26.0 of eleven) |
   | Linux, the interface's Pro Audio profile | 23.3 ms (21.9 to 25.0 of nine) |
 
-  The two are within a millisecond, and the estimate below (15.6 ms through the game and 8 by PipeWire's figures)
+  The two are within a millisecond (but see the entry above on the default profile), and the estimate below (15.6 ms through the game and 8 by PipeWire's figures)
   was right. The first Linux run said 35.7 ms, and the 12 more were not the port's: the USB audio driver still
   had a switch set from finding out why this mixer was silent (`quirk_flags`, PLAYBACK_FIRST, which has the driver
   send its whole queue of output packets ahead of the sound: up to 12 ms that stays in front of everything). A
