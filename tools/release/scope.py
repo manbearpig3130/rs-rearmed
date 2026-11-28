@@ -74,8 +74,9 @@ SUITES = {
     "ct.bink":       ("Bink", "ctest", r"^bink\."),
     "ct.game":       ("the game libraries", "ctest", r"^game\."),
     "ct.shims":      ("the shims' architectures and names", "ctest", r"^(shim|libstdcxx)\."),
-    "linux":         ("the Linux port's table of the Mac game's imports, its first run and its loader", "cmd",
-                      "{py} linux/test_import_census.py && {py} linux/test_first_run.py && {py} linux/test_loader.py"),
+    "linux":         ("the Linux port's table of the Mac game's imports, its first run, its loader and its setup", "cmd",
+                      "{py} linux/test_import_census.py && {py} linux/test_first_run.py && {py} linux/test_loader.py"
+                      " && {py} linux/install/test_rs_install.py"),
 }
 
 RECOMP = ("hooks", "inner64", "inner32", "hand32")
@@ -114,7 +115,8 @@ RULES = {
     "tools/release/sign.swift": rule(suites=["release", "update"]),
     "tools/play-native/": rule(BOTH, suites=["gamefiles", "cache_overlay", "settings"], installer=True),
     # (Learn & Play's installer gets its game from Steam with gamefiles.py's code)
-    "tools/play-native/gamefiles.py": rule(BOTH, suites=["gamefiles", "lp.install"], installer=True),
+    # (the Linux setup runs it as it is, with Linux's answers set from outside: linux/install/rs_install.py)
+    "tools/play-native/gamefiles.py": rule(BOTH, suites=["gamefiles", "lp.install", "linux"], installer=True),
     "tools/play-native/install.sh": rule([MAC], run=[MAC], installer=True),
     "tools/play-native/launch.sh": rule([MAC], run=[MAC], suites=["settings"]),
     "tools/play-native/launch-stub.c": rule([MAC], run=[MAC]),

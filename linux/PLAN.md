@@ -11,8 +11,10 @@ page is what to do about it, in what order, and what has been done. The editions
   Tone Cable heard at the calibration screen ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture),
   [X3](#x3-sound-and-the-guitar)). Every import but the 98 that nothing should call has an answer. A player
   has calibrated and played a song with the cable (2026-11-28): no crackle, the notes detected, the latency as
-  good as he knows it. The built-in fixes that hook a function are in (the intro skip among them); those at
-  mid points are not, nor an install, nor anything for arm64.
+  good as they know it. The built-in fixes module runs whole, at hook points and mid points. The game's files are
+  set up from the player's Steam, and the game started from them, by `install/rs_install.py`
+  ([X4](#x4-install-and-play)). Not there: mods and edits, the title logo, full screen, an interface's channels
+  as inputs, anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -282,6 +284,35 @@ player's part is the game's files from their own Steam. It is built as a folder 
 same folder serves a system without FUSE, or one that drops AppImages. The host's C library, libstdc++, OpenGL
 driver and PipeWire are used, not carried. On an image-based system such as Bazzite the build itself happens in
 a container (distrobox), since the host has no compiler.
+
+**Done (2026-11-28): the setup and the start**, `install/rs_install.py` ([README](README.md#set-up-and-play-x86-64)).
+The Mac's install tools run as they are (`tools/play-native/gamefiles.py`: the depot's download with Steam's
+steps and progress, the DLC, the copy with its manifest and checks; `tools/steamless/decrypt.py`: the image),
+with Linux's answers set from outside, so the Mac's code and its tests are untouched:
+
+- **Steam's files** are where the Mac's are but for the downloads: `steamapps/content` is under the folder the
+  client runs in (`steamrt64` on Bazzite 45). Its logs read the same, line for line, so the Mac's progress and
+  failure reading works unchanged.
+- **A command for the running Steam** goes on `steam`'s own command line (`steam +download_depot ...`), as on
+  the Mac; the Flatpak's the same way, not yet tried.
+- **The DLC.** Steam for Linux installs the Windows archives; the Mac ones are in each DLC's own depot, fetched
+  one by one as Learn & Play's are. The list of what the account owns is the ownership ticket on the Mac. Steam
+  writes that when a game is started through it, so a Linux machine that never ran the Windows game has none:
+  there the list is the apps of the licenses in Steam's package cache that its app info gives the game as their
+  parent (`appinfo.vdf`: binary, the keys as numbers into a string table since version 0x29). On the Bazzite PC:
+  219 such apps, of which 187 have a depot (the songs) and 32 have none (the packs); all 187 came, in about
+  eight minutes.
+- **Clones** by `FICLONE`, tried with a real file and not ruled out by the device number first, as the Mac's
+  check does: btrfs gives each subvolume its own. 312 files, 7.7 GB, cloned in eight seconds.
+- **The start** is the Mac launcher's, in Python: `settings.env` and `options.env`, the copy's `steam.env`, the
+  offline keys in `Rocksmith.ini`, the saves seeded from Steam's without `crd`, one game at a time (a lock the
+  game's process holds), the output to `logs/last-run.log` when it would go nowhere.
+- **With no terminal** the setup's progress and Steam's steps are in a window (zenity), and so is what went
+  wrong.
+
+Not done: the title logo (`tools/loadscreen` needs its Python packages), the account's ticket-based choice when
+several accounts use one Steam (the library's own choice, the last signed in, stands), the RS1 DLC asked of
+Steam (the package cache answers), a copy on another drive than the home folder.
 
 ### X5. Fixes and mods
 
@@ -615,3 +646,7 @@ Proposed; none is final before the step that tests it.
 - **2026-11-28, mid points.** The 13 mid points of the built-in fixes, through the runtime's `rc_mid.c`; the
   table of where a jump can be written, from the recompiler's disassembler. One fault on the way: a
   continuation inside the bytes a jump covers, now sent to the moved copy. The whole fixes module runs.
+- **2026-11-28, the setup.** `install/rs_install.py`: the Mac's install tools with Linux's answers. On the
+  Bazzite PC a full setup into a test folder: the game found in Steam's download, 187 DLC fetched through the
+  running Steam, the copy cloned, the image decrypted, and the game started from that folder to its profile
+  screen. (The real folder waits: a game was running, and the setup refuses then.)

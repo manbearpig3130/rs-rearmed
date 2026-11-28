@@ -1,16 +1,17 @@
-# Linux, arm64 and x86-64 (investigated; x86-64 begun)
+# Linux, arm64 and x86-64 (x86-64 plays; arm64 investigated)
 
 A port of RS Re-ARMed to Linux, with Linux in the place of macOS underneath the Mac game. Two machines are in mind:
 an Apple silicon Mac running Fedora Asahi Remix, where the game would otherwise need an x86 emulator inside a
 virtual machine and gets the same translated code as on macOS; and an x86-64 desktop, where the game's own code can
 run as it is.
 
-**There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
-tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
-its intro, its title screen and its menus, with its sound and the guitar's input through PipeWire and its videos
-(on Bazzite, 2026-11-28: a player calibrated a Real Tone Cable and played a song). Of the Mac app's built-in
-fixes module, all is in (no intro screens, the batched DLC mounting, the frame-rate fixes); mods do not load,
-and there is no install yet.
+**On x86-64 the game plays**: the Mac game's own code, as it is, in a window, with its sound and the guitar's
+input through PipeWire and its videos (on Bazzite, 2026-11-28: a player calibrated a Real Tone Cable and played a
+song), and the Mac app's built-in fixes module whole (no intro screens, the batched DLC mounting, the frame-rate
+fixes). The game's files come from the player's own Steam: `install/rs_install.py` has Steam download the Mac
+game and the account's DLC, makes RS Re-ARMed's copy and starts the game ([below](#set-up-and-play-x86-64)).
+Not there yet: mods, the title logo, full screen, an audio interface's channels as separate inputs, and
+anything for arm64, which is investigated only.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -22,6 +23,7 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 | [patch-sites.tsv](patch-sites.tsv) | every hook point and mid point, with whether a jump can be written there (`check_patch_sites.py` makes and checks it) |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
 | `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
+| `install` | the setup and the start: `rs_install.py`, over the Mac's install tools (`tools/play-native/gamefiles.py`, `tools/steamless/decrypt.py`) |
 | `compat` | the few macOS functions and header names the project's shared code uses, for Linux, so that `shims/` builds from its own sources |
 | `gl` | `libRSSystemGL.so`: Mesa as the renderer's OpenGL backend expects Apple's OpenGL (CGL over EGL, Apple's identity) |
 
@@ -76,6 +78,48 @@ python3 linux/test_first_run.py           # its test (ctest: linux.first_run)
 
 Nothing is built or installed: the image is mapped and run in the Python process. It needs an x86-64 process and
 the decrypted image ([PLAN.md](PLAN.md#x0-the-first-run-with-nothing-built) says how to get it on Linux).
+
+## Set up and play (x86-64)
+
+What it needs: Steam for Linux, signed in with an account that owns Rocksmith 2014 Edition - Remastered (a Steam
+purchase has the Windows and the Mac edition both); Python 3; PipeWire; an OpenGL driver (Mesa). The build is
+below; on Bazzite it happens in a distrobox, and the game then runs on the host.
+
+```sh
+python3 linux/install/rs_install.py setup     # once: the game from Steam, its DLC, RS Re-ARMed's copy, its code
+python3 linux/install/rs_install.py           # the game (and the setup first, when there has been none)
+python3 linux/install/rs_install.py refresh   # later: DLC bought since, and the copy checked
+python3 linux/install/rs_install.py status    # what is set up, and where
+python3 linux/install/rs_install.py run -- --size 1920x1080     # the game, with arguments for rs-rearmed
+python3 linux/install/test_rs_install.py      # its test (ctest: linux.install), on any machine
+```
+
+**The setup** asks the running Steam for the Mac game (`download_depot`, the console command, sent on Steam's own
+command line, so nothing is typed; 6.9 GB into Steam's `steamapps/content`), then for each DLC the account owns,
+whose Mac archives Steam for Linux does not install (each is a depot of its own; a few seconds apiece). It says
+what Steam needs when Steam is not open or not signed in, and goes on by itself. Steam's own window shows none
+of these downloads. A game folder from elsewhere (a copy from a Mac): `setup --game DIR`. Nothing asked of
+Steam: `--no-download`; the game without the DLC: `--no-dlc`.
+
+**What it makes** is in `~/.local/share/rs-rearmed` (`$XDG_DATA_HOME`; `--home DIR` or `RS_NATIVE_HOME` for
+another place), laid out as the Mac app's home:
+
+| | |
+|---|---|
+| `game/` | RS Re-ARMed's own copy of the game's files: clones on btrfs and XFS, which take no room, and a real copy (7.7 GB) elsewhere. A Steam update or a cleared download cannot break it. **Custom songs go in `game/dlc`.** |
+| `image/` | the game's code, decrypted, which `rs-rearmed` loads. It is checked to be the build RS Re-ARMed is made for |
+| `steam/` | the saves. They start as a copy of Steam's own (`userdata/<account>/221680/remote`, where the Windows game played through Steam keeps the same files), without the stored Ubisoft sign-in; Steam's are never written |
+| `settings.env`, `options.env` | switches as `KEY=value` lines (`RS_MODS_INTRO=0`, `RS_LATENCY_BUFFER=2`, ...: [the Mac's list](../docs/mac/INSTALL.md)); the environment wins |
+| `logs/` | `last-run.log`, when the game is started with no terminal |
+
+**Each start** does what the Mac launcher does: the game stays offline (`[Net] AutoLogin=0` and no browser, forced
+in the game's `Rocksmith.ini`, which otherwise keeps what the game saved), the DLC the copy recorded counts as
+owned, one game runs at a time.
+
+The Mac's install tools do the work, as they are; `rs_install.py` gives them Linux's answers where they have the
+Mac's: where Steam keeps its files and downloads, how Steam is started and told a command, a clone by the
+kernel's own call (`FICLONE`), and the account's DLC from Steam's caches where Steam has written no ownership
+ticket for the game (it writes one when a game is started through it, which the Mac game never is on Linux).
 
 ## The x86-64 build
 
