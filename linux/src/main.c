@@ -101,6 +101,11 @@ int main(int argc, char **argv, char **envp) {
     if (n < 0) return 1;
     printf("replaced: %d game functions with native ones (the online services, offline; the audio's two; the built-in fixes)\n", n);
     int hooks = rsl_install_hooks();
+    // The mods: every .so of <home>/mods in name order, or RS_MODS_PATH (a folder or one library); RS_LOAD_MODS=0
+    // loads none (runtime/rc_mods.c, the Mac app's). A mod's constructor asks for its hooks now that the image is
+    // mapped, from the game's folder, where a mod looks for its settings; the mid points are written after, for
+    // the ones that have a hook by then.
+    rsl_load_mods(home, run ? run : boot);
     printf("hook points: %d; mid points with a hook: %d\n", hooks, rsl_install_mids());
   }
   rsl_report_binding(stdout);

@@ -86,6 +86,9 @@ int rsl_hook_point(uint64_t address, int index, const char *name);
 int rsl_install_hooks(void);
 // The mid points (rc_mid.h) that have a hook. How many were put in.
 int rsl_install_mids(void);
+// The mods of HOME/mods (or RS_MODS_PATH), loaded from the game's folder GAME (NULL: where the program is):
+// between the hook points and the mid points (direct.c, with the runtime's rc_mods.c). How many there were to try.
+int rsl_load_mods(const char *home, const char *game);
 uint64_t rsl_image_end(void);  // the end of the loaded image (loader.c)
 void rsl_direct_image(uint64_t lo, uint64_t hi);  // the runtime's variables for where the image is (direct.c)
 

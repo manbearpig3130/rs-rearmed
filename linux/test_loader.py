@@ -277,6 +277,33 @@ class Picture(unittest.TestCase):
         self.assertIn("150 frames", r.stderr.decode())
         self.assertGreater(took, 149 / 30.0 - 0.2)  # (at the display's 60 a second it is half that)
 
+    def test_a_mod_in_the_mods_folder_is_loaded_and_its_hook_runs(self):
+        """A mod is a shared library that names the game's points (runtime/rc_mod.h): the program loads those of
+        the mods folder before the game starts, and the hook one asked for runs around the game's function."""
+        if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
+            self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
+        r = subprocess.run(["make", "-C", HERE, "OUT=" + self.out, self.out + "/test/mods/test_mod.so"],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(r.returncode, 0, r.stdout.decode())
+        home = os.path.join(self.tmp.name, "home4")
+        os.makedirs(os.path.join(home, "mods"))
+        shutil.copy(os.path.join(self.out, "test", "mods", "test_mod.so"), os.path.join(home, "mods"))
+        with open(os.path.join(home, "mods", "not-a-mod.txt"), "w") as f:
+            f.write("left alone")
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen",
+                   RS_AUDIO="silent")
+        argv = [os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "130"]
+        r = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        err = r.stderr.decode()
+        self.assertEqual(r.returncode, 0, r.stdout.decode() + err)
+        self.assertIn("[rc] mod loaded: test_mod.so", err)
+        self.assertIn("[test-mod] on mac-x64: game_frame hooked, the settings folder known", err)
+        self.assertIn("no_such_point", err)  # the runtime says a point it has not got
+        self.assertIn("[test-mod] 100 frames: 100 hooks before, 100 after; the provider was asked for files: yes", err)
+        r = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(env, RS_LOAD_MODS="0"))
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("test-mod", r.stderr.decode())  # switched off: none is loaded
+
     def test_enter_on_the_title_screen_goes_past_the_sign_in(self):
         """The online services are replaced by the offline ones (nine game functions, patched at their entries):
         Enter on the title screen leads to the profiles, not to a sign-in dialog, and nothing reaches a network."""

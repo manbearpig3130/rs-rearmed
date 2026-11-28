@@ -102,6 +102,19 @@ static int darwin_status_flags(int host) {
   return f;
 }
 
+// The files a mod serves to the game (runtime/rc_file.h): where the program has the mods' runtime, every one of
+// the game's file calls goes through it, as on the Mac, and it answers for a served file and hands the rest to the
+// system. A test of the layer alone has none of it (the names are weak here), and the calls are the system's.
+__attribute__((weak)) int rc_file_open(const char *path, int flags, ...);
+__attribute__((weak)) int rc_file_close(int fd);
+__attribute__((weak)) ssize_t rc_file_read(int fd, void *buf, size_t n);
+__attribute__((weak)) int rc_file_fstat(int fd, struct stat *st);
+__attribute__((weak)) int rc_file_stat(const char *path, struct stat *st);
+__attribute__((weak)) FILE *rc_file_fopen(const char *path, const char *mode);
+__attribute__((weak)) DIR *rc_file_opendir(const char *path);
+__attribute__((weak)) struct dirent *rc_file_readdir(DIR *d);
+__attribute__((weak)) int rc_file_closedir(DIR *d);
+
 int dw_open(const char *path, int flags, ...) {
   int mode = 0;
   if (flags & 0x200) {  // Darwin's O_CREAT: a third argument
@@ -111,19 +124,21 @@ int dw_open(const char *path, int flags, ...) {
     va_end(ap);
   }
   char buf[PATH_MAX];
-  return open(dw_path(path, buf, sizeof buf), host_open_flags(flags), mode);
+  path = dw_path(path, buf, sizeof buf);
+  return rc_file_open ? rc_file_open(path, host_open_flags(flags), mode) : open(path, host_open_flags(flags), mode);
 }
 DW_FUNCTION("_open", dw_open);
 
-int dw_close(int fd) { return close(fd); }
+int dw_close(int fd) { return rc_file_close ? rc_file_close(fd) : close(fd); }
 DW_FUNCTION("_close", dw_close);
 
-ssize_t dw_read(int fd, void *buf, size_t n) { return read(fd, buf, n); }
+ssize_t dw_read(int fd, void *buf, size_t n) { return rc_file_read ? rc_file_read(fd, buf, n) : read(fd, buf, n); }
 DW_FUNCTION("_read", dw_read);
 
 FILE *dw_fopen(const char *path, const char *mode) {
   char buf[PATH_MAX];
-  FILE *f = fopen(dw_path(path, buf, sizeof buf), mode);
+  const char *host = dw_path(path, buf, sizeof buf);
+  FILE *f = rc_file_fopen ? rc_file_fopen(host, mode) : fopen(host, mode);
   if (!f && file_log()) fprintf(stderr, "[file] fopen %s (%s): %s\n", path, mode, strerror(errno));
   return f;
 }
@@ -170,7 +185,8 @@ static void fill_stat(struct dw_stat *out, const struct stat *st) {
 int dw_stat(const char *path, struct dw_stat *out) {
   char buf[PATH_MAX];
   struct stat st;
-  if (stat(dw_path(path, buf, sizeof buf), &st)) return -1;
+  path = dw_path(path, buf, sizeof buf);
+  if (rc_file_stat ? rc_file_stat(path, &st) : stat(path, &st)) return -1;
   fill_stat(out, &st);
   return 0;
 }
@@ -178,7 +194,7 @@ DW_FUNCTION("_stat$INODE64", dw_stat);
 
 int dw_fstat(int fd, struct dw_stat *out) {
   struct stat st;
-  if (fstat(fd, &st)) return -1;
+  if (rc_file_fstat ? rc_file_fstat(fd, &st) : fstat(fd, &st)) return -1;
   fill_stat(out, &st);
   return 0;
 }
@@ -203,11 +219,12 @@ struct dw_dir {
 
 struct dw_dir *dw_opendir(const char *path) {
   char buf[PATH_MAX];
-  DIR *host = opendir(dw_path(path, buf, sizeof buf));
+  path = dw_path(path, buf, sizeof buf);
+  DIR *host = rc_file_opendir ? rc_file_opendir(path) : opendir(path);
   if (!host) return NULL;
   struct dw_dir *dir = malloc(sizeof *dir);
   if (!dir) {
-    closedir(host);
+    rc_file_closedir ? rc_file_closedir(host) : closedir(host);
     errno = ENOMEM;
     return NULL;
   }
@@ -217,7 +234,7 @@ struct dw_dir *dw_opendir(const char *path) {
 DW_FUNCTION("_opendir$INODE64", dw_opendir);
 
 struct dw_dirent *dw_readdir(struct dw_dir *dir) {
-  const struct dirent *e = readdir(dir->host);
+  const struct dirent *e = rc_file_readdir ? rc_file_readdir(dir->host) : readdir(dir->host);  // (with what a mod adds)
   if (!e) return NULL;
   struct dw_dirent *out = &dir->entry;
   size_t n = strlen(e->d_name);
@@ -239,7 +256,7 @@ struct dw_dirent *dw_readdir(struct dw_dir *dir) {
 DW_FUNCTION("_readdir$INODE64", dw_readdir);
 
 int dw_closedir(struct dw_dir *dir) {
-  int r = closedir(dir->host);
+  int r = rc_file_closedir ? rc_file_closedir(dir->host) : closedir(dir->host);
   free(dir);
   return r;
 }

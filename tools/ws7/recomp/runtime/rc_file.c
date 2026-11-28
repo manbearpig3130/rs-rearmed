@@ -221,8 +221,12 @@ static void fill_stat(struct stat *st, const rc_file_info *info, uintptr_t id) {
   st->st_size = (off_t)info->size;
   st->st_blksize = 4096;
   st->st_blocks = (blkcnt_t)((info->size + 511) / 512);
+#ifdef __linux__
+  st->st_atim.tv_sec = st->st_mtim.tv_sec = st->st_ctim.tv_sec = (time_t)info->mtime;  // (no time of birth there)
+#else
   st->st_atimespec.tv_sec = st->st_mtimespec.tv_sec = st->st_ctimespec.tv_sec = st->st_birthtimespec.tv_sec =
       (time_t)info->mtime;
+#endif
 }
 
 int rc_file_fstat(int fd, struct stat *st) {
@@ -261,6 +265,34 @@ int rc_file_stat(const char *path, struct stat *st) {
 }
 
 // --- FILE ---------------------------------------------------------------------------------------------------------
+#ifdef __linux__
+// glibc has fopencookie where macOS has funopen: the same stream over the same three functions (the Linux build
+// compiles this file for the Mac game's mods, linux/src/direct.c).
+static ssize_t c_read(void *cookie, char *buf, size_t n) { return rc_file_read((int)(intptr_t)cookie, buf, n); }
+static int c_seek(void *cookie, off64_t *off, int whence) {
+  off_t at = rc_file_lseek((int)(intptr_t)cookie, (off_t)*off, whence);
+  if (at < 0) return -1;
+  *off = at;
+  return 0;
+}
+static int c_close(void *cookie) { return rc_file_close((int)(intptr_t)cookie); }
+
+FILE *rc_file_fopen(const char *path, const char *mode) {
+  if (!nprov() || !path || !mode || mode[0] != 'r' || strchr(mode, '+')) return fopen(path, mode);
+  int fd = vf_open(path);
+  if (fd == -2) return fopen(path, mode);
+  if (fd < 0) return 0;
+  FILE *f = fopencookie((void *)(intptr_t)fd, "r", (cookie_io_functions_t){c_read, 0, c_seek, c_close});
+  if (!f) {
+    rc_file_close(fd);
+    errno = EMFILE;
+    return 0;
+  }
+  f->_fileno = fd;  // fileno: the game asks fstat for the size of some files it opened with fopen
+  setvbuf(f, 0, _IOFBF, 4096);  // (as below: a file's buffer, not the placeholder's)
+  return f;
+}
+#else
 static int f_read(void *cookie, char *buf, int n) { return (int)rc_file_read((int)(intptr_t)cookie, buf, (size_t)n); }
 static fpos_t f_seek(void *cookie, fpos_t off, int whence) {
   return (fpos_t)rc_file_lseek((int)(intptr_t)cookie, (off_t)off, whence);
@@ -284,6 +316,7 @@ FILE *rc_file_fopen(const char *path, const char *mode) {
   setvbuf(f, 0, _IOFBF, 4096);
   return f;
 }
+#endif
 
 // --- folders ------------------------------------------------------------------------------------------------------
 typedef struct vdir {
@@ -384,9 +417,13 @@ struct dirent *rc_file_readdir(DIR *d) {
     memset(&v->ent, 0, sizeof v->ent);
     v->ent.d_ino = 1;
     v->ent.d_type = DT_REG;
-    v->ent.d_namlen = (__uint16_t)strlen(name);
     v->ent.d_reclen = sizeof v->ent;
+#ifdef __linux__
+    memcpy(v->ent.d_name, name, strlen(name) + 1);  // (glibc's entry has no length beside the name; dir_add kept it short)
+#else
+    v->ent.d_namlen = (__uint16_t)strlen(name);
     memcpy(v->ent.d_name, name, v->ent.d_namlen + 1);
+#endif
     return &v->ent;
   }
   return 0;

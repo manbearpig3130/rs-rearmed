@@ -35,7 +35,8 @@ NATIVE_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-funct
     -I$(OVERRIDES) -I$(OVERRIDES)/gen -I$(GAME)/include -I../shims/include
 NATIVE_OBJ = $(OUT)/native/direct.o $(OUT)/native/patch.o $(OUT)/native/online_glue.o $(OUT)/native/online.o \
     $(OUT)/native/online_stub.o $(OUT)/native/rc_hook.o $(OUT)/native/rc_mid.o $(OUT)/native/rc_target.o $(OUT)/native/compat.o \
-    $(OUT)/native/audio_in.o $(OUT)/native/audio_ring.o $(OUT)/native/audio_glue.o \
+    $(OUT)/native/audio_in.o $(OUT)/native/audio_ring.o $(OUT)/native/audio_glue.o $(OUT)/native/rc_mods.o \
+    $(OUT)/native/rc_file.o \
     $(MODS_SRC:$(OVERRIDES)/mods/%.c=$(OUT)/native/mods_%.o)
 # The built-in fixes (overrides/mods), compiled as they are, with the runtime's hook points (rc_hook.c) and the
 # target's tables by name (rc_target.c, which targets.py writes beside rc_target_names.h).
@@ -51,6 +52,12 @@ $(OUT)/native/rc_hook.o: $(RUNTIME)/rc_hook.c $(OUT)/target/rc_target_names.h
 $(OUT)/native/rc_mid.o: $(RUNTIME)/rc_mid.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
+$(OUT)/native/rc_file.o: $(RUNTIME)/rc_file.c $(RUNTIME)/rc_file.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
+$(OUT)/native/rc_mods.o: $(RUNTIME)/rc_mods.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(OUT)/native
+	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<
 $(OUT)/target/mids.inc: gen_mids.py patch-sites.tsv $(TARGET)/mac-x64/mids.map
 	@mkdir -p $(OUT)/target
 	$(PYTHON) gen_mids.py $@
@@ -157,9 +164,16 @@ all: $(OUT)/rs-rearmed $(OUT)/libsteam_api.so
 # The renderer's libraries need OpenGL's and EGL's headers (on Bazzite: in a distrobox): `make -C linux gl`.
 gl: $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
 
-# (The run path: a packaged build has its own SDL 3 beside the program, for a system without one.)
+# (The run path: a packaged build has its own SDL 3 beside the program, for a system without one. -rdynamic: the
+# mods the program loads call its functions: the hook points, the game's names, calls into the game.)
 $(OUT)/rs-rearmed: $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS) $(PW_LIBS) -Wl,-rpath,'$$ORIGIN'
+	$(CC) $(LDFLAGS) -rdynamic -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS) $(PW_LIBS) -Wl,-rpath,'$$ORIGIN'
+
+# A mod, as the mods folder holds them: a shared library that names the game's points (runtime/rc_mod.h) and finds
+# the program's functions when it is loaded (the program is linked to offer them: -rdynamic). The test's own.
+$(OUT)/test/mods/%.so: test/mods/%.c $(OUT)/target/rc_target_names.h
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -Wall -Wextra -O2 -g -shared -fPIC -I$(RUNTIME) -I$(OVERRIDES) -I$(OUT)/target -o $@ $<
 
 # The project's replacement libraries, from the sources the Mac app builds them from (shims/), each a shared
 # library beside the program. compat/ has the few macOS functions they call.

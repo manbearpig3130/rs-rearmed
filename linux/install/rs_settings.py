@@ -158,10 +158,10 @@ OPTIONS = (
            STARTUP, False, "yes"),
     Option("RS_MODS_LOG", "Log the built-in fixes", "To last-run.log.", toggle(False), STARTUP, True, "yes"),
     Option("RS_LOAD_MODS", "Load mods at startup", "Off: starts without the mods in mods/.", toggle(True), STARTUP, False,
-           "soon"),
+           "yes"),
     Option("RS_AUDIO_LOG", "Log the audio setup", "To last-run.log.", toggle(False), STARTUP, True, "yes"),
     Option("RS_STEAM_LOG", "Log the Steam layer", "To last-run.log.", toggle(False), STARTUP, True, "yes"),
-    Option("RS_FILE_LOG", "Log files mods serve", "To last-run.log.", toggle(False), STARTUP, True, "soon"),
+    Option("RS_FILE_LOG", "Log files mods serve", "To last-run.log.", toggle(False), STARTUP, True, "yes"),
 )
 
 # Where a detail's words are the Mac's: the same switch in Linux's.

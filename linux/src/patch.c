@@ -674,3 +674,15 @@ int rsl_install_mids(void) {
       if (g_mid_cont[point][k]) g_mid_cont[point][k] = moved_address(g_mid_cont[point][k]);
   return n;
 }
+
+// The mods folder (runtime/rc_mods.c, the Mac app's own loader; a mod is a .so here).
+int rsl_load_mods(const char *home, const char *game) {
+  char dir[2304];
+  snprintf(dir, sizeof dir, "%s/mods", home);
+  const char *mods = rc_mods_where(dir);
+  int n = mods ? rc_mods_count(mods) : 0;
+  if (n <= 0) return 0;
+  if (game && chdir(game)) fprintf(stderr, "[rs-rearmed] cannot go to the game folder %s\n", game);
+  rc_mods_load(mods);
+  return n;
+}

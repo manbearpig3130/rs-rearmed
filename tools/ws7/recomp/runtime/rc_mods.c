@@ -1,6 +1,7 @@
 // The mods folder, the same in both editions (app/rc_main.c, win-x86/app/lp_main.c): every .dylib of
 // <home>/mods, in name order, or RS_MODS_PATH (a folder or one library); RS_LOAD_MODS=0 loads none. A mod's
-// constructor registers its hooks (rc_hook.h). A library that fails to load is logged and skipped.
+// constructor registers its hooks (rc_hook.h). A library that fails to load is logged and skipped. On Linux
+// (linux/src/main.c) a mod is a .so.
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -21,9 +22,15 @@ const char *rc_mods_where(const char *dflt) {
   return e && *e ? e : dflt && *dflt ? dflt : 0;
 }
 
+#ifdef __linux__
+#define MOD_SUFFIX ".so"
+#else
+#define MOD_SUFFIX ".dylib"
+#endif
+
 static int dylib_name(const struct dirent *d) {
-  size_t n = strlen(d->d_name);
-  return d->d_name[0] != '.' && n > 6 && !strcmp(d->d_name + n - 6, ".dylib");
+  size_t n = strlen(d->d_name), s = sizeof MOD_SUFFIX - 1;
+  return d->d_name[0] != '.' && n > s && !strcmp(d->d_name + n - s, MOD_SUFFIX);
 }
 
 int rc_mods_count(const char *where) {

@@ -722,3 +722,12 @@ Proposed; none is final before the step that tests it.
   frames at setting 1, 256 at the default 4 (seen in a run without sound). The module's third function, the
   engine thread's real-time policy in the device's workgroup, is macOS's; a real-time engine thread here would
   go through PipeWire's own way to one.
+- **2026-11-28, mods load.** The Mac app's loader (`runtime/rc_mods.c`, with `.so` for `.dylib` here) runs
+  between the hook points and the mid points: a mod's constructor asks for its hooks with the image mapped, and
+  the mid points are written for the ones that have a hook by then. The program is linked to offer its functions
+  to what it loads. The files a mod serves (`runtime/rc_file.c`, with glibc's `fopencookie` for `funopen` and
+  Linux's structure fields) are behind the layer's nine file functions, the same nine the Mac's thunks send
+  there; `RS_FILE_LOG=1` logs what is served. A test mod (`test/mods/test_mod.c`) is loaded from the mods
+  folder, its hook runs around the game's frame, its provider is asked for the game's files and adds a name to
+  the dlc folder's listing. Not in: edit groups (`rc_edit_enable`: 620 edits, most of them Seven-String's), which
+  on this host are bytes to change in the loaded code, 150 of them longer than what they replace.
