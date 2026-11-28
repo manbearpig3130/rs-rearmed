@@ -515,6 +515,17 @@ class Start(Base):
         self.assertIn("args: --image", third.stdout)
 
 
+class Isolated(Base):
+    def test_the_files_beside_it_are_found_as_the_package_starts_it(self):
+        """python3 -I, the package's way (launch.sh), leaves a script's own folder out of the search."""
+        r = subprocess.run([sys.executable, "-I", "-c",
+                            "import runpy, sys; sys.argv = ['rs_install.py', '--home', sys.argv[1], 'status']\n"
+                            "m = runpy.run_path(sys.argv[0] and %r, run_name='loaded')\n"
+                            "import rs_settings; print(len(rs_settings.MODS))" % os.path.join(HERE, "rs_install.py"),
+                            self.home], capture_output=True, text=True)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "9"), r.stderr)
+
+
 class Menu(Base):
     def test_the_entry_starts_this_program_and_offers_the_installer(self):
         os.environ["XDG_DATA_HOME"] = os.path.join(self.tmp, "data")

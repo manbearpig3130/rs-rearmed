@@ -49,6 +49,8 @@ import sys
 import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)  # rs_settings and rs_gui, beside this file (python3 -I leaves a script's folder out)
 # The project's tools: beside this file in a packaged build (tools/), else the repository's.
 TOOLS = next((p for p in (os.path.join(HERE, "tools"), os.path.normpath(os.path.join(HERE, "..", "..", "tools")))
               if os.path.isdir(os.path.join(p, "play-native"))), None)
