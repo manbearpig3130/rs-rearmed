@@ -65,6 +65,8 @@ asset_loader_thread                                              0x014adf20  thi
 std_tree_destroy                                                 0x00f964a0  thiscall  void(void *tree, void *root)
 json_number_table                                                0x1ee14c8  data      void *  # a Dinkumware hash_map here
 json_number_table_lock                                           unsupported  a CRITICAL_SECTION here (*0x1ed9154, owner +0x18, depth +0x1c), not a pthread_mutex_t: the Mac code on it does not apply
+json_key_table                                                   unsupported  only num_table_free and json_key_table_free read it, and Learn & Play has no counterpart of those
+json_key_table_lock                                              unsupported  the same
 json_number_vtable                                               0x1d5a130  data      void *[]  # 0x1400040
 const_two_pow_63                                                 unsupported  not needed: only the Mac's inlined hash reads it; the Windows hash is a function of its own (0x1400650)
 hashtable_prime_sizes                                            0x1d1e010  data      uint32_t[28]  # the same primes from 53; MSVC's list starts two entries earlier (0x1d1e008, read by 0xf96960)
@@ -1112,6 +1114,8 @@ lua_close                                                        unsupported  no
 num_dtor                                                         0x013fff60  thiscall  -  # the deleting destructor, ret 4
 num_intern                                                       0x01400040  custom    -  # edi = out, stack = the double
 num_rehash                                                       unsupported  no counterpart: Dinkumware rehashes inside insert; the hash is a function of its own (0x1400650, F_1400650 in win32_overrides.c)
+num_table_free                                                   unsupported  no counterpart: this game's teardown of the table (0x13fff00) frees it with no check of what is left, so it can't crash there
+json_key_table_free                                              unsupported  no counterpart, as num_table_free
 path_md5                                                         unsupported  inlined into its callers: the override wraps path_intern (F_141c130 in win32_overrides.c)
 dlc_update                                                       0x01449310  thiscall  -  # the per-frame update: win32_overrides.c replaces it, the batched mount runs on it
 key_down                                                         unsupported  Mac-only: the Mac game's stand-in for the keyboard device; Windows reads DirectInput and the window messages
@@ -1316,6 +1320,8 @@ peg_slot_dtor                unsupported  the Mac game's (Seven-String Guitar); 
 tuning_store_song_select2    0x011c6474 code -  # the Mac copies Play_SetPlayerTuningFromManifest per caller; here the one of tuning_store_song_select
 tuning_store_song_select3    0x011c6474 code -  # as tuning_store_song_select2
 tuning_store_guitarcade3     0x01187cac code -  # the Mac's third copy; here the one of tuning_store_guitarcade
+# wave2 P2 extended bass
+tuner_bass_open_midi           0x01d19c54  data      int32_t[6]  # rs7string's 0x1199CA4 (X_TBASS: 28 33 38 43 0 0; ApplyTuning 0x1130767, ResetStandard, GetTolerance): the bass tuning's open notes; [4] / [5] are 0, the low B / high C take 23 / 48
 # --- Seven-String Guitar: end
 # --- Adv Display Settings' own options (built in: overrides/mods/menu_options.c; here win-x86/shims/win32_menu_options.c)
 menu_current_setting                                             0x1e6958c    data      const char *  # the edited setting's name: the press 0x117c9c0 stores "Brightness" (0x117ca23), Edit Setting's build interns it as the control's key (0x117d871) and compares it (0x13e72e0)
@@ -1344,3 +1350,19 @@ json_set_array                                                   0x01402ca0   st
 json_array_add                                                   0x013f81d0   custom    bool(void *array, void *value@esi)  # ret 4; the array takes its own reference (0x117faaa)
 menu_slider_xscale                                               0x1da5f48    data      double  # 80.0: Visual Quality's XScale (0x117f9b9)
 menu_slider_yscale                                               0x1da5d88    data      double  # 90.0: Visual Quality's YScale (0x117f9ff)
+
+# Stock-game fixes (built in: tools/ws7/recomp/overrides/mods/mods_shared.c)
+menu_movie_request                                               unsupported  Learn & Play's request takes the movie in eax and the id as two words: menu_movie_request_reg
+menu_movie_request_reg                                           0x017989e0   custom    void(void *movie@eax, uint32_t id_lo, uint32_t id_hi)  # GFxMovieModel's request to the asset locator (the Mac's 0x100b708f0), `ret 8`; called by the model's setup 0x1795f07 and a listener 0x1798cd8
+
+# wave3 alts: the scrollable "Other arrangements" list (built in: overrides/mods/mods_shared.c)
+json_find_ecx            0x01409680  thiscall  void *(void *object)  # json_find's body with the name in eax (the caller sets eax in the thread's context before the call); plain ret
+json_object_remove       0x01401c00  stdcall   bool(void *object, void **key)  # rs7string's RemoveMember 0x881500: finds the member by its key (a pointer to the key word), takes the value out and releases it, al = 1; al = 0 when there is none; `ret 8`
+json_object_merge        0x01401330  thiscall  void(void *target, void *source, int replace)  # rs7string's Merge 0x880BC0 (ecx = target): the source's members into the target, an object member merged inside the target's; `replace` 1 replaces members that are there; `ret 8`; called by the menu definition loader (0x1149856, 0x11498c0)
+las_build                0x011bf440  thiscall  void(void *page)  # the Learn a Song page's builder, vtable slot 44 (+0xb0); plain ret
+las_page_vtable          0x01d36398  data      void *[]  # the Learn a Song page's vtable (slot 0 0x11be640, builder +0xb0 0x11bf440, focus steps +0xdc / +0xe0)
+menu_focus_up            0x0115b1a0  thiscall  void(void *page, int steps)  # the menu class's focus step (vtable +0xdc): moves the focus up in the focus id list (+0x220), stops at the first; `ret 4`
+menu_focus_down          0x0115b280  thiscall  void(void *page, int steps)  # +0xe0: down, stops at the last
+arr_record_dtor          0x0106e2a0  thiscall  void(void *record)  # an arrangement record's destructor (the page's destructor 0x11be640 calls it for each of +0x388 and +0x394's records, 0xfc each); plain ret
+arr_coop_vtable          0x01d36640  data      void *[]  # the co-op arrangement list page's vtable (slot 0 0x11c6bf0, builder +0xb0 0x11c6d40, focus steps +0xdc / +0xe0 the menu class's)
+arr_coop_build           0x011c6d40  thiscall  void(void *page)  # the co-op list page's builder (vtable +0xb0); plain ret

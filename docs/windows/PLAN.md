@@ -44,6 +44,8 @@ edition" is described there. What has not been tested is under [Open issues](#op
   original fits a 16:9 picture into the screen ([DESIGN.md](DESIGN.md#screen-and-window)). A window resized in Windowed
   mode becomes the game's resolution. `RS_WINDOW_ANY_SHAPE=0` keeps the original.
 - **Retina, colour and a sharper picture**: as the Mac edition, the renderer being shared.
+- **Sharpening** (new in 1.21.0): `RS_METAL_SHARPEN`, as the Mac edition, the renderer being shared; compiled, not run
+  yet.
 - **Performance overlay and low latency** (new in 1.20.0): `RS_METAL_HUD` and `RS_METAL_DRAWABLES`, as the Mac edition,
   from the same header (`shims/platform/include/rsp_layer.h`); compiled, not run yet.
 - **The tuner's red peg** (new in 1.18.0): as the Mac edition, from the renderer's rule for a draw that samples its
@@ -53,12 +55,14 @@ edition" is described there. What has not been tested is under [Open issues](#op
 - **Render scale** (new in 1.18.0): `RS_METAL_SCALE=N`, as the Mac edition, from the same header: the desktop the game
   sees and a resized window at N%. Played full screen on a 1470x956 Retina screen to a song's note highway: 50% (a
   735x478 frame) is fine.
-- **In the game's menu** (new in 1.20.0): OPTIONS → ADV DISPLAY SETTINGS lists ten of the picture switches after the
-  game's own rows, as the Mac edition's twelve without RENDERER and MULTITHREADED GL ENGINE (this edition has Metal
-  only), saved to `options.env` for the next start ([INSTALL.md](INSTALL.md#settings-and-switches)). Played on a test
-  build: the rows, their values, FRAME RATE's slider, ANY WINDOW SHAPE's checkbox, LOW LATENCY greyed at a fixed
-  frame rate and a change saved and set back. Not tried: dragging the list's scroll bar with the mouse, a switch set
-  for the session, the installed app's next start with a changed row.
+- **In the game's menu** (new in 1.20.0; SHARPENING not released): OPTIONS → ADV DISPLAY SETTINGS lists eleven of the
+  picture switches after the game's own rows, as the Mac edition's thirteen without RENDERER and MULTITHREADED GL ENGINE
+  (this edition has Metal only), saved to `options.env`: SHARPENING, ANTI-ALIASING, TEXTURE FILTERING and COLOR taking
+  effect at once (not released, not yet run here), the others at the next start
+  ([INSTALL.md](INSTALL.md#settings-and-switches)). Played on a test build: the rows, their values, FRAME RATE's slider,
+  ANY WINDOW SHAPE's checkbox, LOW LATENCY greyed at a fixed frame rate and a change saved and set back. Not tried:
+  dragging the list's scroll bar with the mouse, a switch set for the session, the installed app's next start with a
+  changed row.
 
 **Built-in fixes** (the Mac edition's, on this game's own functions and with the same switches:
 [DESIGN.md](DESIGN.md#built-in-fixes-and-mods))
@@ -79,6 +83,8 @@ edition" is described there. What has not been tested is under [Open issues](#op
 - **Calibration and the tuner at any frame rate** (new in 1.16.0): as the Mac edition, from the same source with this
   game's eight points.
 - **Skip Tuner in the Guitarcade** (new in 1.16.0): as the Mac edition, from the same source with this game's point.
+- **The white loading screen and Learn a Song's long songs** (new in 1.21.0): as the Mac edition, from the same source
+  with this game's points; not run in the game yet.
 - **Learn a Song's scroll bar** (new in 1.18.0): as the Mac edition, by the same overlay; this game's song list is the
   same file. The other lists, and a bar for those that had none (new in 1.18.0): as the Mac edition, by the same rule.
 - **A fixed frame rate** (new in 1.16.0): `RS_FPS=N`, the installer's Frame rate, with the Mac edition's rule and clock
@@ -115,7 +121,9 @@ edition" is described there. What has not been tested is under [Open issues](#op
   `rearmed-mods.dylib` runs as the same file. No mod code runs without the network guard.
 - **Files a mod serves**: as the Mac edition, through the Win32 seam's file calls.
 - **Edits and mid points, and 7-string charts**: as the Mac edition, with this game's tables
-  (`tools/targets/win-x86/edits.map`, `mids.map`); the points that are the Mac's own are `none` here.
+  (`tools/targets/win-x86/edits.map`, `mids.map`); the points that are the Mac's own are `none` here. Also as the Mac
+  edition, not released: native charts, eight-string guitars, extended basses and local co-op, and two groups of this
+  game's own, `seven_glow` and `seven_barre`.
 - **What the game names for mods**: as the Mac edition. The palette textures are BGRA here, so their hashes differ
   from the Mac's; the note the game hears and the note counts are reached as RSMods reaches them on this game (the
   counts from the UI manager, in Score Attack by its own names); the Mac's names for its game's own route,
@@ -142,6 +150,10 @@ edition" is described there. What has not been tested is under [Open issues](#op
   own last frame), but not what first put purple into the glow's texture at its right edge at a 1102x717 and a
   1104x718 back buffer and not at 1280x720 or 1470x956: nothing the game drew there. The red peg has not been
   compared with the game on Windows.
+- **The white loading screen and Learn a Song's long songs** have fixes that have not been run in this game: the
+  menu movie's request asked for again (`RS_MODS_MENU_RETRY`) and four alternate arrangements on the page
+  (`RS_MODS_ARRANGEMENTS`: four alternates at a time, the arrow keys and the wheel scrolling the rest; not Page Up and
+  Down, [the Mac plan](../mac/PLAN.md#open-issues)).
 - **Two crashes seen once each**: one on the stage at the tuner skip (`lp: signal 10: guest address 0x0`), and a fault
   at guest address 0x168 before it. Neither has come back.
 - **A song ending a few seconds in**: with the machine heavily loaded by other builds, a song went back to its page
@@ -251,6 +263,10 @@ Being looked into, with no promise of if or when:
 
 - **Parity**: the checks the Mac port has had that are left here: long sessions, and guitar latency against it.
 - **Choosing both players' inputs on the Multiplayer screen**, as in the [Mac plan](../mac/PLAN.md#next-work).
+- **LOW LATENCY and PERFORMANCE OVERLAY at once in ADV DISPLAY SETTINGS**, as the Mac edition takes them: their
+  rows take effect at the next start here, since `lp_window.m` sets its layer's drawables and HUD once, as the game
+  starts. It would need what the Mac's presenter does (`rsp_live_switch`): the layer set again by the next present
+  after a change, and the HUD only in a game started with it.
 - **Performance** ([PERFORMANCE.md](PERFORMANCE.md#opportunities-by-expected-payoff)), by expected payoff: the note
   detection and the Wwise thread, where relaxing more functions gave nothing and what is left is the threads' own work
   or not safe to relax; the D3D9 layer's bookkeeping; zero-copy dynamic buffers; the index-range scan of the draw-time

@@ -46,6 +46,8 @@ What the edition does today. What has not been tested is under [Open issues](#op
 - **Retina, colour and a sharper picture** (Metal): each frame is scaled up to a Retina screen's pixels with MetalFX and
   tagged sRGB; the game's own texture LOD bias, 16x anisotropic filtering and 4x MSAA on its screen-sized 3D targets
   ([METAL.md](METAL.md#metal-core-shimsopenglsrcmetal)). The same renderer serves Learn & Play.
+- **Sharpening** (new in 1.21.0): `RS_METAL_SHARPEN=N` sharpens the picture on the screen after any upscaling, never
+  past a pixel's neighbours, so edges don't ring ([METAL.md](METAL.md#metal-core-shimsopenglsrcmetal)).
 - **Performance overlay and low latency** (new in 1.20.0): `RS_METAL_HUD=1` shows Apple's Metal Performance HUD over
   the game (macOS 13 and later), and `RS_METAL_DRAWABLES=2` queues two frames for the screen instead of three with
   vsync, each shown a refresh sooner ([INSTALL.md](INSTALL.md#settings-and-switches)).
@@ -58,12 +60,13 @@ What the edition does today. What has not been tested is under [Open issues](#op
   (50-100) and scales up with MetalFX. Played at 75% and 50% on an M1 MacBook Air: on its own Retina screen 50% took
   0.5 W off the GPU's 6.1 W, where `RS_METAL_UPSCALE=0` takes 2.7 W off; on a 1x external display nothing measurable
   ([PERFORMANCE.md](PERFORMANCE.md#measured-runs)).
-- **In the game's menu** (new in 1.19.0; LOW LATENCY and PERFORMANCE OVERLAY not released): OPTIONS → ADV DISPLAY
-  SETTINGS lists twelve of the picture switches after the game's own rows, saved where the installer saves them, for the
-  next start; the other renderer's rows are greyed, as are those a switch set for the session (`launchctl setenv`)
-  holds, and the longer list scrolls, with a scroll bar that can be dragged
-  ([INSTALL.md](INSTALL.md#settings-and-switches)). Learn & Play lists ten of them (not released;
-  [its plan](../windows/PLAN.md#status)).
+- **In the game's menu** (new in 1.19.0; LOW LATENCY and PERFORMANCE OVERLAY new in 1.20.0; SHARPENING and the rows
+  taking effect at once not released): OPTIONS → ADV DISPLAY SETTINGS lists thirteen of the picture switches after the
+  game's own rows, saved where the installer saves them, five of them taking effect at once (PERFORMANCE OVERLAY too, in
+  a game started with it); a row that can't apply is greyed with why, as is one a switch set for the session
+  (`launchctl setenv`) holds, and the longer list scrolls, with a scroll bar that can be dragged
+  ([INSTALL.md](INSTALL.md#settings-and-switches)). Learn & Play lists eleven of them (new in 1.20.0), four taking
+  effect at once (not yet run there; [its plan](../windows/PLAN.md#status)).
 
 **Built-in fixes** ([DESIGN.md](DESIGN.md#built-in-fixes-and-mods) says what each is for)
 
@@ -86,6 +89,10 @@ What the edition does today. What has not been tested is under [Open issues](#op
   frame's own time, for frames shorter than a 60 Hz one; at 60 Hz the game runs as before.
 - **Skip Tuner in the Guitarcade** (new in 1.16.0): a Guitarcade game's tuner has the Skip Tuner a song's tuner has,
   with the same warning. The game left it out there, so only a finished tuning got a player into a game.
+- **The white loading screen and Learn a Song's long songs** (new in 1.21.0): a menu movie the game asked the file index
+  for too early is asked for again when its file is indexed, and Learn a Song's page shows four alternate arrangements
+  for a song with more than five, which crashed it, and the arrow keys and the wheel scroll the rest. Both are one
+  source with Learn & Play; neither has been run in the game yet ([Open issues](#open-issues)).
 - **Learn a Song's scroll bar** (new in 1.18.0): it can be dragged from anywhere on it, through the menu overlay's copy
   of the song list; the game let it be grabbed only near the top of the list. The same for the game's 24 other lists,
   the Tone Designer's among them, through the overlay's copies of their movies, and the 16 of them that had no bar
@@ -125,7 +132,9 @@ What the edition does today. What has not been tested is under [Open issues](#op
   (`tools/targets/mac-x64/edits.map`, `mids.map`) carry rearmed-mods' Seven-String Guitar, after
   [rs7string](https://github.com/SomeeName/rs7string), and Plain Packages, the same units as Learn & Play. The game's
   list of a chord's expected notes keeps six here (eight in Learn & Play); the mod's own chord detection judges larger
-  chords in both editions.
+  chords in both editions. Also, not released: what the mod needs for RS Extended Range's native charts, eight-string
+  guitars, five- and six-string basses and local co-op, and the edit groups `seven_line` (and Learn & Play's
+  `seven_glow`, `seven_barre`); a 7-string and an 8-string chart played in both editions, bass and co-op not yet.
 - **What the game names for mods** (in `tools/targets`, the same names in both editions): the colors of notes and the
   highway, through the [render API](METAL.md#render-api-shimsincluders_renderh) on Metal by the game's small palette
   textures, and of the strings, in the game's own color table; the note the game hears (Player 1's pitch detection,
@@ -144,7 +153,16 @@ What the edition does today. What has not been tested is under [Open issues](#op
 **Faults and limits**
 
 - With the legacy fast-load `cache.psarc`, a start can stay on the white loading screen now and then (a race in the
-  game). Metal's safe load avoids the stall shader compiles would add; on OpenGL quit and start again.
+  game). Metal's safe load avoids the stall shader compiles would add. The built-in fix (`RS_MODS_MENU_RETRY`) asks for
+  the menu again once its file is indexed; it is built and tested against a game of the test's own, and the game's
+  sites are matched by their code, but it has not been played with such a `cache.psarc` yet: until it has, on a white
+  screen quit and start again.
+- A song with more than five arrangements shows four alternates at a time on Learn a Song's page (it crashed the
+  page), and the arrow keys and the wheel scroll the rest, as RS Extended Range's page does (Page Up and Down do not:
+  not done). The scroll re-runs the page's builder and handles the movie's nodes, so it is the part of the fix most
+  likely to need the game: built and tested against a game of the test's own (both ABIs), its sites matched by their
+  code; not run in either game. The co-op page's list (every arrangement in one column, about nine drawn) is windowed to
+  eight the same way, by the entries' sort order.
 - The first play of a song after an install stutters briefly on Metal (pipelines built on first use). A draw that
   waits for a shader compile hurries it; the gain isn't measured.
 - Mods that draw with OpenGL show nothing on Metal; they need the overlay API.

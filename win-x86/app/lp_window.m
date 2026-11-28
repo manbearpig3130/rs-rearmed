@@ -355,9 +355,15 @@ static void window_script(void) {
   free(s);
 }
 
+// The branding (RS_REARMED=0 keeps the game's own) in the menu's name and the window title.
+static int branded(void) {
+  const char *rearmed = getenv("RS_REARMED");
+  return !(rearmed && !strcmp(rearmed, "0"));
+}
+
 static void make_menu(void) {
   NSMenu *bar = [[NSMenu alloc] initWithTitle:@""];
-  NSString *name = @"Rocksmith 2014 Learn & Play";
+  NSString *name = branded() ? @"RS Re-ARMed Learn & Play" : @"Rocksmith 2014 Learn & Play";
   NSMenuItem *app = [[NSMenuItem alloc] initWithTitle:name action:NULL keyEquivalent:@""];
   NSMenu *am = [[NSMenu alloc] initWithTitle:name];
   NSMenuItem *q = [am addItemWithTitle:[@"Quit " stringByAppendingString:name] action:@selector(quit:) keyEquivalent:@"q"];
@@ -513,7 +519,8 @@ rs_gfx_context *d3d9_platform_context(uint32_t hwnd, int w, int h) {
       g_win.acceptsMouseMovedEvents = YES;
       g_win.contentMinSize = NSMakeSize(320, 180);
       g_win.delegate = g_ctl;
-      g_win.title = @"Rocksmith 2014 Learn & Play Re-ARMed " LP_VERSION;
+      g_win.title = branded() ? @"Rocksmith 2014 Learn & Play Re-ARMed " LP_VERSION
+                               : @"Rocksmith 2014 Learn & Play";
       // No screen saver or display sleep while the game is open, in a window or full screen, as the Mac
       // game's view does (rsp_shell.m). Held until the process ends.
       IOPMAssertionID awake;
@@ -534,7 +541,7 @@ rs_gfx_context *d3d9_platform_context(uint32_t hwnd, int w, int h) {
     // RS_METAL_DRAWABLES's, else 2 without vsync and 3 with it
     if (rsp_fps()) layer.displaySyncEnabled = NO;
     layer.maximumDrawableCount = (NSUInteger)rsp_layer_drawables(!rsp_fps());
-    rsp_layer_show_hud(layer);
+    rsp_layer_show_hud(layer, rsp_layer_hud());
     v.wantsLayer = YES;
     v.layer = layer;
     g_view = v;

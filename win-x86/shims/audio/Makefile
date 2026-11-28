@@ -2,7 +2,7 @@
 #   make         build $(OUT)/libwinaudio.a (wa_*.c + the Mac build's game-independent audio code)
 #   make test    run tests/test_audio (the objects through their guest cells, no game needed;
 #                plays under a second of a quiet tone on the default output device, and runs the
-#                hook point si_io on the default input)
+#                hook point si_io on the default input), then its --fake part on the test input
 #
 # The game links libwinaudio.a, win32_guestobj.o, win32_ksync.o (w32_event_signal) and the
 # AudioToolbox, CoreAudio and CoreFoundation frameworks.
@@ -17,7 +17,7 @@ FRAMEWORKS := -framework AudioToolbox -framework CoreAudio -framework CoreFounda
 
 SRC := wa_engine wa_com wa_winmm
 HDR := audio.h wa_engine.h ../win32_guestobj.h ../win32_shims.h $(coreaudio)/rs_audio_host.h \
-       $(coreaudio)/rs_audio_input.h $(runtime)/rc_hook.h
+       $(coreaudio)/rs_audio_input.h $(coreaudio)/rs_audio_fake.h $(runtime)/rc_hook.h
 
 all: $(OUT)/libwinaudio.a
 
@@ -27,6 +27,8 @@ $(OUT)/rs_audio_host.o: $(coreaudio)/rs_audio_host.c $(coreaudio)/rs_audio_host.
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/rs_audio_input.o: $(coreaudio)/rs_audio_input.c $(coreaudio)/rs_audio_input.h $(coreaudio)/rs_audio_host.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
+$(OUT)/rs_audio_fake.o: $(coreaudio)/rs_audio_fake.c $(coreaudio)/rs_audio_fake.h $(coreaudio)/rs_audio_host.h | $(OUT)
+	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/win32_guestobj.o: ../win32_guestobj.c ../win32_guestobj.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/win32_ksync.o: ../win32_ksync.c ../win32_handles.h ../win32_shims.h | $(OUT)
@@ -34,7 +36,7 @@ $(OUT)/win32_ksync.o: ../win32_ksync.c ../win32_handles.h ../win32_shims.h | $(O
 $(OUT):
 	mkdir -p $@
 
-$(OUT)/libwinaudio.a: $(SRC:%=$(OUT)/%.o) $(OUT)/rs_audio_host.o $(OUT)/rs_audio_input.o
+$(OUT)/libwinaudio.a: $(SRC:%=$(OUT)/%.o) $(OUT)/rs_audio_host.o $(OUT)/rs_audio_input.o $(OUT)/rs_audio_fake.o
 	rm -f $@ && ar rcs $@ $^
 
 RT := rc32_mem rc32_teb rc32_image rc32_seh rc_file  # (rc_file: win32_ksync.c closes files through it)
@@ -45,9 +47,10 @@ $(OUT)/test_audio: tests/test_audio.c $(OUT)/libwinaudio.a $(OUT)/win32_guestobj
 	$(CC) $(CFLAGS) tests/test_audio.c $(OUT)/libwinaudio.a $(OUT)/win32_guestobj.o $(OUT)/win32_ksync.o \
 	    $(RT:%=$(OUT)/rt_%.o) $(FRAMEWORKS) -o $@
 
-# The test leaves the devices' sample rates alone (RS_AUDIO_SET_RATE=0).
+# The test leaves the devices' sample rates alone (RS_AUDIO_SET_RATE=0). Then the test input, with no guitar-input.ini.
 test: $(OUT)/test_audio
 	RS_AUDIO_SET_RATE=0 RS_AUDIO_LOG=1 $(OUT)/test_audio
+	RS_AUDIO_FAKE_INPUT=tone:57,silence RS_AUDIO_INPUT_FILE=/dev/null RS_AUDIO_LOG=1 $(OUT)/test_audio --fake
 
 clean:
 	rm -rf $(OUT)

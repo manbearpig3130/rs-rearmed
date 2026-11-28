@@ -67,7 +67,7 @@ The launcher (`tools/play-native/launch.sh`, run in the `~/Applications/RS Re-AR
 checks the copy is complete (telling a drive that is not connected from an incomplete copy), links `static.psarc` to the
 title logo or the original, keeps the game's `Rocksmith.ini` offline ([Online services](#online-services)), passes the
 built-in mods switched off in `settings.env` (only its nine switches) and the other switches set in `options.env` (only
-its 38; a value in the environment wins over either), seeds the
+its 39; a value in the environment wins over either), seeds the
 offline Steam saves once, and starts the game with the network guard inserted (`open -n -a`). Nothing of Steam's is read
 while the game runs, except `loginusers.vdf` for the account, and without it (Steam uninstalled) the account whose saves
 are there.
@@ -144,10 +144,19 @@ The game's Wwise engine has a CoreAudio sink and its own guitar input. The audio
   another device fails to open, and input devices are listed first (`RS_AUDIO_STABLE_UIDS`; `RS_AUDIO_INPUTS_FIRST`
   applies with the list of inputs off, as the list has its own order). A device whose identifier can't be read is
   skipped (`audio_devs.c`).
+- **The test input.** With `RS_AUDIO_FAKE_INPUT` a capture device that isn't there, "RS Re-ARMed Test Input", is
+  first in the system's list, its channels fed from WAV files, plucked tones or silence, so a game run needs no
+  guitar ([TESTING.md](TESTING.md#unattended-runs)). Every HAL call the audio code makes with a device goes through
+  `rs_audio_hal_*` (`shims/coreaudio/rs_audio_fake.c`), which answers the device's properties and runs its I/O
+  functions on a real-time thread of its own at the device's rate; the import thunks send the game's start, stop and
+  listener calls there too (`rs_audio_io_run`, `rs_audio_listen`). To the game it is an interface: an entry a
+  channel, its own level, the game's I/O function called with a buffer of its channels as the HAL calls it. Without
+  the switch the calls go straight to the system's.
 
 The game-independent parts (buffer sizes, real-time threads, workgroups, stable UIDs, input-first order, the input's
-settings and gain) are in `shims/coreaudio/rs_audio_host.c` and `rs_audio_input.c`, which Learn & Play shares
-([Windows design](../windows/DESIGN.md#audio)). `RS_AUDIO_LOG=1` logs the setup.
+settings and gain, the test input) are in `shims/coreaudio/rs_audio_host.c`, `rs_audio_input.c` and
+`rs_audio_fake.c`, which Learn & Play shares ([Windows design](../windows/DESIGN.md#audio)). `RS_AUDIO_LOG=1` logs
+the setup.
 
 ### Your own plug-in
 
@@ -242,6 +251,13 @@ function and `SetAppFocus` (the hook points `input_sink` and `set_app_focus`), a
 original lacked ([INSTALL.md](INSTALL.md#keys)). Learn & Play's input is a layer of its own
 ([Windows design](../windows/DESIGN.md#input)).
 
+**Quitting.** Command-Q and the close button ask the engine to quit (`rsp_request_quit`: the ServiceManager's quit
+byte), as EXIT GAME does from the game's own menu. The frames go on while the services shut down, and when the engine
+says it is done the frame thread runs the game's shutdown (`game_shutdown`, from the main controller's `dealloc` as in
+the original) and ends the process (`rsp_exit`). That shutdown's last check, of the game's JSON tables, crashed when the
+quit came while the profile's gear was loading; the built-in fixes keep it from doing so
+([A clean quit while the gear loads](#built-in-fixes-and-mods)).
+
 ## Built-in fixes and mods
 
 Each fix is a native replacement of a game function or a hook on one, with a switch
@@ -258,7 +274,8 @@ edition's log. The sources are in `tools/ws7/recomp/overrides/mods`:
   environment by then.
 - **Each edition's own.** The batched DLC mounting loop, the Auto Save skip, the Direct Connect overlay's file open, the
   path cache, the number hash and the signature skip sit where the two games' code differs. This edition's are in
-  `mods.c`, with three only it needs (the keys, the thread priority and, in `fftsetup.c`, the FFT setups): a function named in
+  `mods.c`, with four only it needs (the keys, the thread priority, in `fftsetup.c` the FFT setups and in `quit_tables.c`
+  the quit's JSON tables): a function named in
   `tools/targets/names/overrides/mods.list` is left out of the translation and defined there, and the rest are pre hooks
   on hook points. Learn & Play's, and why each differs: [Windows design](../windows/DESIGN.md#built-in-fixes-and-mods).
 
@@ -350,10 +367,52 @@ What each does:
   the menu's own whatever the stage: the same warning, then the step on that a finished tuning takes. So the hook only
   makes the test's answer yes. A player whose tuner would not finish could play no game but Gone Wailin', which has no
   tuner.
-- **Loading-screen fix.** With a community fast-load `cache.psarc`, the game's loading can stall for good
-  on the white loading screen when the CPU is busy (a race in the game). With Metal, when `cache.psarc` is
-  not the original, the shell compiles the shaders before the game starts loading and then throttles the
-  compiler ("safe load", [METAL.md](METAL.md#safe-load)).
+- **Loading-screen fix** (`RS_MODS_MENU_RETRY=0` is the original; shared: mid points `menu_request`, `menu_locate`,
+  `menu_located` and `file_indexed` and a `game_frame` hook, with each game's places in its `mids.map`). A menu is a
+  Scaleform movie, and its setup asks the asset locator for the movie's file once. At start-up the file index is still
+  being built by worker threads; a locator that does not have the file yet refuses the request, throws it away and
+  answers no, the request's caller ignores the answer, and the load group waits for a movie that is never made: the
+  white loading screen, for good. It happens with a community fast-load `cache.psarc` when the CPU is busy (the index
+  is late). The fix keeps each refused request (the movie, its id and its file's name), watches the index writer's tail
+  for a file of that name (on the workers: it sets a flag under a short lock and nothing else) and, at the start of
+  the next frame on the game thread, asks again once with the game's own request function and the id it had. If the
+  flag never comes it asks again every 5 s, six times at most, with a warning in the log. An accepted request is
+  forgotten; so is a movie that is not what it was when it was refused (its first word, its name), or one that has
+  waited two minutes. The log has `menu load:` lines. With Metal, when `cache.psarc` is not the original, the shell
+  also compiles the shaders before the game starts loading and then throttles the compiler ("safe load",
+  [METAL.md](METAL.md#safe-load)), which keeps the CPU from being busy for the index.
+- **Learn a Song with more than five arrangements** (`RS_MODS_ARRANGEMENTS=0` is the original; shared: the mid point
+  `las_alt_slot`). The page's builder fills a slot, `altArrangementsP1_slot%d`, for every arrangement of the song but
+  the selected one, and the page's movie has four. A fifth alternate asks Scaleform for a slot it does not have, which
+  leaves a display node with nothing behind it, and the renderer crashes on it when it draws the page. At each alternate
+  the builder has the slots it has filled in a local; with four filled the hook goes on at the loop's end, as the
+  builder does for the selected arrangement, so the page shows four alternates. Songs with five or fewer arrangements
+  are not touched. The rest are reached by scrolling, after RS Extended Range's list (`mods_shared.c`, the points
+  `las_alt_slot`, `las_alt_label`, `las_alt_root`, `las_alt_page`, `menu_focus_step_up` and `_down`; the game's
+  functions and the page's fields by name in `tools/targets`): the loop's point takes a window of four alternates from
+  a scroll position, the first and last entry's label gets `(-N)` / `(+N)` for the alternates out of sight, and the menu
+  class's focus steps (arrow keys and the mouse wheel) scroll the window when Down is on the last entry shown or Up on
+  the first, the step itself made no steps long. A scroll runs the page's builder again, the way the game runs it on
+  page entry: first the page's record vectors are emptied and the four slots removed (the movie redraws an entry only
+  when its node is new), the recommendation buttons' `States` nodes taken out of the old buttons and given to the new
+  ones (the focus setter refuses a button without it), the page's own focus lists put back around the build (it
+  refills the ones it has), and the previous view definition root merged into the new one by `las_alt_root` (the song
+  header); last the focus moves one entry away and back with the game's own steps, which is what makes the movie
+  redraw, and a rebuilt entry's label ends in a space because the movie skips a label that is the text it drew before.
+  A page opened anew starts at the top (`las_alt_page`, the page update). A game whose tables lack a point keeps the
+  first four alternates. Page Up and Page Down do not scroll (Learn & Play has them as window messages, the Mac not at
+  all).
+  The co-op song page's list of arrangements (a page class of its own, the same menu class under it) shows every record
+  in one column, about nine of them in the panel and the rest focusable but invisible below it. The movie keeps a row
+  for each entry node and places it by the node's `SortOrder`, so the entries all stay and only the order changes:
+  with more than eight records `coop_sort_order` (the builder, as it sets an entry's `SortOrder`) gives the eight in a
+  window their rows 0 to 7 and the others a row below the panel, the window starting over the selected record. The
+  menu class's focus steps go by record: the step scrolls the window onto the target record and runs the builder again
+  (the page keeping its focus lists), then gives the game's own step the distance between the two entries in the page's
+  focus id list, which the movie orders by `SortOrder` at page entry and so is in record order only while the window is at
+  the top. Enter selects the map's entry for the focus's position, which is wrong then: `coop_select` takes the record
+  from the focused entry's name, `arrangement<N>`. Each player's page has a window of its own (two slots, a slot free
+  again when its page's first word is no longer the list's vtable).
 - **Direct Connect choice** (`RS_MODS_OVERLAY=0` reads `cache.psarc` alone). The game code handles a fourth
   button on the cable screen, `othercable` (Direct Connect), and a fourth value of the INPUT slider, but the menu
   data (two JSON files in one of `cache.psarc`'s `cacheN.7z` archives) leaves them out. At each copy or refresh
@@ -397,21 +456,21 @@ What each does:
   `mods_shared.c`, one rule for both editions). A movie the overlay doesn't hold opens as before, through a mod's
   own hook too (rearmed-mods serves three).
 - **RS Re-ARMed's options in ADV DISPLAY SETTINGS** (`RS_MODS_OVERLAY=0` leaves the menu as it is; Learn & Play has
-  ten of them, [its design](../windows/DESIGN.md)). The options, their switches and files and why a row is locked are
+  eleven of them, [its design](../windows/DESIGN.md)). The options, their switches and files and why a row is locked are
   one source with Learn & Play (`menu_options_common.c`); the rest of `menu_options.c` is this game's.
-  The overlay adds a button for each of twelve switches to the menu's definition
+  The overlay adds a button for each of thirteen switches to the menu's definition
   (`manifests/ui_menu_pillar_options.database.json`), with their labels and descriptions as new rows of the game's
-  text table (38901-38924, the English in every language), and the game lists, sorts and shows them with its own. The
+  text table (38901-38926, the English in every language), and the game lists, sorts and shows them with its own. The
   menu's code knows only the game's settings, so `tools/ws7/recomp/overrides/mods/menu_options.c` puts a native
   function in front of five of its methods, in the classes' vtables at the first frame: the list's refresh (each row's
-  current value, and the rows that can't apply locked, with why as their value: the other renderer's, Low Latency at a
-  fixed frame rate, and those the session sets: a switch whose value in the environment isn't `options.env`'s, since
-  the launcher passes the file's lines and prefers the session's, or an `RS_GL_BACKEND` set neither by the launcher,
-  for an OpenGL `renderer` file, nor by the shell's own restart (`rsp_renderer_env_given`)), a press (Edit Setting
-  opened on the switch), Edit Setting's build (a checkbox, or a notched slider as the game makes VISUAL QUALITY's) and
-  its input (a change written to `options.env`, the renderer to `renderer`). The menu's movie
-  (`gfxassets/views/displaysettings.gfx` of `static.psarc`, through the same hook as the lists) gets two edits: a
-  locked row's label in the movie's own greys, and the list, now longer than its panel, scrolled with the focus
+  current value; the rows that can't apply locked, with why as their value, and those the session sets locked with its
+  value: a switch whose value in the environment isn't `options.env`'s, since the launcher passes the file's lines and
+  prefers the session's, or an `RS_GL_BACKEND` set neither by the launcher, for an OpenGL `renderer` file, nor by the
+  shell's own restart, `rsp_renderer_env_given`), a press (Edit Setting opened on the switch), Edit Setting's build (a
+  checkbox, or a notched slider as the game makes VISUAL QUALITY's) and its input (a change written to `options.env`,
+  the renderer to `renderer`, and handed to the renderer at once where it can take it: `rsp_live_switch`). The menu's
+  movie (`gfxassets/views/displaysettings.gfx` of `static.psarc`, through the same hook as the lists) gets two edits:
+  a locked row's label in the movie's own greys, and the list, now longer than its panel, scrolled with the focus
   (SettingsScene's PopulateButtons wrapped), with the game's own scroll bar beside it. The menu has no code to drag
   that bar, so the fifth native function, in front of the list's input, does: a press on the bar starts a drag, and
   the game's own Up and Down move the focus to the row under the pointer.
@@ -420,6 +479,20 @@ What each does:
   While the install steps run the hook answers yes (each edition's mounting loop says when they do): an archive in
   `dlc/` counts as owned, whatever AppID it carries. `RS_MODS_BYPASS=0` asks the list again, and such a song then needs
   a refresh and a restart.
+- **A clean quit while the gear loads** (always on; `quit_tables.c`, `num_table_free` and `json_key_table_free` in
+  `mods.list`). The game interns every JSON key and string in one global table and every number in another, and the
+  last release of an entry removes it. Its shutdown, which MainService's destructor ends with, frees the two tables and
+  first checks that each is empty: when one isn't, it writes to address 0 (`0x1000f8c4d`, `0x1000f5212`), a trap here
+  (exit status -5). A table isn't empty when the quit comes while documents are loading: loading a profile asks for its
+  gear by name (`urn:database:json-db:gear_*`, the amps, cabinets, pedals and racks), the asset loader thread reads it
+  and the ManifestManager takes it in on the game thread a few frames later, and a quit in between shuts the services
+  down with those answers owed, whose documents are then never released. So Command-Q at the main menu right after
+  the profile, or EXIT GAME, which goes back through the title and the profile first, crashed about one quit in two in
+  the game tests, and never after a minute at the menu. The original Mac game has the same code. The replacements free
+  an empty table as the game does and keep one that isn't, with its mutex, logging how much was left
+  (`[rs-mods] quit: ... the table is kept`): nothing uses those documents before the process ends, and one released
+  after all still finds its entry. Learn & Play's game has no such check (its teardown frees the table whatever is
+  left).
 - **Title logo.** `tools/loadscreen` builds `static.psarc.rearmed` in the copy (`install.sh`; never in Steam's folder)
   from the copy's `static.psarc.original` with a "Re-ARMed" tag on the title logo; the launcher uses it when it is there
   (`RS_REARMED=0` for the original). It isn't in the copy's manifest, so a refresh leaves it, except that a new
@@ -433,12 +506,23 @@ What each does:
     are listed in `tools/targets/names/hooks.list`; all are functions of this game (Learn & Play has 20 of them).
     `rc_hook_add` with a game address keeps working; `rc_target()` returns `mac-x64`.
   - **Edits and mid points** (`rc_mid.h`), for a change inside a function. The tables (`tools/targets/mac-x64/edits.map`
-    and `mids.map`) have two groups, both for rearmed-mods: `seven_string`, its Seven-String Guitar (618 edits and 122
-    mid points), and `plain_packages`, its Plain Packages (2 edits and a mid point). Thirteen more mid points are the
-    built-in fixes': the eight `fps_*` of the frame rate fixes, `tuner_skip_offer` of Skip Tuner in the Guitarcade,
-    and `manifest_request`, `manifest_response`, `fs_mount` and `fs_exists` of the batched DLC mounting. Learn & Play has 735 edits: many of this game's six-string loops are unrolled, so
-    where Learn & Play's edits lengthen a loop, 29 mid points of this edition's own (`none` in Learn & Play) do the
-    extra strings. The 34 points only Learn & Play needs are `none` here.
+    and `mids.map`) are for rearmed-mods: its Seven-String Guitar has the group `seven_string` (619 edits: the game's
+    arrays for six strings grown to eight, the chord loops over eight strings, the extended bass's expected pitch) and
+    `seven_line` (2 edits: the section string mask's bits of strings 6 and 7, switched by the mod's `string7_line`),
+    and 139 mid points (among them the native charts' `seven_native_*`, the extended bass's `seven_lt0`, `seven_pbh`,
+    `seven_s1_bass`, `seven_gkp`, and `seven_e8`, which says the chord loops cover eight strings); its Plain Packages
+    has `plain_packages` (2 edits and a mid point). Learn & Play's injected `Entity_SetScale` calls of the fret range
+    glow and the barre markers (`seven_glow`, `seven_barre`) are `unsupported` here: this game calls it from the C of
+    the points `seven_frg*_setscale` and `seven_pubbc_setscale`. Twenty-five more mid points are the built-in fixes':
+    the eight `fps_*` of the frame rate fixes, `tuner_skip_offer` of Skip Tuner in the Guitarcade, `manifest_request`,
+    `manifest_response`, `fs_mount` and `fs_exists` of the batched DLC mounting, and the twelve of the stock-game fixes
+    (the white loading screen's `menu_request`, `menu_locate`, `menu_located`, `file_indexed`; the arrangement lists'
+    `las_alt_*`, `menu_focus_step_up` and `_down`, `coop_sort_order` and `coop_select`). Learn & Play has 731 edits in
+    `seven_string`: many of this game's six-string loops are unrolled, so where Learn & Play's edits lengthen a loop,
+    35 mid points of this edition's own (`none` in Learn & Play) do the extra strings. The 42 points only Learn & Play
+    needs are `none` here. `tools/targets/test_targets.py` (`InnerRules`) holds both tables to what the mod's one
+    source needs: every point of the Seven-String section placed or `none` in each game, the same values and
+    continuations by name in both (but the four the mod reads by game), the injected calls in groups of their own.
   - **Files** (`rc_file_provide`, `rc_file.h`): a mod can serve files to the game. The game's file imports (`open`,
     `close`, `read`, `fstat`, `stat`, `fopen`, `opendir`, `readdir`, `closedir`: every one it has that reads a file or
     a folder) are bound to the runtime's `rc_file_*`, which ask the mod's provider first; the same interface as Learn &

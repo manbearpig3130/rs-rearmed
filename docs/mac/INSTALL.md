@@ -97,7 +97,8 @@ ends the run; what is done is kept, and Build & Install goes on from there.
   Tuner in the Guitarcade, the frame rate fixes, the title logo) and the other switches below, grouped with the
   common ones first and the rest under Advanced, which is open when one of its switches is set. A change takes
   effect the next time the game starts, with nothing to reinstall, once the game has been installed by a version
-  after 1.16.0; for a game from before, the page says that it takes only the built-in mods it knew
+  after 1.16.0, except the branding's Dock, menu and launcher names, which wait for the next install, so Build &
+  Install again for a new name; for a game from before, the page says that it takes only the built-in mods it knew
   ([Settings and switches](#settings-and-switches)). The page starts at what the files have, can copy the other
   edition's (what only this edition has stays), and Reset to Defaults returns everything to the defaults.
 - Quitting the installer while it works stops the build (it asks first); Build & Install starts it again.
@@ -327,9 +328,12 @@ The design, with the game's own calls, is in [DESIGN.md](DESIGN.md#steam).
 ### The title logo
 
 The install makes the logo once, in the copy; if it can't, the game shows its own. To rebuild it, or for what it
-needs: [tools/loadscreen](../../tools/loadscreen/README.md). `RS_REARMED=0` (or the logo off in the installer's
-Settings and switches…) shows the original. A refresh that brings a new `static.psarc` removes it, and the next install
-makes it again.
+needs: [tools/loadscreen](../../tools/loadscreen/README.md). A refresh that brings a new `static.psarc` removes it,
+and the next install makes it again. `RS_REARMED=0` (or the branding off in the installer's Settings and switches…)
+shows the game's own title (`Rocksmith 2014`) as the logo and app name, in the Dock, the menu and the window title;
+the window title changes at the next start, the Dock and menu names at the next install. The launcher in
+~/Applications shows the same name (its file name stays `RS Re-ARMed.app`). A tile already kept in the Dock keeps
+the name it was added with: remove it and add the app again for the new name.
 
 ## Where things are
 
@@ -503,18 +507,23 @@ Clear overrides… unsets them after asking.
 
 Learn & Play sees a variable set this way too ([its switches](../windows/INSTALL.md#settings-and-switches)).
 
-**In the game.** OPTIONS → ADV DISPLAY SETTINGS lists twelve of the switches after the game's own rows: FRAME RATE, ANY
-WINDOW SHAPE, RENDERER, MULTITHREADED GL ENGINE, LOW LATENCY, METALFX UPSCALING, FULL RETINA RESOLUTION, RENDER SCALE,
-ANTI-ALIASING, TEXTURE FILTERING, COLOR and PERFORMANCE OVERLAY. A change is written to `options.env` (the renderer to
-the `renderer` file), as the installer writes it, and takes effect the next time the game starts. A switch set for the
-login session (`launchctl setenv`; for the renderer, `RS_GL_BACKEND`) still wins over it, as over the installer's page,
-so its row shows the session's value, greyed, with SET FOR THIS SESSION, until it is unset (`launchctl unsetenv`) and
-the game started again. One set to the value `options.env` has can't be told apart: its row can be changed, but the
-session's value is the one used. The other renderer's rows are greyed too, and LOW LATENCY at a fixed FRAME RATE, where
-two frames are queued anyway (unless `RS_METAL_DRAWABLES` has a value the row has no choice for, such as 3: the row
-stays open, to take it out). The list scrolls with the focus, and its scroll bar can be dragged. They come with the
-menu overlay (`tools/ws7/recomp/overrides/mods/menu_options.c`), so not with `RS_MODS_OVERLAY=0`. Learn & Play lists
-ten of them, without RENDERER and MULTITHREADED GL ENGINE ([its switches](../windows/INSTALL.md#settings-and-switches)).
+**In the game.** OPTIONS → ADV DISPLAY SETTINGS lists thirteen of the switches after the game's own rows: FRAME RATE,
+ANY WINDOW SHAPE, RENDERER, MULTITHREADED GL ENGINE, LOW LATENCY, METALFX UPSCALING, FULL RETINA RESOLUTION, RENDER
+SCALE, SHARPENING, ANTI-ALIASING, TEXTURE FILTERING, COLOR and PERFORMANCE OVERLAY. A change is written to `options.env`
+(the renderer to the `renderer` file), as the installer writes it. LOW LATENCY, SHARPENING, ANTI-ALIASING, TEXTURE
+FILTERING and COLOR take effect at once, the others the next time the game starts. PERFORMANCE OVERLAY takes effect at
+once in a game started with it on (macOS 13 and later), else at the next start: the HUD is enabled only in a start with
+it, as it costs CPU time each frame even hidden. At a start, a switch set for the login session (`launchctl setenv`; for
+the renderer, `RS_GL_BACKEND`) still wins over the file, as over the installer's page, so its row shows the session's
+value, greyed, with SET FOR THIS SESSION, until it is unset (`launchctl unsetenv`) and the game started again. One set
+to the value `options.env` has can't be told apart: its row can be changed, but at the next start the session's value is
+the one used. A row that can't do anything with the choices made is greyed, with why: the other renderer's, LOW LATENCY
+at a fixed FRAME RATE, where two frames are queued anyway (unless `RS_METAL_DRAWABLES` has a value the row has no choice
+for, such as 3: the row stays open, to take it out), and METALFX UPSCALING with nothing upscaled. The list scrolls with
+the focus, and its scroll bar can be dragged. They come with the menu overlay
+(`tools/ws7/recomp/overrides/mods/menu_options.c`), so not with `RS_MODS_OVERLAY=0`. Learn & Play lists eleven of them,
+without RENDERER and MULTITHREADED GL ENGINE, each for the next start ([its
+switches](../windows/INSTALL.md#settings-and-switches)).
 
 Each row is a switch set away from its default, and what that does. Everything is compiled into the app; the
 `RS_METAL_` switches are for the Metal renderer.
@@ -528,9 +537,11 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_MODS_AUTOSAVE=0` | on | the Auto Save warning shows after profile select |
 | `RS_MODS_OVERLAY=0` | on | the game reads `cache.psarc` alone, without the overlay: no DIRECT CONNECT, SHOP instead of ENUMERATE and UPLAY instead of EXIT GAME, and the lists' scroll bars as the game has them ([Game files](#game-files)) |
 | `RS_MODS_MULTIPLAYER=0` | on | [two players](#two-players): Player 2 on a Real Tone cable only |
-| `RS_REARMED=0` | on | the game's own title logo ([The title logo](#the-title-logo)); set for the install, no logo is made |
+| `RS_REARMED=0` | on | the game's own title as the logo and app name ([The title logo](#the-title-logo)); set for the install, no logo is made |
 | `RS_MODS_FRAME_RATE=0` | on | calibration and the tuner count in frames, as in the original, which goes wrong above 60 Hz |
 | `RS_MODS_GUITARCADE_SKIP=0` | on | a Guitarcade game's tuner has no Skip Tuner, as in the original |
+| `RS_MODS_MENU_RETRY=0` | on | a menu asked for before the game's file index has its file is not asked for again, as in the original: the screen can stay white for good |
+| `RS_MODS_ARRANGEMENTS=0` | on | Learn a Song's page fills a slot for every arrangement of a song, as in the original: a song with more than five crashes it |
 | `RS_MODS_LOG=1` | off | log what the built-in fixes apply to `logs/last-run.log` |
 | `RS_STEAM_DLC=LIST`, or `none` | your DLC, and the AppID of every archive in the copy's `dlc/` | only these AppIDs (or none) count as the game's DLC, in place of the list the copy keeps. For tests: that list has every song in the copy already, so no player needs it ([How the game finds DLC](#how-the-game-finds-dlc)) |
 | `RS_STEAM_ID=N` | the account whose license has the game | the Steam account the game plays as ([Game files](#game-files)) |
@@ -544,6 +555,7 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_METAL_COLORS=vivid` | sRGB | leave the picture untagged, so a wide-colour (P3) screen, such as a Mac's own, shows it more saturated than the game made it |
 | `RS_METAL_ANISO=N` | 16 | the least anisotropic filtering of mipmapped textures, 1-16; 1 keeps the game's own (1x to 4x) |
 | `RS_METAL_MSAA=N` | 4 | MSAA on the game's 3D picture (its screen-sized targets with depth): 1 (off), 2, 4 or 8 |
+| `RS_METAL_SHARPEN=N` | 0 | sharpen the picture on the screen by N%, 0-100, after any upscaling |
 | `RS_METAL_DRAWABLES=2`, or `3` | 3 with vsync, 2 without | the frames queued for the screen: 2 with vsync is low-latency presentation, each frame on the screen a refresh sooner and a late one shown as a repeat |
 | `RS_METAL_HUD=1` | off | Apple's Metal Performance HUD over the game (macOS 13 and later): its frame rate, frame times and GPU memory |
 | `RS_WINDOW_ANY_SHAPE=0` | on | a window keeps 16:9, as in the original ([Window modes](#window-modes)) |
@@ -555,6 +567,7 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_AUDIO_INPUT_TRIM=0` | on | stale guitar audio is not dropped |
 | `RS_AUDIO_STABLE_UIDS=0`, `RS_AUDIO_INPUTS_FIRST=0` | on | the game's own device scan, which loses an interface when another device, such as a webcam, fails to open |
 | `RS_AUDIO_INPUT…`, `RS_AUDIO_CHANNEL_ENTRIES=N` | | the guitar input's channel, gain, level and list: [Guitar input](#guitar-input) |
+| `RS_AUDIO_FAKE_INPUT=…`, `RS_AUDIO_FAKE_GAIN_DB=N` | none | for tests: an input device that isn't there, "RS Re-ARMed Test Input", whose channels play WAV files, tones or silence ([TESTING.md](TESTING.md#unattended-runs)) |
 | `RS_AUDIO_LOG=1` | off | log the audio setup to `logs/last-run.log` |
 | `RS_STEAM_LOG=1`, `RS_FILE_LOG=1` | off | log the offline Steam layer's calls, and the files a mod serves, to `logs/last-run.log` |
 | `RS_LOAD_MODS=0`, `RS_MODS_PATH=PATH` | every `.dylib` in `mods/` | no mods; another folder of mods, or one library (`launchctl setenv` only) |

@@ -79,6 +79,7 @@ Both editions play. Learn & Play has had far less testing than the Mac edition.
 | Built-in fixes, Re-ARMed title logo, no intro screens or Auto Save warning | ✅ | ✅ |
 | Calibration and the tuner the same at any frame rate | ⚠️ not yet played with a guitar above 60 Hz | ⚠️ the same |
 | Skip Tuner in a Guitarcade game's tuner | ✅ the button and its warning; ⚠️ a game played with a guitar after it | ✅ ⚠️ the same |
+| A menu asked for too early asked again (the white loading screen); Learn a Song's long songs (four alternate arrangements, no crash) | ⚠️ built and tested without the game, not played | ⚠️ the same |
 | Switches set in the installer (Settings and switches…) | ✅ | ✅ |
 | Offline, no Ubisoft sign-in, your Steam profiles copied in once | ✅ | ✅ |
 | Real Tone cable | ✅ | ✅ ² |
@@ -91,10 +92,11 @@ Both editions play. Learn & Play has had far less testing than the Mac edition.
 | Input channel and gain, every channel listed, calibration that can boost | ✅ | ✅ |
 | Window, full screen, Retina (MetalFX upscaling), sRGB colours on wide-colour screens | ✅ | ✅ the same renderer; the upscaled picture not checked |
 | A render scale, 50-100%, for less GPU work (the installer's Render scale, under Advanced) | ✅ | ✅ 50% is fine |
-| The picture switches in the game's own menu (OPTIONS → ADV DISPLAY SETTINGS) | ✅ | ✅ (not released) the ten that apply to Metal, without RENDERER and MULTITHREADED GL ENGINE |
+| The picture switches in the game's own menu (OPTIONS → ADV DISPLAY SETTINGS) | ✅ | ✅ the eleven that apply to Metal, without RENDERER and MULTITHREADED GL ENGINE; ⚠️ four taking effect at once, not yet tried |
 | Scrolling lists with the trackpad and the mouse wheel | ✅ | ✅ the same rows for the same swipe |
 | A 16:10 or ultrawide screen or window drawn at its own shape | ✅ a window of any shape; ⚠️ full screen on such a screen | ✅ a window of any shape, full screen on a MacBook's screen; ⚠️ an ultrawide screen |
 | Sharper textures (anisotropic filtering, the game's LOD bias) and 4x MSAA | ✅ | ✅ the same renderer; not compared with them off |
+| Sharpening, after any upscaling | ✅ | ⚠️ the same renderer, not yet tried |
 | A performance overlay (Apple's Metal HUD) and low-latency presentation | ✅ | ⚠️ the same code, not yet tried |
 | Frame rate follows the display | ✅ 60 and 75 Hz; ⚠️ 120 Hz | ✅ 60 and 75 Hz; ⚠️ 120 Hz |
 | Metal renderer, shaders prepared at install | ✅ | ✅ |

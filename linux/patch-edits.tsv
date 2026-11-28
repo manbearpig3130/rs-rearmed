@@ -6,7 +6,7 @@
 # Made and checked by linux/check_patch_sites.py from the pinned image.
 # address, range, new, covered, fixes, yes|no, why.
 0x100004abb	3	11	7	0	yes	
-0x100011a68	5	65	5	0	yes	
+0x100011a68	5	74	5	0	yes	
 0x100014e0b	5	8	5	0	yes	
 0x1000151c5	2	5	7	0	yes	
 0x1000157e0	4	8	7	0	yes	
@@ -28,9 +28,10 @@
 0x10010e4b5	3	4	8	1	yes	
 0x10010e664	4	8	10	1	yes	
 0x10010e681	5	8	5	0	yes	
-0x10010e9a9	4	71	6	1	yes	
+0x10010e9a9	4	138	6	1	yes	
 0x10010ef86	5	91	5	3	yes	
-0x10010ef8b	6	11	6	1	yes	
+0x10010ef8b	6	91	6	3	yes	
+0x10010ef91	7	18	7	1	yes	
 0x10010f71e	3	6	8	1	yes	
 0x10010f743	3	16	8	0	yes	
 0x10010fc71	3	15	7	0	yes	
@@ -42,9 +43,11 @@
 0x100111acd	4	7	9	0	yes	
 0x100150f4f	4	9	7	0	yes	
 0x100161893	4	10	7	1	yes	
+0x10017a952	11	43	11	4	yes	
 0x10017a95d	18	49	18	2	yes	
 0x10017ab3f	18	49	18	2	yes	
-0x100197f92	21	248	21	1	yes	
+0x10017ab53	11	43	11	4	yes	
+0x100197f92	21	280	21	1	yes	
 0x10019a217	6	13	6	0	yes	
 0x10019a284	7	12	7	0	yes	
 0x10019c73c	5	28	5	1	yes	
@@ -75,8 +78,8 @@
 0x1001b164f	4	7	7	0	yes	
 0x1001b16df	4	7	7	0	yes	
 0x1001b6c0a	9	27	9	0	yes	
-0x1001d42e0	22	90	22	0	yes	
-0x1001d4350	25	59	25	0	yes	
+0x1001d42e0	22	102	22	0	yes	
+0x1001d4350	25	68	25	0	yes	
 0x1001eb6fb	10	16	10	2	yes	
 0x1003be84a	6	9	6	0	yes	
 0x10040bddf	7	13	7	0	yes	

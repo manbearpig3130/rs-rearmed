@@ -412,6 +412,9 @@ nf_adapter_size
 seven_fretgrid_wire_head
 seven_fretgrid_wire_rec
 seven_fretgrid_wire_state
+seven_marker_player
+instrument_type
+seven_profile_pegs
 detect_target_string
 detect_target_fret
 tuner_entity_release_slot
@@ -419,6 +422,14 @@ sng_note_time
 sng_note_sustain
 headstock_seg_values
 guitar_string_size
+rangefx_end
+rangefx_pieces
+fxpiece_hash
+fxpiece_entity
+# tuner and pitch fixes (rs7string beta.4)
+detection_floor
+# wave2 P2 extended bass
+sng_note_string
 # --- Seven-String Guitar: end
 # --- Frame rate (built in: overrides/mods/framerate.c)
 service_holder_frame_dt           # ServiceManager holder: float, this frame's time in seconds
@@ -435,3 +446,23 @@ ui_class_slot             # a control's vtable: its class info
 ui_class_parent           # a class info: its parent's
 ui_checkbox_checked       # RSCheckBox: u8 checked
 ui_slider_value           # RSSlider: float value
+
+# stock-game fixes (overrides/mods/mods_shared.c)
+menu_movie_uri          # a menu movie object: its "urn:application:x-shockwave-flash:NAME" string, a string of the game's
+file_index_name         # the local file index's writer: from its frame pointer (negative), the file's name and extension, a string of the game's
+
+# wave3 headstock (rearmed-mods seven_headstock.c)
+ni_local_rotate         # NiAVObject: the local rotation, nine floats (a 3x3, row by row)
+headstock_seg_loaded    # Rnd_Headstock: u8 per string segment, loaded (the game's segment colour loop colours a slot only when set)
+# wave3 alts: the scrollable "Other arrangements" list (overrides/mods/mods_shared.c)
+menu_page_root          # the menu class: the view definition root a build fills, a pointer (a new one per build)
+menu_page_node          # the menu class: the page's node under the root, a pointer
+menu_page_focus         # the menu class: the focused button's id, a string of the game's
+menu_page_focus_lists   # the menu class: the focus lists, six pointers (keys: begin, end, capacity; ids: begin, end, capacity)
+las_page_records        # the Learn a Song page: its record vector (begin, end pointers; the second player's follows)
+las_page_records2       # the Learn a Song page: the second player's record vector
+las_page_selected       # the Learn a Song page: the selected record's index, 32 bits
+las_page_slot_counter   # the Learn a Song page: the count the builder raises for each slot, 32 bits
+arr_record_size         # an arrangement record's size
+arr_coop_records        # the co-op arrangement list page: its record vector (begin, end pointers)
+arr_coop_selected       # the co-op arrangement list page: the selected record's index, 32 bits

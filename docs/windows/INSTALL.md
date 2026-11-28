@@ -209,7 +209,11 @@ The design, with the game's own calls, is in [DESIGN.md](DESIGN.md#steam).
 ### The title logo
 
 As in the [Mac edition](../mac/INSTALL.md#the-title-logo), except that the build makes the logo, not the install:
-a refresh that brings a new `static.psarc` removes it, and the next build makes it again.
+a refresh that brings a new `static.psarc` removes it, and the next build makes it again. The branding switch
+(`RS_REARMED=0`, or off in the installer's Settings and switches…) shows the game's own title (`Rocksmith 2014 Learn & Play`) as the logo and app name too, in
+the Dock, the menu and the window title; the window title changes at the next start, the Dock and menu names at
+the next install. A tile already kept in the Dock keeps the name it was added with: remove it and add the app
+again for the new name.
 
 ## Where things are
 
@@ -313,14 +317,16 @@ the other on/off switches, and `KEY=value` for the rest: other lines are ignored
 has is passed on and does nothing), and the top of `logs/last-run.log` says what was used. The Mac edition has
 its own files, read the same way. 
 
-**In the game.** OPTIONS → ADV DISPLAY SETTINGS lists ten of the switches after the game's own rows: FRAME RATE, ANY
-WINDOW SHAPE, LOW LATENCY, METALFX UPSCALING, FULL RETINA RESOLUTION, RENDER SCALE, ANTI-ALIASING, TEXTURE FILTERING,
-COLOR and PERFORMANCE OVERLAY (the Mac edition's twelve without RENDERER and MULTITHREADED GL ENGINE). A change is
-written to `options.env`, as the installer writes it, and takes effect the next time the game starts. A switch set for
-the login session (`launchctl setenv`) still wins over it, so its row shows the session's value, greyed, with SET FOR
-THIS SESSION; LOW LATENCY is greyed at a fixed FRAME RATE, unless
-`RS_METAL_DRAWABLES` has a value it has no choice for (3), which the row can then take out. The list scrolls with the
-focus, and its scroll bar can be dragged. They come with the menu overlay, so not with `RS_MODS_OVERLAY=0`.
+**In the game.** OPTIONS → ADV DISPLAY SETTINGS lists eleven of the switches after the game's own rows: FRAME RATE, ANY
+WINDOW SHAPE, LOW LATENCY, METALFX UPSCALING, FULL RETINA RESOLUTION, RENDER SCALE, SHARPENING, ANTI-ALIASING, TEXTURE
+FILTERING, COLOR and PERFORMANCE OVERLAY (the Mac edition's thirteen without RENDERER and MULTITHREADED GL ENGINE). A
+change is written to `options.env`, as the installer writes it. SHARPENING, ANTI-ALIASING, TEXTURE FILTERING and COLOR
+take effect at once, as in the Mac edition, the others the next time the game starts (the Mac edition also takes LOW
+LATENCY at once, and PERFORMANCE OVERLAY in a game started with it). A switch set for the login session
+(`launchctl setenv`) still wins over it, so its row shows the session's value, greyed, with SET FOR THIS SESSION; LOW
+LATENCY is greyed at a fixed FRAME RATE, unless `RS_METAL_DRAWABLES` has a value it has no choice for (3), which the row
+can then take out, and METALFX UPSCALING with nothing upscaled. The list scrolls with the focus, and its scroll bar can
+be dragged. They come with the menu overlay, so not with `RS_MODS_OVERLAY=0`.
 
 ```
 RS_MODS_INTRO=0
@@ -354,9 +360,11 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_MODS_AUTOSAVE=0` | on | the Auto Save warning shows after profile select |
 | `RS_MODS_OVERLAY=0` | on | the game reads `cache.psarc` alone, without the overlay: no DIRECT CONNECT, SHOP instead of ENUMERATE and UPLAY instead of EXIT GAME, and the lists' scroll bars as the game has them ([Game files](#game-files)) |
 | `RS_MODS_MULTIPLAYER=0` | on | [two players](#two-players): Player 2 on a Real Tone cable only |
-| `RS_REARMED=0` | on | the game's own title logo ([The title logo](#the-title-logo)); set for the build, no logo is made |
+| `RS_REARMED=0` | on | the game's own title as the logo and app name ([The title logo](#the-title-logo)); set for the build, no logo is made |
 | `RS_MODS_FRAME_RATE=0` | on | calibration and the tuner count in frames, as in the original, which goes wrong above 60 Hz |
 | `RS_MODS_GUITARCADE_SKIP=0` | on | a Guitarcade game's tuner has no Skip Tuner, as in the original |
+| `RS_MODS_MENU_RETRY=0` | on | a menu asked for before the game's file index has its file is not asked for again, as in the original: the screen can stay white for good |
+| `RS_MODS_ARRANGEMENTS=0` | on | Learn a Song's page fills a slot for every arrangement of a song, as in the original: a song with more than five crashes it |
 | `RS_MODS_LOG=1` | off | log what the built-in fixes apply to `logs/last-run.log` |
 | `RS_STEAM_DLC=LIST`, or `none` | your DLC, and the AppID of every archive in the copy's `dlc/` | only these AppIDs (or none) count as the game's DLC, in place of the list the copy keeps. For tests: that list has every song in the copy already, so no player needs it ([How the game finds DLC](#how-the-game-finds-dlc)) |
 | `RS_STEAM_ID=N` | the account whose license has the game | the Steam account the game plays as ([Game files](#game-files)) |
@@ -369,6 +377,7 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_METAL_COLORS=vivid` | sRGB | leave the picture untagged, so a wide-colour (P3) screen, such as a Mac's own, shows it more saturated than the game made it |
 | `RS_METAL_ANISO=N` | 16 | the least anisotropic filtering of mipmapped textures, 1-16; 1 keeps the game's own (1x to 4x) |
 | `RS_METAL_MSAA=N` | 4 | MSAA on the game's 3D picture (its screen-sized targets with depth): 1 (off), 2, 4 or 8 |
+| `RS_METAL_SHARPEN=N` | 0 | sharpen the picture on the screen by N%, 0-100, after any upscaling |
 | `RS_METAL_DRAWABLES=2`, or `3` | 3 with vsync, 2 without | the frames queued for the screen: 2 with vsync is low-latency presentation, each frame on the screen a refresh sooner and a late one shown as a repeat |
 | `RS_METAL_HUD=1` | off | Apple's Metal Performance HUD over the game (macOS 13 and later): its frame rate, frame times and GPU memory |
 | `RS_WINDOW_ANY_SHAPE=0` | on | 16:9 with bars, as on Windows, and a resized window keeps the game's resolution ([Window modes](#window-modes)) |
@@ -381,6 +390,7 @@ Each row is a switch set away from its default, and what that does. Everything i
 | `RS_AUDIO_SET_RATE=0` | on | a device is not switched to 48 kHz |
 | `RS_AUDIO_RS_NAMES=0` | on | keep CoreAudio's device names (by default only the cable is called "Rocksmith") |
 | `RS_AUDIO_INPUT…`, `RS_AUDIO_CHANNEL_ENTRIES=N` | | the guitar input's channel, gain, level and list: [Guitar input](../mac/INSTALL.md#guitar-input) |
+| `RS_AUDIO_FAKE_INPUT=…`, `RS_AUDIO_FAKE_GAIN_DB=N` | none | for tests: an input device that isn't there, "RS Re-ARMed Test Input", whose channels play WAV files, tones or silence ([Mac testing](../mac/TESTING.md#unattended-runs)) |
 | `RS_AUDIO_LOG=1` | off | log the audio setup to `logs/last-run.log` |
 | `RS_STEAM_LOG=1`, `RS_FILE_LOG=1` | off | log the offline Steam layer's calls, and the files a mod serves, to `logs/last-run.log` |
 | `RS_LOAD_MODS=0`, `RS_MODS_PATH=PATH` | every `.dylib` in `mods/` | no mods; another folder of mods, or one library (`launchctl setenv` or `open --env` only) |

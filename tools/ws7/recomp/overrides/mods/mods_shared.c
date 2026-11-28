@@ -22,7 +22,7 @@
 // Configuration
 // ------------------------------------------------------------------------------------------------
 rs_mods_config rs_mods_cfg = {.bypass = 1, .fixes = 1, .autosave = 1, .multiplayer = 1, .budget_s = 0.050,
-                              .intro = 1, .overlay = 1, .guitarcade_skip = 1};
+                              .intro = 1, .overlay = 1, .guitarcade_skip = 1, .menu_retry = 1, .arrangements = 1};
 
 int rs_mods_env_on(const char *name, int dflt) {
   const char *v = getenv(name);
@@ -39,6 +39,8 @@ void rs_mods_reload_config(void) {
   rs_mods_cfg.autosave = rs_mods_env_on("RS_MODS_AUTOSAVE", 1);
   rs_mods_cfg.multiplayer = rs_mods_env_on("RS_MODS_MULTIPLAYER", 1);
   rs_mods_cfg.guitarcade_skip = rs_mods_env_on("RS_MODS_GUITARCADE_SKIP", 1);
+  rs_mods_cfg.menu_retry = rs_mods_env_on("RS_MODS_MENU_RETRY", 1);
+  rs_mods_cfg.arrangements = rs_mods_env_on("RS_MODS_ARRANGEMENTS", 1);
   rs_mods_cfg.budget_s = 0.050;
   const char *b = getenv("RS_MODS_BUDGET_MS");
   if (b && *b) {
@@ -654,6 +656,838 @@ static void on_skip_offer(rc_mid_frame *f, void *user) {
   if (rs_mods_cfg.guitarcade_skip && g_skip_offer >= 0) rc_mid_set(f, g_skip_offer, 1);
 }
 
+// ------------------------------------------------------------------------------------------------
+// The white loading screen (RS_MODS_MENU_RETRY=0 is the original). A menu is a Scaleform movie, and the game asks the
+// asset locator for its file, urn:application:x-shockwave-flash:NAME, once, from the movie's setup. At start-up the
+// local file index is still being built by the indexing threads. A locator that does not have the file yet refuses
+// the request, discards it and answers no; the request's caller ignores the answer and nothing asks again, so the
+// load group waits for a movie that is never made and the screen stays white. It takes a start where the index is
+// late (a community fast-load cache.psarc, a busy CPU).
+//
+// The request is the game's own function (menu_movie_request) and takes the movie and the request's id, and the
+// movie's file is the last part of its URI. Four mid points follow one request on the game thread: its start (the
+// movie and the id), the locator call that is about to be made and what it answered (menu_request, menu_locate,
+// menu_located; a movie with no URI makes no call, and what is answered then is not an answer). A rejected request is
+// kept in a table of MENU_SLOTS. The indexing threads end each file at file_indexed: a table entry whose file name that
+// is gets a flag (the threads do nothing else, under a short lock the game thread takes to change the table). The
+// game thread, in front of every frame (the game_frame hook), asks again for each rejected request whose file has been
+// indexed since, once, by the game's own function with the id it first had. If the flag never comes (a path of the
+// index this does not follow) a rejected request is asked again every MENU_FALLBACK_S seconds, MENU_FALLBACK_MAX times
+// at most, with a line in the log. A request that is accepted leaves the table; so does one whose movie is not what
+// it was (its first word, its name) or that has waited MENU_MAX_AGE_S: the game may have let it go.
+//
+// The game's own timing is the earlier of two: the replay happens at a frame's start, not in the load group's update
+// (which is where the request comes from). Nothing else asks in between, and the request only hands the movie to
+// the locator, which answers on the loader thread as it does for any other.
+// ------------------------------------------------------------------------------------------------
+#define MENU_SLOTS 16
+#define MENU_NAME 64
+#define MENU_FALLBACK_S 5.0
+#define MENU_FALLBACK_MAX 6
+#define MENU_MAX_AGE_S 120.0
+
+typedef struct {
+  int used;
+  int rejected;           // the locator said no (else: asked, no answer yet)
+  const void *movie;      // as the game thread saw it (a host pointer)
+  const void *vtable;     // the movie's first word then
+  uint32_t id[2];         // the request's id, its two words
+  char name[MENU_NAME];   // the movie's file, without its extension
+  double born, since;     // when it was first asked, and when it last was rejected or asked again
+  unsigned replays, fallbacks;
+  atomic_int published;   // a file of that name was indexed since (the indexing threads set it)
+} menu_req;
+
+static struct {
+  menu_req q[MENU_SLOTS];
+  unsigned next;          // the slot that goes when all are used
+  atomic_int active;      // entries in use: the indexing threads look no further when it is 0
+  int on;                 // every point is there
+  int m_movie, m_lo, m_hi, m_accepted, m_frame;
+} g_menu;
+static atomic_flag g_menu_lock = ATOMIC_FLAG_INIT;
+// The game thread's: the request now running, from its start to the locator's answer
+static _Thread_local struct {
+  int on, located;
+  const void *movie;
+} t_menu;
+static _Thread_local int t_menu_again;  // the request now running is one of ours
+
+static void menu_lock(void) {
+  while (atomic_flag_test_and_set_explicit(&g_menu_lock, memory_order_acquire)) {}
+}
+static void menu_unlock(void) { atomic_flag_clear_explicit(&g_menu_lock, memory_order_release); }
+
+// A game string's text, copied (the text in place, or behind a pointer at its start); 0 when it does not fit n
+static int game_text(const void *s, char *out, size_t n) {
+  const uint8_t *str = s;
+  int in_place = rc_mod_ptr(str + RC_OFF(efd_str_inline)) == (const void *)(str + RC_OFF(efd_str_size));
+  const char *text = in_place ? (const char *)str : (const char *)rc_mod_ptr(str);
+  if (!text) return 0;
+  size_t len = 0;
+  while (len < n && text[len]) len++;
+  if (len == n) return 0;
+  memcpy(out, text, len + 1);
+  return 1;
+}
+
+// The movie's file: the last part of its URI; 0 for a movie with none
+static int menu_movie_name(const void *movie, char *name, size_t n) {
+  char uri[128];
+  if (!game_text((const uint8_t *)movie + RC_OFF(menu_movie_uri), uri, sizeof uri)) return 0;
+  const char *colon = strrchr(uri, ':'), *part = colon ? colon + 1 : uri;
+  if (!*part || strlen(part) >= n) return 0;
+  strcpy(name, part);
+  return 1;
+}
+
+// 1 when the file (a name and an extension) is the movie's: its name, in any case, and then a dot
+static int menu_name_is(const char *name, const char *file) {
+  size_t i = 0;
+  for (; name[i]; i++)
+    if (tolower((unsigned char)name[i]) != tolower((unsigned char)file[i])) return 0;
+  return name[0] && file[i] == '.';
+}
+
+static menu_req *menu_find(const void *movie) {  // locked
+  for (int k = 0; k < MENU_SLOTS; k++)
+    if (g_menu.q[k].used && g_menu.q[k].movie == movie) return &g_menu.q[k];
+  return NULL;
+}
+static void menu_drop(menu_req *r) {  // locked
+  if (r->used) atomic_fetch_sub(&g_menu.active, 1);
+  r->used = 0;
+}
+
+static void on_menu_request(rc_mid_frame *f, void *user) {
+  (void)user;
+  t_menu.on = 0;
+  if (!g_menu.on || !rs_mods_cfg.menu_retry) return;
+  const void *movie = (const void *)(uintptr_t)rc_mid_get(f, g_menu.m_movie);
+  char name[MENU_NAME];
+  if (!movie || !menu_movie_name(movie, name, sizeof name)) return;
+  t_menu.on = 1, t_menu.located = 0, t_menu.movie = movie;
+  menu_lock();
+  menu_req *r = menu_find(movie);
+  if (!r || !t_menu_again) {  // a request of the game's: tracked from its start
+    if (!r) {
+      for (int k = 0; k < MENU_SLOTS && !r; k++)
+        if (!g_menu.q[k].used) r = &g_menu.q[k];
+      if (!r) menu_drop(r = &g_menu.q[g_menu.next++ % MENU_SLOTS]);  // all used: the oldest is a dead movie by now
+      r->used = 1;
+      atomic_fetch_add(&g_menu.active, 1);
+    }
+    double t = now_s();
+    r->rejected = 0, r->movie = movie, r->vtable = rc_mod_ptr(movie), r->born = r->since = t;
+    r->id[0] = (uint32_t)rc_mid_get(f, g_menu.m_lo), r->id[1] = (uint32_t)rc_mid_get(f, g_menu.m_hi);
+    r->replays = r->fallbacks = 0;
+    atomic_store(&r->published, 0);
+    memcpy(r->name, name, strlen(name) + 1);
+  }
+  menu_unlock();
+}
+
+static void on_menu_locate(rc_mid_frame *f, void *user) {
+  (void)f, (void)user;
+  if (t_menu.on) t_menu.located = 1;
+}
+
+static void on_menu_located(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!t_menu.on || !t_menu.located) return;  // a movie with no URI: nothing was asked
+  t_menu.on = t_menu.located = 0;
+  int accepted = (uint8_t)rc_mid_get(f, g_menu.m_accepted) != 0;
+  char name[MENU_NAME];
+  unsigned replays = 0;
+  menu_lock();
+  menu_req *r = menu_find(t_menu.movie);
+  if (r) {
+    memcpy(name, r->name, sizeof name);
+    replays = r->replays;
+    if (accepted) menu_drop(r);
+    else r->rejected = 1, r->since = now_s();
+  }
+  menu_unlock();
+  if (!r) return;
+  if (!accepted && !replays)
+    rs_mods_logf("menu load: '%s' was rejected (not indexed yet); waiting for the indexer", name);
+  else if (!accepted) rs_mods_logf("menu load: '%s' rejected again (request %u)", name, replays + 1);
+  else if (replays) rs_mods_logf("menu load: '%s' accepted after %u requests", name, replays + 1);
+}
+
+// On the indexing threads (and the loader's), after a file is in the index: what is asked is the game thread's
+static void on_file_indexed(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!g_menu.on || !rs_mods_cfg.menu_retry || !atomic_load(&g_menu.active)) return;
+  const uint8_t *frame = (const uint8_t *)(uintptr_t)rc_mid_get(f, g_menu.m_frame);
+  char file[2 * MENU_NAME];
+  if (!frame || !game_text(frame + RC_OFF(file_index_name), file, sizeof file)) return;
+  menu_lock();
+  for (int k = 0; k < MENU_SLOTS; k++)
+    if (g_menu.q[k].used && menu_name_is(g_menu.q[k].name, file)) atomic_store(&g_menu.q[k].published, 1);
+  menu_unlock();
+}
+
+// The game's request for a movie again. The Mac's takes the movie and a pointer to the id; Learn & Play's has the movie
+// in eax and the id's words on the stack, which a call by name can't do (its prototype is `custom`): eax is set in
+// the thread's context, which the callee's caller-saved registers allow, and put back.
+static void menu_ask_again(const void *movie, const uint32_t id[2]) {
+  if (rc_guest_ptr_size == 8) {
+    static _Thread_local uint32_t *words;
+    if (!words && !(words = rc_guest_alloc(2 * sizeof *words))) return;
+    words[0] = id[0], words[1] = id[1];
+    OV_GUEST(menu_movie_request, (uint64_t)(uintptr_t)movie, (uint64_t)(uintptr_t)words);
+    return;
+  }
+  rc_ctx *c = rc_thread_ctx();
+  const uint64_t eax = c->r[0], args[2] = {id[0], id[1]};
+  c->r[0] = RC_GUEST(movie);
+  rc_call_guest(RC_GA(menu_movie_request_reg), args, 2, 0, 0, 0);
+  c->r[0] = eax;
+}
+
+// One table entry that is due, asked again; 0 when none is
+static int menu_replay_one(void) {
+  menu_req *r = NULL;
+  int indexed = 0;
+  double t = now_s();
+  menu_lock();
+  for (int k = 0; k < MENU_SLOTS; k++) {
+    menu_req *e = &g_menu.q[k];
+    if (e->used && t - e->born > MENU_MAX_AGE_S) menu_drop(e);
+    if (!r && e->used && e->rejected && atomic_exchange(&e->published, 0)) r = e, indexed = 1;
+  }
+  for (int k = 0; k < MENU_SLOTS && !r; k++) {
+    menu_req *e = &g_menu.q[k];
+    if (e->used && e->rejected && e->fallbacks < MENU_FALLBACK_MAX && t - e->since >= MENU_FALLBACK_S)
+      r = e, r->fallbacks++, r->since = t;
+  }
+  menu_unlock();
+  if (!r) return 0;
+  const void *movie = r->movie;
+  char name[MENU_NAME], now_name[MENU_NAME];
+  memcpy(name, r->name, sizeof name);
+  // still the movie it was: the game may have let it go (the first word of a freed object is the allocator's)
+  if (rc_mod_ptr(movie) != r->vtable || !menu_movie_name(movie, now_name, sizeof now_name) || strcmp(name, now_name)) {
+    menu_lock();
+    menu_drop(r);
+    menu_unlock();
+    return 1;
+  }
+  r->replays++;
+  if (indexed) rs_mods_logf("menu load: '%s' is indexed now; asking again (request %u)", name, r->replays + 1);
+  else
+    rs_mods_logf("menu load: WARNING '%s' still rejected and its file was not seen being indexed; asking again anyway "
+                 "(fallback %u of %u)", name, r->fallbacks, MENU_FALLBACK_MAX);
+  t_menu_again = 1;
+  menu_ask_again(movie, r->id);
+  t_menu_again = 0;
+  return 1;
+}
+
+static int before_menu_frame(rc_ctx *c, void *user) {
+  (void)c, (void)user;
+  if (!g_menu.on || !rs_mods_cfg.menu_retry || !atomic_load(&g_menu.active)) return 0;
+  for (int k = 0; k < MENU_SLOTS && menu_replay_one(); k++) {}
+  return 0;
+}
+
+static void menu_points(void) {
+  int request = rc_mid_add_name("menu_request", on_menu_request, NULL);
+  int locate = rc_mid_add_name("menu_locate", on_menu_locate, NULL);
+  int located = rc_mid_add_name("menu_located", on_menu_located, NULL);
+  int indexed = rc_mid_add_name("file_indexed", on_file_indexed, NULL);
+  int frame = rc_hook_add_name("game_frame", before_menu_frame, NULL, NULL);
+  if (request < 0 || locate < 0 || located < 0 || indexed < 0 || frame < 0 || rc_mid_is_none(request) ||
+      rc_mid_is_none(locate) || rc_mid_is_none(located) || rc_mid_is_none(indexed))
+    return;
+  g_menu.m_movie = rc_mid_value(request, "movie"), g_menu.m_lo = rc_mid_value(request, "id_lo");
+  g_menu.m_hi = rc_mid_value(request, "id_hi"), g_menu.m_accepted = rc_mid_value(located, "accepted");
+  g_menu.m_frame = rc_mid_value(indexed, "frame");
+  if (g_menu.m_movie < 0 || g_menu.m_lo < 0 || g_menu.m_hi < 0 || g_menu.m_accepted < 0 || g_menu.m_frame < 0 ||
+      !RC_HAS_OFF(menu_movie_uri) || !RC_HAS_OFF(file_index_name) || !RC_HAS_OFF(efd_str_inline) ||
+      !RC_HAS_OFF(efd_str_size))
+    return;
+  g_menu.on = 1;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Learn a Song with more than five arrangements (RS_MODS_ARRANGEMENTS=0 is the original). The page's builder fills a
+// slot, altArrangementsP1_slot%d, for each arrangement of the song but the selected one, and the movie
+// (las_songoptions.gfx) has four: the selected arrangement and four others. A fifth alternate asks Scaleform for a
+// slot the movie does not have, which leaves a display node with nothing behind it, and the renderer crashes on it
+// (a misaligned 16-byte load) when it draws the page. At each alternate the builder has the slots it has filled so
+// far in a local; with four filled the hook goes on at the loop's end, as the builder does for the selected
+// arrangement. A song with five or fewer arrangements is not touched.
+//
+// The list scrolls (after RS Extended Range's arrangements.cpp, which scrolls the same page) when every point and
+// name of it is there; else the others show their first four alternates, in the record order, as before. The page
+// shows a window of four alternates from a scroll position (0: the first four). The builder runs again for each
+// scroll, the way the game runs it on page entry, with what it does not write kept:
+//   las_alt_slot   (ALTS) each alternate: in the window and a slot free, the builder goes on; else to the loop's latch
+//   las_alt_label  (ALTL) the first / last shown entry's Label gets " (-N)" / " (+N)", the hidden alternates
+//   las_alt_root   (ALTR) the builder starts with a new view definition root: the previous one's members (the song
+//                  header) are merged into it, which the builder does not write
+//   las_alt_page   (ALTF) the page opened anew starts at the top
+//   menu_focus_step_up / _down  arrow Up on the first shown entry / Down on the last (and the mouse wheel, the same
+//                  focus steps) scroll the window, like the game's own lists; the step is made 0 steps long
+// A rebuild first empties the page's record vectors and removes the four slots (the movie redraws an entry only when
+// its node is new to the tree it reads), takes the recommendation buttons' States nodes out of the old buttons and
+// gives them to the new ones (the focus setter looks "Buttons.<id>.States" up and refuses a button without it), and
+// puts the page's own focus lists (the movie's ids from page entry) back around the build, which refills the ones it
+// has (the builder's differ, and the focus steps and Play look the focus up in the movie's). Last, the focus moves
+// one entry away and back by the game's own steps: the movie redraws the entries on a focus move, and a Label that
+// is the same text as the one it drew is not redrawn, so a rebuild's labels end in a space.
+// PageUp / PageDown (window messages in Learn & Play) do not scroll: only the arrow keys and the mouse wheel.
+// ------------------------------------------------------------------------------------------------
+#define LAS_ALT_SLOTS 4
+#define LAS_PLAYNEXTS 3                 // the recommendation buttons playnext_slot1..3
+#define LAS_LEFT_AFTER_S 0.5            // no page update for this long: the page was left and opened anew
+#define LAS_LABEL_TEXT 224              // the room for a Label's text and its tag
+#define LAS_MEM_KEYS 0                  // the guest memory the scroll hands the game (las_mem): the key words of the slots
+#define LAS_MEM_STATES 48               // and "States" (8 bytes each); the States node words of the playnext buttons
+#define LAS_MEM_NAMES 80                // the names it asks the game for: 5 of 32 bytes
+#define LAS_MEM_LABEL 256               // the Label string it hands the game: a game string, then its text
+#define LAS_MEM_SIZE 512
+#define LAS_STRING 0x20                 // the room for the game's string object itself (the Mac's 32 bytes)
+
+static int g_alt_filled = -1, g_alt_latch = -1;  // the point's value and continuation; -1: this game has none
+
+static struct {
+  int on;                                         // every point and name is there
+  int v_page, v_record;                           // las_alt_slot's
+  int v_text;                                     // las_alt_label's
+  int v_root;                                     // las_alt_root's
+  int v_open;                                     // las_alt_page's
+  uint8_t *mem;                                   // LAS_MEM_SIZE of guest memory, made when first needed
+  const void *page;                               // the page las_alt_page saw last
+  double tick;                                    // and when
+  uint32_t offset;                                // alternates above the first shown entry
+  uint32_t alternates;                            // records of the page minus the selected one
+  uint32_t building;                              // the slot (1..4) the builder fills now, 0 outside a shown record
+  void *shown;                                    // inside a rebuild: the root on screen (referenced), merged by ALTR
+  uint8_t spare[6 * 8];                           // the builder's focus lists, kept for its next run
+} g_las;
+// The menu class's focus steps (the Learn a Song page's and the co-op list's), and whether a scroll of ours is running:
+// then the steps are the game's
+static struct {
+  int on;                                         // both points are there
+  int v_up_page, v_up_steps, v_dn_page, v_dn_steps;
+  int busy;
+} g_steps;
+
+// --- the page and the game's nodes, as each game has them: a guest word is the game's pointer width
+static size_t psz(void) { return (size_t)rc_guest_ptr_size; }
+static uint64_t ld_word(const void *at) { return psz() == 8 ? RC_LD(uint64_t, at) : (uint64_t)RC_LD(uint32_t, at); }
+static void st_word(void *at, uint64_t w) {
+  if (psz() == 8) RC_ST(uint64_t, at, w);
+  else RC_ST(uint32_t, at, (uint32_t)w);
+}
+static void st_ptr(void *at, const void *host) { st_word(at, RC_GUEST(host)); }
+static uint8_t *field(const void *page, int64_t off) { return (uint8_t *)(uintptr_t)page + off; }
+#define U64(p) ((uint64_t)(uintptr_t)(p))
+
+static uint8_t *las_mem(void) {
+  if (!g_las.mem && (g_las.mem = rc_guest_alloc(LAS_MEM_SIZE))) memset(g_las.mem, 0, LAS_MEM_SIZE);
+  return g_las.mem;
+}
+// A name for the game, in its memory: 0..2 playnext_slot1..3, 3 States, 4 the key of slot k
+static const char *las_name(unsigned k, const char *text) {
+  char *n = (char *)las_mem() + LAS_MEM_NAMES + 32 * k;
+  snprintf(n, 32, "%s", text);
+  return n;
+}
+
+// The key of slot 1..LAS_ALT_SLOTS (k = slot - 1) or "States" (k = LAS_ALT_SLOTS), made once by the game's key maker
+// and kept, never dropped: the key word's place is what the removing and setting calls are given. 0 if not made.
+static uint8_t *las_key(unsigned k) {
+  uint8_t *key = las_mem() + LAS_MEM_KEYS + 8 * k;
+  if (ld_word(key)) return key;
+  char text[32];
+  if (k == LAS_ALT_SLOTS) snprintf(text, sizeof text, "States");
+  else snprintf(text, sizeof text, "altArrangementsP1_slot%u", k + 1);
+  const char *guest = las_name(4, text);
+  if (psz() == 8) OV_GUEST(json_key_make, U64(key), U64(guest));
+  else OV_GUEST(json_key_intern, U64(guest), U64(key));
+  return ld_word(key) ? key : NULL;
+}
+
+// A child of a node by its name, borrowed. Learn & Play's takes the name in eax: set in the thread's context, which the
+// mid point puts back with the other registers.
+static void *las_find(void *node, const char *name) {
+  if (!node) return NULL;
+  if (psz() == 8) return RC_HOST(OV_GUEST(json_find, U64(node), U64(name)));
+  rc_thread_ctx()->r[0] = RC_GUEST(name);
+  return RC_HOST(OV_GUEST(json_find_ecx, U64(node)));
+}
+static void las_ref(void *node, int add) {  // a node's reference count
+  if (node) OV_VCALL(U64(node), add ? RC_SLOT(json_node_add_ref) : RC_SLOT(json_node_release));
+}
+
+// The vector of records at `vec` (begin, end): how many
+static uint32_t las_count(const uint8_t *vec) {
+  uint64_t b = ld_word(vec), e = ld_word(vec + psz());
+  size_t rs = (size_t)RC_OFF(arr_record_size);
+  return e > b && rs ? (uint32_t)((e - b) / rs) : 0;  // a torn or garbage vector counts as empty
+}
+// The builders append the page's records: empty the vector first, as on page entry.
+static void las_clear(uint8_t *vec) {
+  uint64_t b = ld_word(vec), e = ld_word(vec + psz());
+  size_t rs = (size_t)RC_OFF(arr_record_size);
+  for (unsigned n = 0; e > b && e - b >= rs && n < 1024; e -= rs, n++) OV_GUEST(arr_record_dtor, U64(RC_HOST(e - rs)));
+  st_word(vec + psz(), b);
+}
+
+// The focus lists the builder refills from its nodes ("arrangement3", "playSong") while the lists in use hold the
+// movie's ids from page entry ("Buttons.arrangement3.States"): around a rebuild the builder gets the spare pair (cleared
+// and refilled with its own allocator, kept for the next rebuild), the page keeps its own. Before and after the build.
+static void las_swap_focus(const void *page, uint8_t *spare) {
+  uint8_t *lists = field(page, RC_OFF(menu_page_focus_lists)), tmp[6 * 8];
+  size_t n = 6 * psz();
+  memcpy(tmp, lists, n);
+  memcpy(lists, spare, n);
+  memcpy(spare, tmp, n);
+}
+
+static int las_page_is(const void *page) {  // the Learn a Song page: its first word is its class's vtable
+  return page && (uint64_t)(uintptr_t)rc_mod_ptr(page) == RC_GA(las_page_vtable);
+}
+static int las_focus_is_slot(const void *page, unsigned slot) {  // the focused button is alternate slot 1..4
+  char want[48], focus[64];
+  snprintf(want, sizeof want, "Buttons.altArrangementsP1_slot%u.States", slot);
+  return game_text(field(page, RC_OFF(menu_page_focus)), focus, sizeof focus) && !strcmp(focus, want);
+}
+
+// The recommendation buttons get their States node (which the focus setter looks up as "Buttons.<id>.States" in the
+// root, refusing the move without it) from page entry only; the builder writes the buttons anew without it (arrow Up
+// from the first alternate stuck after a scroll in rs7string, CONFIRMED there). Take each one (referenced, removed
+// from the old button) before the build ...
+static void las_take_states(void *buttons, uint8_t *states) {
+  uint8_t *key = las_key(LAS_ALT_SLOTS);
+  for (unsigned i = 0; i < LAS_PLAYNEXTS; i++) {
+    char n[32];
+    snprintf(n, sizeof n, "playnext_slot%u", i + 1);
+    void *button = las_find(buttons, las_name(i, n)), *node = las_find(button, las_name(3, "States"));
+    st_ptr(states + 8 * i, node);
+    if (node && key) {
+      las_ref(node, 1);
+      OV_GUEST(json_object_remove, U64(button), U64(key));
+    }
+  }
+}
+// ... and give it to the new button that lacks one (json_object_set references and re-parents it)
+static void las_give_states(void *buttons, uint8_t *states) {
+  uint8_t *key = las_key(LAS_ALT_SLOTS);
+  for (unsigned i = 0; i < LAS_PLAYNEXTS; i++) {
+    char n[32];
+    snprintf(n, sizeof n, "playnext_slot%u", i + 1);
+    void *button = las_find(buttons, las_name(i, n)), *node = rc_mod_ptr(states + 8 * i);
+    if (button && node && key && !las_find(button, las_name(3, "States")))
+      OV_GUEST(json_object_set, U64(button), U64(key), U64(states + 8 * i));
+    las_ref(node, 0);
+  }
+}
+
+// Runs the builder again the way the movie shows it. The builder fills a fresh clone of the page's view definition
+// (page +root) and the movie redraws an entry only when its node is new to the tree it reads: the shown slots are
+// removed first, las_alt_root merges the rest of the previous root (the song header) into the clone, and the builder
+// adds the slots anew.
+static void las_rebuild(void *page) {
+  uint8_t *mem = las_mem();
+  las_clear(field(page, RC_OFF(las_page_records)));
+  las_clear(field(page, RC_OFF(las_page_records2)));
+  RC_ST(uint32_t, field(page, RC_OFF(las_page_slot_counter)), 0);
+  void *node = rc_mod_ptr(field(page, RC_OFF(menu_page_node)));
+  for (unsigned slot = 0; slot < LAS_ALT_SLOTS; slot++) {
+    uint8_t *key = las_key(slot);
+    if (key && node) OV_GUEST(json_object_remove, U64(node), U64(key));
+  }
+  uint8_t *states = mem + LAS_MEM_STATES;
+  las_take_states(node, states);
+  las_swap_focus(page, g_las.spare);
+  g_las.shown = rc_mod_ptr(field(page, RC_OFF(menu_page_root)));
+  las_ref(g_las.shown, 1);
+  OV_GUEST(las_build, U64(page));
+  las_ref(g_las.shown, 0);
+  g_las.shown = NULL;
+  las_swap_focus(page, g_las.spare);
+  las_give_states(rc_mod_ptr(field(page, RC_OFF(menu_page_node))), states);
+}
+
+// Moves the window one step and shows it: rebuild, then the movie redraws the entries on a focus move (CONFIRMED in
+// rs7string, no other trigger found), so the focus moves one step away and back with the stock steps. Returns whether
+// the window moved.
+static int las_scroll(void *page, int down, const char *by) {
+  uint32_t offset = rs_mods_alt_scroll(g_las.offset, g_las.alternates, down, !down);
+  rs_mods_logf("Learn a Song: %s, window %u -> %u of %u alternates", by, g_las.offset, offset, g_las.alternates);
+  if (offset == g_las.offset) return 0;
+  char before[64] = "", moved[64] = "";
+  void *pg = page;
+  g_steps.busy = 1;
+  g_las.offset = offset;
+  las_rebuild(pg);
+  game_text(field(pg, RC_OFF(menu_page_focus)), before, sizeof before);
+  OV_GUEST(menu_focus_up, U64(pg), 1);
+  game_text(field(pg, RC_OFF(menu_page_focus)), moved, sizeof moved);
+  OV_GUEST(menu_focus_down, U64(pg), 1);
+  if (!strcmp(before, moved)) OV_GUEST(menu_focus_up, U64(pg), 1);  // the first focusable entry: Up stopped there
+  g_steps.busy = 0;
+  return 1;
+}
+
+static void on_alt_slot(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!rs_mods_cfg.arrangements || g_alt_filled < 0 || g_alt_latch <= 0) return;
+  uint32_t filled = (uint32_t)rc_mid_get(f, g_alt_filled);
+  static atomic_int said;
+  if (g_las.on) {  // the window: the alternates from the scroll position, at most the four the movie has
+    uint8_t *page = (uint8_t *)(uintptr_t)rc_mid_get(f, g_las.v_page);
+    size_t rs = (size_t)RC_OFF(arr_record_size);
+    uint32_t count = las_count(page + RC_OFF(las_page_records));
+    uint32_t index = rs ? (uint32_t)(rc_mid_get(f, g_las.v_record) / rs) : 0;
+    g_las.alternates = count > 0 ? count - 1 : 0;
+    if (index < count && rs_mods_alt_in_window(index, RC_LD(uint32_t, page + RC_OFF(las_page_selected)), g_las.offset) &&
+        filled < LAS_ALT_SLOTS) {
+      g_las.building = filled + 1;
+      return;
+    }
+    g_las.building = 0;
+    if (count > LAS_ALT_SLOTS + 1 && !atomic_exchange(&said, 1))
+      rs_mods_logf("Learn a Song: a song with more than five arrangements shows four alternates at a time; the arrow "
+                   "keys and the mouse wheel scroll the rest");
+    f->go = g_alt_latch;
+    return;
+  }
+  if (filled < LAS_ALT_SLOTS) return;
+  if (!atomic_exchange(&said, 1))
+    rs_mods_logf("Learn a Song: a song with more than five arrangements shows the first four alternates");
+  f->go = g_alt_latch;
+}
+
+// The entry's Label, before it is set from the game string in the text value: the first / last shown entry get the number
+// of hidden alternates appended, on a copy: the game's own string is untouched and destroyed by its own address.
+static void on_alt_label(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!g_las.on || !rs_mods_cfg.arrangements || !g_las.building) return;
+  char tag[16], text[LAS_LABEL_TEXT];
+  rs_mods_alt_label_tag(g_las.building, g_las.offset, g_las.alternates, tag, sizeof tag);
+  // The movie skips an entry whose text equals the one it drew on page entry (CONFIRMED in rs7string: back at the
+  // top nothing redrew), so a rebuild's labels end in a space.
+  if (g_las.shown) strcat(tag, " ");
+  if (!tag[0]) return;
+  size_t tl = strlen(tag);
+  if (!game_text((const void *)(uintptr_t)rc_mid_get(f, g_las.v_text), text, sizeof text - tl) || !las_mem()) return;
+  size_t keep = strlen(text);
+  memcpy(text + keep, tag, tl + 1);
+  uint8_t *obj = las_mem() + LAS_MEM_LABEL, *t = obj + LAS_STRING;  // the game's string, in heap form: the text behind its
+  memset(obj, 0, LAS_STRING);                                        // first word, its end and the buffer's end after
+  memcpy(t, text, keep + tl + 1);
+  st_ptr(obj, t);
+  st_ptr(obj + RC_OFF(efd_str_size), t + keep + tl);
+  st_ptr(obj + RC_OFF(efd_str_inline), t + LAS_LABEL_TEXT - 1);
+  rc_mid_set(f, g_las.v_text, U64(obj));
+}
+
+// The builder has a new view definition root: on a scroll rebuild the previous root's members are merged into it (the song
+// header and the rest the builder does not write), then the builder replaces the slots and recommendations as on page
+// entry.
+static void on_alt_root(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!g_las.on || !g_las.shown) return;
+  void *root = rc_mod_ptr(field((void *)(uintptr_t)rc_mid_get(f, g_las.v_root), RC_OFF(menu_page_root)));
+  if (!root || root == g_las.shown) return;
+  OV_GUEST(json_object_merge, U64(root), U64(g_las.shown), 1);
+}
+
+// The page update, after its base update (runs only while the page opens): a page opened anew starts at the top of the
+// alternates.
+static void on_alt_page(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!g_las.on || !rs_mods_cfg.arrangements) return;
+  void *page = (void *)(uintptr_t)rc_mid_get(f, g_las.v_open);
+  double now = now_s();
+  int entered = page != g_las.page || now - g_las.tick > LAS_LEFT_AFTER_S;
+  g_las.page = page;
+  g_las.tick = now;
+  if (!entered || g_las.offset == 0) return;
+  g_las.offset = 0;
+  if (las_count(field(page, RC_OFF(las_page_records))) > 0) {
+    g_steps.busy = 1;
+    las_rebuild(page);
+    g_steps.busy = 0;
+  }
+}
+
+// The menu class's focus steps (arrow keys and the mouse wheel, game thread). On the Learn a Song page: Down on the last
+// alternate shown / Up on the first scrolls the window while alternates remain beyond it, like the game's own lists,
+// and the step is made no steps long; anything else is the game's step. On the co-op list: coop_step.
+static int coop_step(void *page, int steps);
+static int coop_page_is(const void *page);
+static void las_focus_step(rc_mid_frame *f, int down) {
+  if (!g_steps.on || g_steps.busy || !rs_mods_cfg.arrangements) return;
+  void *page = (void *)(uintptr_t)rc_mid_get(f, down ? g_steps.v_dn_page : g_steps.v_up_page);
+  int steps_v = down ? g_steps.v_dn_steps : g_steps.v_up_steps;
+  if (coop_page_is(page)) {
+    int steps = (int)(uint32_t)rc_mid_get(f, steps_v);
+    if (coop_step(page, down ? steps : -steps)) rc_mid_set(f, steps_v, 0);
+    return;
+  }
+  if (!g_las.on || !las_page_is(page) || !las_focus_is_slot(page, down ? LAS_ALT_SLOTS : 1)) return;
+  if (las_scroll(page, down, down ? "Down" : "Up")) rc_mid_set(f, steps_v, 0);
+}
+static void on_focus_up(rc_mid_frame *f, void *user) { (void)user; las_focus_step(f, 0); }
+static void on_focus_down(rc_mid_frame *f, void *user) { (void)user; las_focus_step(f, 1); }
+
+// The focus step points, once: the menu class's focus steps are one for both pages. 0 when either is missing.
+static int focus_points(void) {
+  static int done = -1;
+  if (done >= 0) return done;
+  int up = rc_mid_add_name("menu_focus_step_up", on_focus_up, NULL);
+  int down = rc_mid_add_name("menu_focus_step_down", on_focus_down, NULL);
+  done = 0;
+  if (up < 0 || down < 0 || rc_mid_is_none(up) || rc_mid_is_none(down)) return 0;
+  g_steps.v_up_page = rc_mid_value(up, "page"), g_steps.v_up_steps = rc_mid_value(up, "steps");
+  g_steps.v_dn_page = rc_mid_value(down, "page"), g_steps.v_dn_steps = rc_mid_value(down, "steps");
+  if (g_steps.v_up_page < 0 || g_steps.v_up_steps < 0 || g_steps.v_dn_page < 0 || g_steps.v_dn_steps < 0) return 0;
+  if (!rc_addr("menu_focus_up") || !rc_addr("menu_focus_down")) return 0;
+  g_steps.on = done = 1;
+  return 1;
+}
+
+// The points, values, names and offsets the scroll needs, all of them or it stays off. `alt` is las_alt_slot's index.
+static int las_points(int alt) {
+  if (alt < 0 || rc_mid_is_none(alt)) return 0;
+  g_las.v_page = rc_mid_value(alt, "page"), g_las.v_record = rc_mid_value(alt, "record");
+  int label = rc_mid_add_name("las_alt_label", on_alt_label, NULL);
+  int root = rc_mid_add_name("las_alt_root", on_alt_root, NULL);
+  int open = rc_mid_add_name("las_alt_page", on_alt_page, NULL);
+  if (label < 0 || root < 0 || open < 0 || rc_mid_is_none(label) || rc_mid_is_none(root) || rc_mid_is_none(open) ||
+      !focus_points())
+    return 0;
+  g_las.v_text = rc_mid_value(label, "text"), g_las.v_root = rc_mid_value(root, "page");
+  g_las.v_open = rc_mid_value(open, "page");
+  if (g_las.v_page < 0 || g_las.v_record < 0 || g_las.v_text < 0 || g_las.v_root < 0 || g_las.v_open < 0) return 0;
+  if (!RC_HAS_OFF(menu_page_root) || !RC_HAS_OFF(menu_page_node) || !RC_HAS_OFF(menu_page_focus) ||
+      !RC_HAS_OFF(menu_page_focus_lists) || !RC_HAS_OFF(las_page_records) || !RC_HAS_OFF(las_page_records2) ||
+      !RC_HAS_OFF(las_page_selected) || !RC_HAS_OFF(las_page_slot_counter) || !RC_HAS_OFF(arr_record_size) ||
+      !RC_HAS_OFF(efd_str_inline) || !RC_HAS_OFF(efd_str_size) || !RC_HAS_OFF(json_node_add_ref_slot) ||
+      !RC_HAS_OFF(json_node_release_slot))
+    return 0;
+  const char *need[] = {"json_object_remove", "json_object_merge", "json_object_set", "las_build", "las_page_vtable",
+                        "arr_record_dtor",
+                        rc_guest_ptr_size == 8 ? "json_find" : "json_find_ecx",
+                        rc_guest_ptr_size == 8 ? "json_key_make" : "json_key_intern"};
+  for (size_t k = 0; k < sizeof need / sizeof *need; k++)
+    if (!rc_addr(need[k])) return 0;
+  return 1;
+}
+
+// ------------------------------------------------------------------------------------------------
+// The co-op arrangement list (after RS Extended Range's coop.cpp). The co-op song page's "other arrangements" list (the
+// page class arr_coop_vtable, builder arr_coop_build) shows every record in one column; about nine fit the panel and
+// the rest are drawn below it, focusable but invisible. The movie keeps one row per entry node and places it by the
+// node's SortOrder (removing nodes left their rows drawn, new nodes were not drawn: rs7string, CONFIRMED there), so
+// every entry stays and only its SortOrder moves. With more than RS_MODS_COOP_ROWS records, coop_sort_order gives the
+// records in a window of that many, from a scroll position, the rows 0.. and the others a row below the panel (the
+// builder's own would be the position). The menu class's focus steps (arrow keys, the mouse wheel) go by record and
+// scroll the window by running the builder again. Enter selects map[position of the focus in the focus list] (page
+// +0x380, filled by the builder with the record index, read by the select handler), but the list is in record order
+// only while the window is at the top, so coop_select takes the record from the focused entry's name
+// ("arrangement<record index>") instead.
+// ------------------------------------------------------------------------------------------------
+#define COOP_SLOTS 2        // a window for each player's page
+#define COOP_HIDDEN_ROW 100 // rows from here on are below the panel
+
+static struct {
+  int on;
+  int v_sort_page, v_sort_record, v_sort_row;  // coop_sort_order's
+  int v_sel_page, v_sel_record;                // coop_select's
+  int rebuilding;                              // a build of ours is running: the page's own window is kept
+  struct {
+    const void *page;                          // the page this slot is the window of
+    uint32_t offset;                           // records above the first shown entry
+    uint8_t spare[6 * 8];                      // the builder's focus lists, kept for its next run
+  } st[COOP_SLOTS];
+} g_coop;
+
+static int coop_page_is(const void *page) {
+  return g_coop.on && page && (uint64_t)(uintptr_t)rc_mod_ptr(page) == RC_GA(arr_coop_vtable);
+}
+static uint32_t coop_count(const void *page) { return las_count(field(page, RC_OFF(arr_coop_records))); }
+static uint32_t coop_selected(const void *page) { return RC_LD(uint32_t, field(page, RC_OFF(arr_coop_selected))); }
+
+// The window of `page`, or null when it has none (a page the game built before this saw it)
+static int coop_find(const void *page) {
+  for (int k = 0; page && k < COOP_SLOTS; k++)
+    if (g_coop.st[k].page == page) return k;
+  return -1;
+}
+// The window of a page being built: the page's own, a free one, or one whose page has gone (its first word is no longer
+// the co-op list's); -1 when both players' pages are live. Its spare focus lists stay: the next page's builder clears
+// and refills them with the game's allocator.
+static int coop_claim(const void *page) {
+  int k = coop_find(page);
+  for (int j = 0; k < 0 && j < COOP_SLOTS; j++)
+    if (!g_coop.st[j].page || !coop_page_is(g_coop.st[j].page)) k = j;
+  if (k >= 0 && g_coop.st[k].page != page) g_coop.st[k].page = page, g_coop.st[k].offset = 0;
+  return k;
+}
+
+// Runs the builder again with the window where it is: the page keeps its focus lists
+static void coop_rebuild(void *page, int k) {
+  las_clear(field(page, RC_OFF(arr_coop_records)));
+  las_swap_focus(page, g_coop.st[k].spare);
+  g_coop.rebuilding = 1;
+  OV_GUEST(arr_coop_build, U64(page));
+  g_coop.rebuilding = 0;
+  las_swap_focus(page, g_coop.st[k].spare);
+}
+
+// The position of record `record`'s entry in the page's focus id list, or -1
+static int coop_position(const void *page, uint32_t record) {
+  const uint8_t *lists = field(page, RC_OFF(menu_page_focus_lists));
+  uint64_t b = ld_word(lists + 3 * psz()), e = ld_word(lists + 4 * psz());
+  size_t size = (size_t)RC_OFF(efd_str_inline) + psz();  // a game string: the room of its in-place text and its two pointers
+  char id[64];
+  for (uint64_t at = b, n = 0; at < e && n < 1024; at += size, n++)
+    if (game_text(RC_HOST(at), id, sizeof id) && rs_mods_coop_focus_index(id) == (int)record) return (int)(n);
+  return -1;
+}
+
+// A focus step of `steps` records (negative: up). The stock steps move through the focus id list, which the movie orders
+// by SortOrder at page entry: in record order only while the window is at the top (CONFIRMED in rs7string). So the step
+// goes by record: scroll the window onto the target record (rebuild), then give the game's step the distance between the
+// two entries in the list. Returns 0 for a step that is the game's own (a list that fits, a focus that is no entry).
+static int coop_step(void *page, int steps) {
+  char focus[64];
+  int k = coop_find(page);
+  uint32_t count = coop_count(page);
+  if (k < 0 || count <= RS_MODS_COOP_ROWS || !game_text(field(page, RC_OFF(menu_page_focus)), focus, sizeof focus)) return 0;
+  int index = rs_mods_coop_focus_index(focus);
+  if (index < 0 || (uint32_t)index >= count) return 0;
+  uint32_t target = rs_mods_coop_step((uint32_t)index, count, steps);
+  uint32_t offset = rs_mods_coop_window_for(g_coop.st[k].offset, count, target);
+  int from = coop_position(page, (uint32_t)index), to = coop_position(page, target), moves = steps;
+  g_steps.busy = 1;
+  if (offset != g_coop.st[k].offset) {
+    rs_mods_logf("Learn a Song: co-op list scrolled to %u of %u", offset, count);
+    g_coop.st[k].offset = offset;
+    coop_rebuild(page, k);
+  }
+  if (from >= 0 && to >= 0) moves = to - from;
+  if (moves > 0) OV_GUEST(menu_focus_down, U64(page), (uint64_t)moves);
+  else if (moves < 0) OV_GUEST(menu_focus_up, U64(page), (uint64_t)-moves);
+  g_steps.busy = 0;
+  return 1;
+}
+
+// The builder, as it sets an entry's SortOrder (its position, the row the movie places it in): a build the game starts
+// itself (page entry) places the window over the selected record; records in the window get their row, the others a row
+// below the panel.
+static void on_coop_sort(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!g_coop.on || !rs_mods_cfg.arrangements) return;
+  void *page = (void *)(uintptr_t)rc_mid_get(f, g_coop.v_sort_page);
+  uint32_t index = (uint32_t)rc_mid_get(f, g_coop.v_sort_record), count;
+  if (!coop_page_is(page)) return;
+  count = coop_count(page);
+  if (index == 0 && !g_coop.rebuilding) {
+    int k = coop_claim(page);
+    if (k >= 0) g_coop.st[k].offset = rs_mods_coop_window_for(0, count, coop_selected(page));
+  }
+  int k = coop_find(page);
+  if (k < 0 || count <= RS_MODS_COOP_ROWS) return;
+  rc_mid_set_f(f, g_coop.v_sort_row,
+               rs_mods_coop_in_window(index, count, g_coop.st[k].offset) ? (double)(index - g_coop.st[k].offset)
+                                                                         : (double)(COOP_HIDDEN_ROW + index));
+}
+
+// The select handler's store of the selected record: the record named by the focused entry
+static void on_coop_select(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!g_coop.on || !rs_mods_cfg.arrangements) return;
+  void *page = (void *)(uintptr_t)rc_mid_get(f, g_coop.v_sel_page);
+  char focus[64];
+  if (!coop_page_is(page) || !game_text(field(page, RC_OFF(menu_page_focus)), focus, sizeof focus)) return;
+  int index = rs_mods_coop_focus_index(focus);
+  uint32_t record = (uint32_t)rc_mid_get(f, g_coop.v_sel_record);
+  if (index < 0 || (uint32_t)index >= coop_count(page) || (uint32_t)index == record) return;
+  rs_mods_logf("Learn a Song: co-op select %s -> record %d (the list position gave %u)", focus, index, record);
+  rc_mid_set(f, g_coop.v_sel_record, (uint64_t)index);
+}
+
+static int coop_points(void) {
+  int sort = rc_mid_add_name("coop_sort_order", on_coop_sort, NULL);
+  int select = rc_mid_add_name("coop_select", on_coop_select, NULL);
+  if (sort < 0 || select < 0 || rc_mid_is_none(sort) || rc_mid_is_none(select) || !focus_points()) return 0;
+  g_coop.v_sort_page = rc_mid_value(sort, "page"), g_coop.v_sort_record = rc_mid_value(sort, "record");
+  g_coop.v_sort_row = rc_mid_value(sort, "row");
+  g_coop.v_sel_page = rc_mid_value(select, "page"), g_coop.v_sel_record = rc_mid_value(select, "record");
+  if (g_coop.v_sort_page < 0 || g_coop.v_sort_record < 0 || g_coop.v_sort_row < 0 || g_coop.v_sel_page < 0 ||
+      g_coop.v_sel_record < 0)
+    return 0;
+  if (!RC_HAS_OFF(menu_page_focus) || !RC_HAS_OFF(menu_page_focus_lists) || !RC_HAS_OFF(arr_coop_records) ||
+      !RC_HAS_OFF(arr_coop_selected) || !RC_HAS_OFF(arr_record_size) || !RC_HAS_OFF(efd_str_inline) ||
+      !RC_HAS_OFF(efd_str_size) || !rc_addr("arr_coop_vtable") || !rc_addr("arr_coop_build") ||
+      !rc_addr("arr_record_dtor"))
+    return 0;
+  return 1;
+}
+
+
+// The window arithmetic of the scrollable "Other arrangements" list (after RS Extended Range's arrangements.h): the
+// scroll is the points above.
+int rs_mods_alt_in_window(uint32_t index, uint32_t selected, uint32_t offset) {
+  if (index == selected) return 0;
+  uint32_t rank = index > selected ? index - 1 : index;
+  return rank >= offset && rank - offset < LAS_ALT_SLOTS;
+}
+
+uint32_t rs_mods_alt_scroll(uint32_t offset, uint32_t alternates, int down, int up) {
+  if (down && offset + LAS_ALT_SLOTS < alternates) return offset + 1;
+  if (up && offset > 0) return offset - 1;
+  return offset;
+}
+
+void rs_mods_alt_label_tag(uint32_t slot, uint32_t offset, uint32_t alternates, char *out, size_t n) {
+  if (!n) return;
+  out[0] = 0;
+  if (slot == 1 && offset > 0) snprintf(out, n, " (-%u)", (unsigned)offset);
+  else if (slot == LAS_ALT_SLOTS && offset + LAS_ALT_SLOTS < alternates)
+    snprintf(out, n, " (+%u)", (unsigned)(alternates - offset - LAS_ALT_SLOTS));
+}
+
+int rs_mods_coop_in_window(uint32_t index, uint32_t count, uint32_t offset) {
+  return count <= RS_MODS_COOP_ROWS || (index >= offset && index - offset < RS_MODS_COOP_ROWS);
+}
+
+uint32_t rs_mods_coop_step(uint32_t index, uint32_t count, int steps) {
+  int64_t target = (int64_t)index + steps;
+  return target < 0 || !count ? 0 : target >= (int64_t)count ? count - 1 : (uint32_t)target;
+}
+
+uint32_t rs_mods_coop_window_for(uint32_t offset, uint32_t count, uint32_t selected) {
+  if (count <= RS_MODS_COOP_ROWS) return 0;
+  uint32_t last = count - RS_MODS_COOP_ROWS;
+  if (offset > last) offset = last;
+  if (selected < offset) offset = selected;
+  else if (selected >= offset + RS_MODS_COOP_ROWS) offset = selected - RS_MODS_COOP_ROWS + 1;
+  return offset > last ? last : offset;
+}
+
+int rs_mods_coop_focus_index(const char *focus) {
+  const char *p = focus ? strstr(focus, "arrangement") : NULL;
+  if (!p) return -1;
+  p += 11;
+  if (*p < '0' || *p > '9') return -1;
+  long v = 0;
+  for (; *p >= '0' && *p <= '9'; p++) {
+    v = v * 10 + (*p - '0');
+    if (v > 1000000) return -1;
+  }
+  return (int)v;
+}
+
 void rs_mods_start(void) {
   rs_mods_reload_config();
   if (rc_hook_add_name("boot_intro_update", before_intro_update, NULL, NULL)) rs_mods_logf("no intro hook point");
@@ -672,4 +1506,19 @@ void rs_mods_start(void) {
   if (p >= 0 && !rc_mid_is_none(p)) g_skip_offer = rc_mid_value(p, "offer");
   rs_mods_logf("Guitarcade Skip Tuner: %s",
                g_skip_offer < 0 ? "no point for it" : rs_mods_cfg.guitarcade_skip ? "on" : "off");
+  menu_points();
+  rs_mods_logf("menu movie request again: %s", !g_menu.on ? "no points for it" : rs_mods_cfg.menu_retry ? "on" : "off");
+  int alt = rc_mid_add_name("las_alt_slot", on_alt_slot, NULL);
+  if (alt >= 0 && !rc_mid_is_none(alt)) {
+    g_alt_filled = rc_mid_value(alt, "filled");
+    g_alt_latch = rc_mid_cont(alt, "latch");
+  }
+  g_las.on = g_alt_filled >= 0 && g_alt_latch > 0 && las_points(alt);
+  g_coop.on = coop_points();
+  rs_mods_logf("Learn a Song alternate arrangements: %s",
+               g_alt_filled < 0 || g_alt_latch <= 0 ? "no point for it"
+               : !rs_mods_cfg.arrangements          ? "off"
+               : g_las.on                           ? "on, scrolling"
+                                                    : "on");
+  rs_mods_logf("co-op arrangement list: %s", !g_coop.on ? "no points for it" : rs_mods_cfg.arrangements ? "on" : "off");
 }

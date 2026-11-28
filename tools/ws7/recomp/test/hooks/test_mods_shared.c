@@ -2,6 +2,7 @@
 // runtimes (Makefile): the same object, built as a mod is, beside a 64-bit runtime with the Mac's kind of tables
 // and a 32-bit one with Learn & Play's. The tables below are what targets.py generates in a real build, with
 // values of the test's own.
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,25 +29,35 @@ const char rc_target_id[] = "test";
 
 // --- the target's tables: the hook points of the fixes, each game's own convention and field offsets, and what
 // the fixes call and read in the game by name: its functions at ADDR, its data at DATA
-enum { INTRO, OWNED, BIND, NPOINTS, MODE = 8, PROFILE, MANAGER, BYNAME, DESTROY, FSEXISTS = 14, MIDS = 16 };
+enum { INTRO, OWNED, BIND, FRAME, NPOINTS, MODE = 8, PROFILE, MANAGER, BYNAME, DESTROY, FSEXISTS = 14, MIDS = 16,
+       REQUEST = 24, G_FIND = 32, G_REMOVE, G_MERGE, G_SET, G_KEY, G_BUILD, G_FUP, G_FDOWN, G_DTOR, G_ADDREF, G_RELEASE,
+       G_CBUILD };
 #define ADDR(k) (0x401000u + 0x100u * (k))
 #define DATA 0x402000u
-enum { D_BINDING = 0x10, D_KEY_DIRECT = 0x40, D_KEY_MIC = 0x50, D_TEXT_DIRECT = 0x80, D_TEXT_MIC = 0xa0, D_SIZE = 0x100 };
+enum { D_BINDING = 0x10, D_KEY_DIRECT = 0x40, D_KEY_MIC = 0x50, D_TEXT_DIRECT = 0x80, D_TEXT_MIC = 0xa0,
+       D_LAS_VTABLE = 0xc0, D_OTHER_VTABLE = 0xd0, D_NODE_VTABLE = 0xe0, D_COOP_VTABLE = 0xf0, D_SIZE = 0x100 };
 #ifdef RC_GUEST32
 const rc_target_value rc_target_offsets[] = {{"asset_load_name", 0x10}, {"boot_intro_playing", 0x2d},
                                              {"boot_intro_state", 0x60}, {"boot_phase", 0x48},
                                              {"boot_phase3_steps", 10}, {"boot_step", 0x28}, {"efd_str_inline", 0x14},
-                                             {"efd_str_size", 0x10}, {"fs_exists_slot", 6}, {"input_slot", 0xc},
-                                             {0, 0}};
+                                             {"efd_str_size", 0x10}, {"file_index_name", -0x38}, {"fs_exists_slot", 6},
+                                             {"input_slot", 0xc}, {"menu_movie_uri", 0x8c}, {"json_node_add_ref_slot", 0},
+                                             {"json_node_release_slot", 1}, {"menu_page_root", 0x1a0},
+                                             {"menu_page_node", 0x1c4}, {"menu_page_focus", 0x1fc},
+                                             {"menu_page_focus_lists", 0x214}, {"las_page_records", 0x388},
+                                             {"las_page_records2", 0x394}, {"las_page_selected", 0x3a0},
+                                             {"las_page_slot_counter", 0x3a4}, {"arr_record_size", 0xfc},
+                                             {"arr_coop_records", 0x370}, {"arr_coop_selected", 0x37c}, {0, 0}};
 // stdcall bool(void *boot), thiscall bool(void *steam, int app), and custom void(int input@eax, int force=0)
 const rc_hook_name rc_target_hooks[] = {
     {"boot_intro_update", ADDR(INTRO), 1, 0, RC_CC_STDCALL, 'b', 4, 1, {{'p', 0}}},
     {"steam_dlc_owned", ADDR(OWNED), 2, 0, RC_CC_THISCALL, 'b', 4, 2, {{'p', ~1}, {'i', 0}}},
     {"input_bind", ADDR(BIND), 3, 0, RC_CC_CUSTOM, 'v', -1, 2, {{'i', ~0}, {'c', 0, 0}}},
+    {"game_frame", ADDR(FRAME), 4, 0, RC_CC_CDECL, 'b', 0, 0, {{0}}},  // (the real one hides its manager argument)
     {0, 0, 0},
 };
 int rc_hook_code_pops(int index) {
-  static const short pops[NPOINTS] = {4, 4, 0};
+  static const short pops[NPOINTS] = {4, 4, 0, 0};
   return pops[index];
 }
 #define CC(cc) RC_CC_##cc
@@ -54,11 +65,18 @@ int rc_hook_code_pops(int index) {
 const rc_target_value rc_target_offsets[] = {{"asset_load_name", 0x18}, {"boot_intro_playing", 0x39},
                                              {"boot_intro_state", 0x78}, {"boot_phase", 0x58},
                                              {"boot_phase3_steps", 12}, {"boot_step", 0x34}, {"efd_str_inline", 0x18},
-                                             {"efd_str_size", 0x10}, {"fs_exists_slot", 7}, {"input_slot", 0x14},
-                                             {0, 0}};
+                                             {"efd_str_size", 0x10}, {"file_index_name", -0x498}, {"fs_exists_slot", 7},
+                                             {"input_slot", 0x14}, {"menu_movie_uri", 0xe0}, {"json_node_add_ref_slot", 0},
+                                             {"json_node_release_slot", 1}, {"menu_page_root", 0x250},
+                                             {"menu_page_node", 0x290}, {"menu_page_focus", 0x2e8},
+                                             {"menu_page_focus_lists", 0x308}, {"las_page_records", 0x500},
+                                             {"las_page_records2", 0x518}, {"las_page_selected", 0x530},
+                                             {"las_page_slot_counter", 0x534}, {"arr_record_size", 0x180},
+                                             {"arr_coop_records", 0x4e0}, {"arr_coop_selected", 0x4f8}, {0, 0}};
 const rc_hook_name rc_target_hooks[] = {{"boot_intro_update", ADDR(INTRO), ADDR(INTRO)},
                                         {"steam_dlc_owned", ADDR(OWNED), ADDR(OWNED)},
-                                        {"input_bind", ADDR(BIND), ADDR(BIND)}, {0, 0, 0}};
+                                        {"input_bind", ADDR(BIND), ADDR(BIND)},
+                                        {"game_frame", ADDR(FRAME), ADDR(FRAME)}, {0, 0, 0}};
 #define CC(cc) RC_CC_SYSV
 #endif
 const rc_target_value rc_target_symbols[] = {
@@ -66,15 +84,31 @@ const rc_target_value rc_target_symbols[] = {
     {"input_binding", DATA + D_BINDING, -1},     {"input_by_name", ADDR(BYNAME), CC(STDCALL)},
     {"input_key_direct", DATA + D_KEY_DIRECT, -1}, {"input_key_mic", DATA + D_KEY_MIC, -1},
     {"input_manager", ADDR(MANAGER), CC(CDECL)}, {"input_mode", ADDR(MODE), CC(CDECL)},
-    {"input_profile_string", ADDR(PROFILE), CC(CDECL)}, {0, 0, 0}};
-const uint64_t rc_hook_points[] = {ADDR(INTRO), ADDR(OWNED), ADDR(BIND), 0};
+    {"input_profile_string", ADDR(PROFILE), CC(CDECL)},
+#ifdef RC_GUEST32
+    {"menu_movie_request_reg", ADDR(REQUEST), RC_CC_CUSTOM},  // the movie in eax, the id on the stack, `ret 8`
+    {"json_find_ecx", ADDR(G_FIND), RC_CC_THISCALL},          // (node), the name in eax
+    {"json_key_intern", ADDR(G_KEY), RC_CC_THISCALL},         // (text, &out)
+#else
+    {"menu_movie_request", ADDR(REQUEST), RC_CC_SYSV},  // (movie, a pointer to the id's words)
+    {"json_find", ADDR(G_FIND), RC_CC_SYSV},
+    {"json_key_make", ADDR(G_KEY), RC_CC_SYSV},         // (&out, text)
+#endif
+    {"json_object_remove", ADDR(G_REMOVE), CC(STDCALL)}, {"json_object_merge", ADDR(G_MERGE), CC(THISCALL)},
+    {"json_object_set", ADDR(G_SET), CC(STDCALL)},       {"las_build", ADDR(G_BUILD), CC(THISCALL)},
+    {"las_page_vtable", DATA + D_LAS_VTABLE, -1},        {"menu_focus_up", ADDR(G_FUP), CC(THISCALL)},
+    {"menu_focus_down", ADDR(G_FDOWN), CC(THISCALL)},    {"arr_record_dtor", ADDR(G_DTOR), CC(THISCALL)},
+    {"arr_coop_vtable", DATA + D_COOP_VTABLE, -1},       {"arr_coop_build", ADDR(G_CBUILD), CC(THISCALL)},
+    {0, 0, 0}};
+const uint64_t rc_hook_points[] = {ADDR(INTRO), ADDR(OWNED), ADDR(BIND), ADDR(FRAME), 0};
 const int rc_hook_npoints = NPOINTS;
 // The mid points the fixes here hook, with their values where each game has them. Skip Tuner's answer: the low
 // byte of a register, a local below the frame pointer. The batched mounting's four: registers on the Mac; in
 // Learn & Play an argument above the frame pointer too, and at the file question the path and the answer in one
 // register, the game's call not yet made.
 #define SKIP_LOCAL (-0x1d)
-enum { M_SKIP, M_REQUEST, M_RESPONSE, M_MOUNT, M_EXISTS };
+enum { M_SKIP, M_REQUEST, M_RESPONSE, M_MOUNT, M_EXISTS, M_ASKED, M_LOCATE, M_LOCATED, M_INDEXED, M_ALT, M_LABEL, M_ROOT,
+       M_OPEN, M_FUP, M_FDOWN, M_CSORT, M_CSEL };
 #ifdef RC_GUEST32
 const rc_mid_name rc_target_mids[] = {
     {"tuner_skip_offer", ADDR(DESTROY + 1), 0, 1, {{"offer", 'b', RC_MID_MEM | 5, SKIP_LOCAL}}, 0, {0}, 0},
@@ -84,6 +118,21 @@ const rc_mid_name rc_target_mids[] = {
     {"fs_mount", ADDR(MIDS + 2), 0, 2, {{"path", 'p', RC_MID_MEM | 5, 8}, {"fs", 'p', 0, 0}}, 0, {0}, 0},
     {"fs_exists", ADDR(MIDS + 3), 0, 3, {{"fs", 'p', 1, 0}, {"path", 'p', 0, 0}, {"found", 'b', 0, 0}}, 1,
      {"answered"}, 0},
+    {"menu_request", ADDR(MIDS + 4), 0, 3,
+     {{"movie", 'p', 6, 0}, {"id_lo", 'i', RC_MID_MEM | 5, 8}, {"id_hi", 'i', RC_MID_MEM | 5, 12}}, 0, {0}, 0},
+    {"menu_locate", ADDR(MIDS + 5), 0, 0, {{0}}, 0, {0}, 0},
+    {"menu_located", ADDR(MIDS + 6), 0, 1, {{"accepted", 'b', 0, 0}}, 0, {0}, 0},
+    {"file_indexed", ADDR(MIDS + 7), 0, 1, {{"frame", 'p', 5, 0}}, 0, {0}, 0},
+    {"las_alt_slot", ADDR(MIDS + 8), 0, 3,
+     {{"filled", 'i', RC_MID_MEM | 4, 0x6c}, {"page", 'p', 3, 0}, {"record", 'i', RC_MID_MEM | 4, 0x44}}, 1, {"latch"}, 0},
+    {"las_alt_label", ADDR(MIDS + 9), 0, 1, {{"text", 'p', 7, 0}}, 0, {0}, 0},
+    {"las_alt_root", ADDR(MIDS + 10), 0, 1, {{"page", 'p', 3, 0}}, 0, {0}, 0},
+    {"las_alt_page", ADDR(MIDS + 11), 0, 1, {{"page", 'p', 7, 0}}, 0, {0}, 0},
+    {"menu_focus_step_up", ADDR(MIDS + 12), 0, 2, {{"page", 'p', 7, 0}, {"steps", 'i', RC_MID_MEM | 5, 8}}, 0, {0}, 0},
+    {"menu_focus_step_down", ADDR(MIDS + 13), 0, 2, {{"page", 'p', 7, 0}, {"steps", 'i', RC_MID_MEM | 5, 8}}, 0, {0}, 0},
+    {"coop_sort_order", ADDR(MIDS + 14), 0, 3,
+     {{"row", 'd', 32, 0}, {"record", 'i', RC_MID_MEM | 4, 0x38}, {"page", 'p', RC_MID_MEM | 4, 0x18}}, 0, {0}, 0},
+    {"coop_select", ADDR(MIDS + 15), 0, 2, {{"record", 'i', 1, 0}, {"page", 'p', 3, 0}}, 0, {0}, 0},
     {0}};
 #else
 const rc_mid_name rc_target_mids[] = {
@@ -93,6 +142,21 @@ const rc_mid_name rc_target_mids[] = {
     {"fs_mount", ADDR(MIDS + 2), 0, 2, {{"path", 'p', 7, 0}, {"fs", 'p', 6, 0}}, 0, {0}, 0},
     {"fs_exists", ADDR(MIDS + 3), 0, 3, {{"fs", 'p', 7, 0}, {"path", 'p', 6, 0}, {"found", 'b', 0, 0}}, 1,
      {"answered"}, 0},
+    {"menu_request", ADDR(MIDS + 4), 0, 3,
+     {{"movie", 'p', 7, 0}, {"id_lo", 'i', RC_MID_MEM | 6, 0}, {"id_hi", 'i', RC_MID_MEM | 6, 4}}, 0, {0}, 0},
+    {"menu_locate", ADDR(MIDS + 5), 0, 0, {{0}}, 0, {0}, 0},
+    {"menu_located", ADDR(MIDS + 6), 0, 1, {{"accepted", 'b', 0, 0}}, 0, {0}, 0},
+    {"file_indexed", ADDR(MIDS + 7), 0, 1, {{"frame", 'p', 5, 0}}, 0, {0}, 0},
+    {"las_alt_slot", ADDR(MIDS + 8), 0, 3,
+     {{"filled", 'i', RC_MID_MEM | 5, -0x348}, {"page", 'p', 12, 0}, {"record", 'q', 13, 0}}, 1, {"latch"}, 0},
+    {"las_alt_label", ADDR(MIDS + 9), 0, 1, {{"text", 'p', 1, 0}}, 0, {0}, 0},
+    {"las_alt_root", ADDR(MIDS + 10), 0, 1, {{"page", 'p', 15, 0}}, 0, {0}, 0},
+    {"las_alt_page", ADDR(MIDS + 11), 0, 1, {{"page", 'p', 13, 0}}, 0, {0}, 0},
+    {"menu_focus_step_up", ADDR(MIDS + 12), 0, 2, {{"page", 'p', 3, 0}, {"steps", 'i', 12, 0}}, 0, {0}, 0},
+    {"menu_focus_step_down", ADDR(MIDS + 13), 0, 2, {{"page", 'p', 13, 0}, {"steps", 'i', 12, 0}}, 0, {0}, 0},
+    {"coop_sort_order", ADDR(MIDS + 14), 0, 3,
+     {{"row", 'd', 16, 0}, {"record", 'i', 13, 0}, {"page", 'p', RC_MID_MEM | 5, -0x2e8}}, 0, {0}, 0},
+    {"coop_select", ADDR(MIDS + 15), 0, 2, {{"record", 'i', 0, 0}, {"page", 'p', 14, 0}}, 0, {0}, 0},
     {0}};
 #endif
 #define OFF(name) ((uint32_t)rc_off(name))
@@ -223,6 +287,9 @@ static void *game_by_name(void *manager, const char *name) {
   return input_name && !strcmp(name, input_name) ? input_obj : 0;
 }
 
+// The game's request for a menu movie (the white loading screen's resend): what it was given, and its answer
+static void game_request(const void *movie, uint32_t lo, uint32_t hi);
+
 // A file system object's question, has it this file: the whole file system's, and three archives', which answer
 // for a path from where they are mounted. Each counts what it was asked.
 #define ARCHIVES 3
@@ -248,6 +315,18 @@ static uint32_t game_fs_exists(uint8_t *fs, const char *path) {
   CHECK(!"a file system object the game has not");
   return 0;
 }
+
+// The scrolling Learn a Song page's game (alt_scroll below): what its functions do, whatever the convention
+static void *g_find(uint8_t *node, const char *name);
+static int g_remove(uint8_t *node, uint8_t *key);
+static void g_merge(uint8_t *target, uint8_t *source, uint32_t replace);
+static void g_set(uint8_t *node, uint8_t *key, uint8_t *value);
+static void g_key(const char *text, uint8_t *out);
+static void g_build(uint8_t *page);
+static void g_cbuild(uint8_t *page);
+static void g_focus(uint8_t *page, int steps, int down);
+static void g_dtor(uint8_t *record);
+static void g_ref(uint8_t *node, int add);
 
 // --- what the runtimes need of an image: the game's functions above, by each one's convention
 #ifdef RC_GUEST32
@@ -281,9 +360,51 @@ static void f_destroy(rc_ctx *c) {  // thiscall: the string in ecx
 static void f_fs_exists(rc_ctx *c) {  // thiscall: the object in ecx, the path on the stack, `ret 4`
   ret32(c, game_fs_exists(as_host((uint32_t)c->r[1]), as_host(arg32(c, 0))), 4);
 }
+static void f_request(rc_ctx *c) {  // custom: the movie in eax, the id's words on the stack, `ret 8`
+  uint32_t movie = (uint32_t)c->r[0];
+  game_request(as_host(movie), arg32(c, 0), arg32(c, 1));
+  ret32(c, 0, 8);
+}
+// the scroll game's functions (g_* below): thiscall ones have their object in ecx, stdcall ones everything on the stack
+static void f_find(rc_ctx *c) {  // thiscall (node), the name in eax
+  ret32(c, (uint32_t)as_game(g_find(as_host((uint32_t)c->r[1]), as_host((uint32_t)c->r[0]))), 0);
+}
+static void f_remove(rc_ctx *c) { ret32(c, g_remove(as_host(arg32(c, 0)), as_host(arg32(c, 1))), 8); }
+static void f_merge(rc_ctx *c) {  // thiscall (target), source, replace
+  g_merge(as_host((uint32_t)c->r[1]), as_host(arg32(c, 0)), arg32(c, 1));
+  ret32(c, 0, 8);
+}
+static void f_set(rc_ctx *c) {
+  g_set(as_host(arg32(c, 0)), as_host(arg32(c, 1)), as_host(arg32(c, 2)));
+  ret32(c, 0, 12);
+}
+static void f_key(rc_ctx *c) {  // thiscall (text), &out
+  g_key(as_host((uint32_t)c->r[1]), as_host(arg32(c, 0)));
+  ret32(c, 0, 4);
+}
+static void f_build(rc_ctx *c) { g_build(as_host((uint32_t)c->r[1])); ret32(c, 0, 0); }
+static void f_fup(rc_ctx *c) { g_focus(as_host((uint32_t)c->r[1]), (int)arg32(c, 0), 0); ret32(c, 0, 4); }
+static void f_fdown(rc_ctx *c) { g_focus(as_host((uint32_t)c->r[1]), (int)arg32(c, 0), 1); ret32(c, 0, 4); }
+static void f_cbuild(rc_ctx *c) { g_cbuild(as_host((uint32_t)c->r[1])); ret32(c, 0, 0); }
+static void f_dtor(rc_ctx *c) { g_dtor(as_host((uint32_t)c->r[1])); ret32(c, 0, 0); }
+static void f_addref(rc_ctx *c) { g_ref(as_host((uint32_t)c->r[1]), 1); ret32(c, 0, 0); }
+static void f_release(rc_ctx *c) { g_ref(as_host((uint32_t)c->r[1]), 0); ret32(c, 0, 0); }
 rc_fn rc32_lookup(uint32_t g) {
+  if (g == ADDR(G_FIND)) return f_find;
+  if (g == ADDR(G_REMOVE)) return f_remove;
+  if (g == ADDR(G_MERGE)) return f_merge;
+  if (g == ADDR(G_SET)) return f_set;
+  if (g == ADDR(G_KEY)) return f_key;
+  if (g == ADDR(G_BUILD)) return f_build;
+  if (g == ADDR(G_CBUILD)) return f_cbuild;
+  if (g == ADDR(G_FUP)) return f_fup;
+  if (g == ADDR(G_FDOWN)) return f_fdown;
+  if (g == ADDR(G_DTOR)) return f_dtor;
+  if (g == ADDR(G_ADDREF)) return f_addref;
+  if (g == ADDR(G_RELEASE)) return f_release;
   return g == ADDR(MODE) ? f_mode : g == ADDR(PROFILE) ? f_profile : g == ADDR(MANAGER) ? f_manager
-       : g == ADDR(BYNAME) ? f_by_name : g == ADDR(DESTROY) ? f_destroy : g == ADDR(FSEXISTS) ? f_fs_exists : 0;
+       : g == ADDR(BYNAME) ? f_by_name : g == ADDR(DESTROY) ? f_destroy : g == ADDR(FSEXISTS) ? f_fs_exists
+       : g == ADDR(REQUEST) ? f_request : 0;
 }
 int rc32_tls_images(const rc32_tls_image **out) {
   *out = 0;
@@ -310,11 +431,31 @@ uint64_t rc_call_guest(uint64_t fn, const uint64_t *ints, int nint, const uint64
       CHECK_EQ(nint, 1);
       game_str_destroy(as_host(ints[0]));
       return 0;
+    case ADDR(REQUEST): {
+      CHECK_EQ(nint, 2);
+      const uint32_t *id = as_host(ints[1]);
+      game_request(as_host(ints[0]), id[0], id[1]);
+      return 0;
+    }
+    case ADDR(G_FIND): return as_game(g_find(as_host(ints[0]), as_host(ints[1])));
+    case ADDR(G_REMOVE): return (uint64_t)g_remove(as_host(ints[0]), as_host(ints[1]));
+    case ADDR(G_MERGE): g_merge(as_host(ints[0]), as_host(ints[1]), (uint32_t)ints[2]); return 0;
+    case ADDR(G_SET): g_set(as_host(ints[0]), as_host(ints[1]), as_host(ints[2])); return 0;
+    case ADDR(G_KEY): g_key(as_host(ints[1]), as_host(ints[0])); return 0;
+    case ADDR(G_BUILD): g_build(as_host(ints[0])); return 0;
+    case ADDR(G_CBUILD): g_cbuild(as_host(ints[0])); return 0;
+    case ADDR(G_FUP): g_focus(as_host(ints[0]), (int)ints[1], 0); return 0;
+    case ADDR(G_FDOWN): g_focus(as_host(ints[0]), (int)ints[1], 1); return 0;
+    case ADDR(G_DTOR): g_dtor(as_host(ints[0])); return 0;
   }
   return 0;
 }
 // OV_VCALL, the Mac app's (overrides/src/rc_ov.c): the one virtual call the fixes here make
 uint64_t ov_vcall_n(uint64_t obj, int slot, const uint64_t *args, int nargs) {
+  if (slot == (int)rc_off("json_node_add_ref_slot") || slot == (int)rc_off("json_node_release_slot")) {
+    g_ref(as_host(obj), slot == (int)rc_off("json_node_add_ref_slot"));
+    return 0;
+  }
   CHECK_EQ((uint64_t)slot, (uint64_t)rc_off("fs_exists_slot"));
   CHECK_EQ(nargs, 2);
   CHECK_EQ(args[0], obj);
@@ -324,7 +465,8 @@ uint64_t ov_vcall_n(uint64_t obj, int slot, const uint64_t *args, int nargs) {
 
 static const char *const SWITCHES[] = {"RS_MODS_LOG", "RS_MODS_BYPASS", "RS_MODS_FIXES", "RS_MODS_INTRO",
                                        "RS_MODS_OVERLAY", "RS_MODS_AUTOSAVE", "RS_MODS_MULTIPLAYER",
-                                       "RS_MODS_BUDGET_MS", "RS_MODS_FRAME_RATE", "RS_MODS_GUITARCADE_SKIP"};
+                                       "RS_MODS_BUDGET_MS", "RS_MODS_FRAME_RATE", "RS_MODS_GUITARCADE_SKIP",
+                                       "RS_MODS_MENU_RETRY", "RS_MODS_ARRANGEMENTS"};
 static void no_switches(void) {
   for (size_t k = 0; k < sizeof SWITCHES / sizeof *SWITCHES; k++) unsetenv(SWITCHES[k]);
 }
@@ -336,7 +478,7 @@ static void switches(void) {
   const rs_mods_config *c = rs_mods_config_get();
   CHECK(c == &rs_mods_cfg);
   CHECK(c->bypass && c->fixes && c->intro && c->overlay && c->autosave && c->multiplayer && !c->log);
-  CHECK(c->guitarcade_skip);
+  CHECK(c->guitarcade_skip && c->menu_retry && c->arrangements);
   CHECK(c->budget_s == 0.050);
   static const char *const off[] = {"0", "no", "No", "false", "False"}, *const on[] = {"1", "yes", "on", "2", ""};
   for (int k = 0; k < 5; k++) {
@@ -353,9 +495,11 @@ static void switches(void) {
   setenv("RS_MODS_LOG", "1", 1);
   setenv("RS_MODS_BUDGET_MS", "8", 1);
   setenv("RS_MODS_GUITARCADE_SKIP", "0", 1);
+  setenv("RS_MODS_MENU_RETRY", "0", 1);
+  setenv("RS_MODS_ARRANGEMENTS", "no", 1);
   rs_mods_reload_config();
   CHECK(!c->intro && !c->bypass && c->log && c->fixes && c->overlay && c->autosave && c->multiplayer);
-  CHECK(!c->guitarcade_skip);
+  CHECK(!c->guitarcade_skip && !c->menu_retry && !c->arrangements);
   CHECK(c->budget_s == 0.008);
   setenv("RS_MODS_BUDGET_MS", "0", 1);  // a step a frame, as the original
   rs_mods_reload_config();
@@ -385,7 +529,8 @@ static void log_lines(void) {
 }
 
 // The start: it reads the switches itself, adds the hooks of the fixes that are here and says what is on. The
-// frame rate fixes find none of their points in this test's tables; Skip Tuner finds its one.
+// frame rate fixes find none of their points in this test's tables; Skip Tuner, the menu movie request and the
+// arrangements find theirs.
 static void start(void) {
   no_switches();
   setenv("RS_MODS_LOG", "1", 1);
@@ -397,6 +542,9 @@ static void start(void) {
   CHECK_EQ(logged_lines("[rs-mods] fixes on, bypass on, overlay on, intro skip on, autosave off, budget 20 ms"), 1);
   CHECK_EQ(logged_lines("[rs-mods] frame rate: on, 0 of 8 points"), 1);
   CHECK_EQ(logged_lines("[rs-mods] Guitarcade Skip Tuner: on"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] menu movie request again: on"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song alternate arrangements: on, scrolling"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] co-op arrangement list: on"), 1);
   CHECK_EQ(logged_lines("[rs-mods] no intro hook point") + logged_lines("[rs-mods] no DLC ownership hook point") +
            logged_lines("[rs-mods] no hook point for Player 2's saved input"), 0);
   CHECK(!strstr(logged, "no points for"));  // the batched mounting's four mid points
@@ -407,6 +555,7 @@ static void start(void) {
 static const uint32_t RET = 0x12345678;
 static rc_ctx *ctx;
 static uint8_t *obj;       // the game's object, as the host sees it
+static uint8_t *vtable_of_movies;  // the first word of the menu movies of the tests below
 static int orig_ran;
 static uint32_t orig_arg;  // what the original was given, where its convention has it (the low word)
 #ifdef RC_GUEST32
@@ -480,6 +629,24 @@ static void call_bind(uint32_t input) {
   CHECK_EQ((uint32_t)ctx->r[4], sp + 4);
   CHECK_EQ(ctx->r[6], ESI);
 }
+// cdecl, no argument: a frame; al = the game does not quit
+static void o_frame(rc_ctx *c) {
+  uint32_t sp = (uint32_t)c->r[4];
+  orig_ran++;
+  c->r[0] = 0xffffff00u;
+  c->ret_to = rd(sp);
+  c->r[4] = sp + 4;
+}
+static void call_frame(void) {
+  uint32_t sp = esp0 - 256;
+  ctx->r[4] = sp;
+  ctx->ret_to = 0;
+  wr(sp, RET);
+  orig_ran = 0;
+  rc_hook_call(FRAME, ctx, o_frame);
+  CHECK_EQ(ctx->ret_to, RET);
+  CHECK_EQ(orig_ran, 1);
+}
 #define OBJ_AS_GIVEN obj_guest
 #else
 static uint64_t stack_[16];
@@ -533,6 +700,20 @@ static void call_bind(uint32_t input) {
   rc_hook_call(BIND, ctx, o_bind);
   CHECK_EQ(ctx->r[4], (uint64_t)(uintptr_t)&stack_[9]);
 }
+static void o_frame(rc_ctx *c) {
+  orig_ran++;
+  c->r[0] = 0;
+  c->r[4] += 8;
+}
+static void call_frame(void) {
+  ctx->r[4] = (uint64_t)(uintptr_t)&stack_[8];
+  stack_[8] = RET;
+  orig_ran = 0;
+  rc_hook_call(FRAME, ctx, o_frame);
+  CHECK_EQ(ctx->r[4], (uint64_t)(uintptr_t)&stack_[9]);
+  CHECK_EQ(orig_ran, 1);
+}
+rc_ctx *rc_thread_ctx(void) { return ctx; }  // the runtime's (rc_thread.c): this test's one context
 #define OBJ_AS_GIVEN ((uint32_t)(uintptr_t)obj)
 #endif
 
@@ -1265,6 +1446,900 @@ static void mounting_edges(void) {
   rs_mods_reload_config();
 }
 
+// --- the white loading screen: a menu movie's request that the locator refuses is asked again when its file is
+// indexed. The game's request is the function behind game_request: it runs the mid points as the game's does (its
+// start, the locator call and its answer), and the answer is the test's. The points are driven here as the game
+// would reach them.
+static int request_calls, locator_accepts;  // requests made through the game's function; its answer to the next
+static const void *request_movie;
+static uint32_t request_id[2];
+static uint8_t *mid_frame;                  // a block standing for the frame of the points: ebp / rbp is 0x600 into it
+#define MID_FRAME (mid_frame + 0x600)
+static void set_frame(void) { ctx->r[5] = as_game(MID_FRAME); }
+static void put_string(uint8_t *str, const char *text) {  // a game string behind a pointer at its start
+  size_t n = strlen(text);
+  uint8_t *heap = game_alloc((uint32_t)n + 1);
+  memcpy(heap, text, n + 1);
+  put_ptr(str, heap);
+  put_ptr(str + rc_off("efd_str_size"), heap + n);
+  put_ptr(str + rc_off("efd_str_inline"), heap + n + 1);
+}
+// A movie object: its first word, and its URI (null: none, the string empty)
+static uint8_t *menu_movie(const char *name) {
+  uint8_t *m = game_alloc(0x200);
+  put_ptr(m, vtable_of_movies);
+  put_string(m + rc_off("menu_movie_uri"), name ? name : "");
+  return m;
+}
+static void mid_asked(const void *movie, uint32_t lo, uint32_t hi) {
+  uint32_t fl = 0, words[2] = {lo, hi};
+  set_frame();
+#ifdef RC_GUEST32
+  ctx->r[6] = as_game(movie);
+  memcpy(MID_FRAME + 8, words, 8);
+#else
+  ctx->r[7] = as_game(movie);
+  ctx->r[6] = as_game(words);
+#endif
+  CHECK_EQ((uint32_t)rc_mid_call(M_ASKED, ctx, &fl), 0);
+}
+static void mid_locate(void) {
+  uint32_t fl = 0;
+  set_frame();
+  CHECK_EQ((uint32_t)rc_mid_call(M_LOCATE, ctx, &fl), 0);
+}
+static void mid_located(int accepted) {
+  uint32_t fl = 0;
+  set_frame();
+  ctx->r[0] = 0x55aa5500u | (uint32_t)(accepted ? 1 : 0);  // al is the answer
+  CHECK_EQ((uint32_t)rc_mid_call(M_LOCATED, ctx, &fl), 0);
+}
+// the indexing thread's: a file was indexed, its name and extension in the writer's local
+static void mid_indexed(const char *file) {
+  uint32_t fl = 0;
+  set_frame();
+  put_string(MID_FRAME + rc_off("file_index_name"), file);
+  CHECK_EQ((uint32_t)rc_mid_call(M_INDEXED, ctx, &fl), 0);
+}
+// the request as the game makes it: asked, the locator called, answered
+static void request_mids(const void *movie, uint32_t lo, uint32_t hi, int accepted) {
+  mid_asked(movie, lo, hi);
+  mid_locate();
+  mid_located(accepted);
+}
+static void game_request(const void *movie, uint32_t lo, uint32_t hi) {
+  request_calls++;
+  request_movie = movie;
+  request_id[0] = lo, request_id[1] = hi;
+  request_mids(movie, lo, hi, locator_accepts);
+}
+static int frames_ask(void) {  // the requests a frame makes
+  int before = request_calls;
+  call_frame();
+  return request_calls - before;
+}
+
+static void menu_retry(void) {
+  no_switches();
+  setenv("RS_MODS_LOG", "1", 1);
+  rs_mods_reload_config();
+  mid_frame = game_alloc(0x800);
+  vtable_of_movies = game_alloc(16);
+  uint8_t *movie = menu_movie("urn:application:x-shockwave-flash:titlescreen");
+  // the game's request: the locator says no. Nothing is asked again before the file is indexed
+  log_start();
+  request_mids(movie, 7, 9, 0);
+  log_stop();
+  CHECK_EQ(logged_lines("[rs-mods] menu load: 'titlescreen' was rejected (not indexed yet); waiting for the "
+                        "indexer"), 1);
+  CHECK_EQ(frames_ask(), 0);
+  mid_indexed("cache.xml");
+  mid_indexed("titlescreen2.gfx");  // a name that goes on
+  mid_indexed("titlescre.gfx");
+  CHECK_EQ(frames_ask(), 0);
+  // its file is indexed (any case, any extension): the next frame asks once, with the id the game gave, and the
+  // movie goes with its answer. In Learn & Play's form the movie is in eax and the id's words are on the stack.
+  request_calls = 0;
+  locator_accepts = 1;
+  mid_indexed("TitleScreen.GFX");
+  log_start();
+  CHECK_EQ(frames_ask(), 1);
+  log_stop();
+  CHECK(request_movie == movie);
+  CHECK(request_id[0] == 7 && request_id[1] == 9);
+  CHECK_EQ(logged_lines("[rs-mods] menu load: 'titlescreen' is indexed now; asking again (request 2)"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] menu load: 'titlescreen' accepted after 2 requests"), 1);
+  CHECK_EQ(frames_ask(), 0);  // accepted: it is not in the table, and a later file of its name asks nothing
+  mid_indexed("titlescreen.gfx");
+  CHECK_EQ(frames_ask(), 0);
+
+  // refused again: it waits for the next file of that name, once each
+  uint8_t *other = menu_movie("urn:application:x-shockwave-flash:mainmenu");
+  request_mids(other, 1, 2, 0);
+  locator_accepts = 0;
+  mid_indexed("mainmenu.gfx");
+  log_start();
+  CHECK_EQ(frames_ask(), 1);
+  CHECK_EQ(frames_ask(), 0);
+  log_stop();
+  CHECK_EQ(logged_lines("[rs-mods] menu load: 'mainmenu' rejected again (request 2)"), 1);
+  locator_accepts = 1;
+  mid_indexed("MAINMENU.gfx");
+  log_start();
+  CHECK_EQ(frames_ask(), 1);
+  log_stop();
+  CHECK_EQ(logged_lines("[rs-mods] menu load: 'mainmenu' accepted after 3 requests"), 1);
+
+  // two movies at once, one file: only its movie is asked
+  uint8_t *a = menu_movie("urn:application:x-shockwave-flash:a");
+  uint8_t *b = menu_movie("urn:application:x-shockwave-flash:b");
+  request_mids(a, 3, 0, 0);
+  request_mids(b, 4, 0, 0);
+  mid_indexed("b.gfx");
+  CHECK_EQ(frames_ask(), 1);
+  CHECK(request_movie == b);
+  mid_indexed("a.gfx");
+  CHECK_EQ(frames_ask(), 1);
+  CHECK(request_movie == a);
+
+  // a movie the game let go (its first word is not what it was): not asked, and out of the table
+  uint8_t *gone = menu_movie("urn:application:x-shockwave-flash:gone");
+  request_mids(gone, 5, 0, 0);
+  memset(gone, 0xdd, 16);
+  mid_indexed("gone.gfx");
+  CHECK_EQ(frames_ask(), 0);
+  put_ptr(gone, vtable_of_movies);
+  mid_indexed("gone.gfx");
+  CHECK_EQ(frames_ask(), 0);
+  // ... or whose name is another by the time (the object's memory used again)
+  uint8_t *reused = menu_movie("urn:application:x-shockwave-flash:old");
+  request_mids(reused, 6, 0, 0);
+  put_string(reused + rc_off("menu_movie_uri"), "urn:application:x-shockwave-flash:new");
+  mid_indexed("old.gfx");
+  CHECK_EQ(frames_ask(), 0);
+
+  // a request that made no locator call (no URI, a movie with a name that was not asked for): nothing is kept or
+  // asked
+  uint8_t *none = menu_movie(0);
+  mid_asked(none, 8, 0);
+  mid_located(0);
+  uint8_t *quiet = menu_movie("urn:application:x-shockwave-flash:quiet");
+  mid_asked(quiet, 8, 0);
+  mid_located(0);  // no mid_locate before: not an answer
+  mid_indexed("quiet.gfx");
+  CHECK_EQ(frames_ask(), 0);
+
+  // RS_MODS_MENU_RETRY=0: the original, nothing kept
+  setenv("RS_MODS_MENU_RETRY", "0", 1);
+  rs_mods_reload_config();
+  uint8_t *off = menu_movie("urn:application:x-shockwave-flash:off");
+  request_mids(off, 9, 0, 0);
+  mid_indexed("off.gfx");
+  CHECK_EQ(frames_ask(), 0);
+  no_switches();
+  setenv("RS_MODS_LOG", "1", 1);
+  rs_mods_reload_config();
+  mid_indexed("off.gfx");
+  CHECK_EQ(frames_ask(), 0);  // (it was not kept while the switch was off)
+
+  // the file is never seen indexed: asked again after 5 s, once for each 5 s
+  uint8_t *late = menu_movie("urn:application:x-shockwave-flash:late");
+  request_mids(late, 10, 0, 0);
+  CHECK_EQ(frames_ask(), 0);
+  usleep(5100000);
+  locator_accepts = 1;
+  log_start();
+  CHECK_EQ(frames_ask(), 1);
+  log_stop();
+  CHECK(request_movie == late);
+  CHECK_EQ(logged_lines("[rs-mods] menu load: WARNING 'late' still rejected and its file was not seen being indexed; "
+                        "asking again anyway (fallback 1 of 6)"), 1);
+  CHECK_EQ(frames_ask(), 0);
+  no_switches();
+  rs_mods_reload_config();
+}
+
+// Learn a Song with more than five arrangements: the page, the nodes of its movie definition and the game's functions
+// that build and move them, as far as the scroll uses them. The builder runs the mid points as the game's does, over
+// the song's records; a focus step runs its own (the menu class's) and moves the focus by the steps it is left with.
+#define NNODES 96
+typedef struct {
+  uint8_t *o, *parent;
+  char name[40];
+  int attached, refs;
+} node_t;
+static node_t nodes[NNODES];
+static int nnodes;
+static char ops[4096];
+static char key_names[16][48];
+static int nkeys, song_n, song_sel, focus_pos, built_slots, builds;
+static char labels[8][64];
+
+static void op(const char *fmt, ...) {
+  va_list ap;
+  size_t n = strlen(ops);
+  va_start(ap, fmt);
+  vsnprintf(ops + n, sizeof ops - n, fmt, ap);
+  va_end(ap);
+  strcat(ops, " ");
+}
+static void put_word(uint8_t *at, uint64_t w) { memcpy(at, &w, (size_t)rc_guest_ptr_size); }
+static uint64_t get_word(const uint8_t *at) {
+  uint64_t w = 0;
+  memcpy(&w, at, (size_t)rc_guest_ptr_size);
+  return w;
+}
+static node_t *node_new(uint8_t *parent, const char *name) {
+  CHECK(nnodes < NNODES);
+  node_t *n = &nodes[nnodes++];
+  n->o = game_alloc(16);
+  put_ptr(n->o, data + D_NODE_VTABLE);
+  n->parent = parent;
+  snprintf(n->name, sizeof n->name, "%s", name);
+  n->attached = parent != NULL;
+  n->refs = 1;
+  return n;
+}
+static node_t *node_of(const uint8_t *o) {
+  for (int k = 0; k < nnodes; k++)
+    if (nodes[k].o == o) return &nodes[k];
+  return NULL;
+}
+static node_t *child_of(const uint8_t *node, const char *name) {
+  for (int k = 0; k < nnodes; k++)
+    if (nodes[k].attached && nodes[k].parent == node && !strcmp(nodes[k].name, name)) return &nodes[k];
+  return NULL;
+}
+static const char *key_name(const uint8_t *key) {
+  uint64_t id = get_word(key);
+  CHECK(id && id <= (uint64_t)nkeys);
+  return key_names[id - 1];
+}
+// The text of a game string (in place, or behind a pointer at its start)
+static void gs_text(const uint8_t *str, char *out) {
+  const uint8_t *end = str + rc_off("efd_str_size"), *inl = str + rc_off("efd_str_inline");
+  strcpy(out, get_ptr(inl) == end ? (const char *)str : (const char *)get_ptr(str));
+}
+
+static void *g_find(uint8_t *node, const char *name) {
+  node_t *n = child_of(node, name);
+  return n ? n->o : NULL;
+}
+static int g_remove(uint8_t *node, uint8_t *key) {
+  const char *name = key_name(key);
+  node_t *n = child_of(node, name);
+  op("remove:%s", name);
+  if (n) n->attached = 0;
+  return n != NULL;
+}
+static void g_set(uint8_t *node, uint8_t *key, uint8_t *value) {
+  node_t *n = node_of(get_ptr(value));
+  CHECK(n && !n->attached);  // a node is given to one parent
+  op("set:%s", key_name(key));
+  n->parent = node;
+  snprintf(n->name, sizeof n->name, "%s", key_name(key));
+  n->attached = 1;
+}
+static void g_key(const char *text, uint8_t *out) {
+  CHECK(text && out && nkeys < 16);
+  snprintf(key_names[nkeys++], sizeof key_names[0], "%s", text);
+  put_word(out, (uint64_t)nkeys);
+}
+static uint8_t *merge_target;
+static void g_merge(uint8_t *target, uint8_t *source, uint32_t replace) {
+  CHECK(target && source && target != source && replace == 1);
+  merge_target = target;
+  op("merge");
+}
+static void g_ref(uint8_t *node, int add) {
+  node_t *n = node_of(node);
+  CHECK(n);
+  n->refs += add ? 1 : -1;
+  op(add ? "ref+" : "ref-");
+}
+static void g_dtor(uint8_t *record) {
+  CHECK(record);
+  op("dtor");
+}
+
+// the points the way the game reaches them: registers and locals as the tables of this test have them
+static int run_mid(int point) {
+  uint32_t fl = 0;
+  return rc_mid_call(point, ctx, &fl);
+}
+static int mid_alts(uint8_t *page, uint32_t filled, uint32_t record_offset) {
+#ifdef RC_GUEST32
+  ctx->r[3] = as_game(page);
+  ctx->r[4] = esp0 - 1024;
+  wr((uint32_t)ctx->r[4] + 0x6c, filled);
+  wr((uint32_t)ctx->r[4] + 0x44, record_offset);
+#else
+  ctx->r[12] = as_game(page);
+  ctx->r[13] = record_offset;
+  ctx->r[5] = as_game(MID_FRAME);
+  memcpy(MID_FRAME - 0x348, &filled, 4);
+#endif
+  return run_mid(M_ALT);
+}
+static void mid_page(int point, uint8_t *page) {  // the points that have the page in one register
+#ifdef RC_GUEST32
+  ctx->r[point == M_ROOT ? 3 : 7] = as_game(page);
+#else
+  ctx->r[point == M_ROOT ? 15 : 13] = as_game(page);
+#endif
+  CHECK_EQ(run_mid(point), 0);
+}
+
+static void set_records(uint8_t *vec, uint32_t n) {
+  uint8_t *buf = game_alloc(n * OFF("arr_record_size") + 1);
+  put_ptr(vec, buf);
+  put_ptr(vec + rc_guest_ptr_size, buf + n * OFF("arr_record_size"));
+}
+static uint32_t records_of(const uint8_t *vec) {
+  return (uint32_t)((get_word(vec + rc_guest_ptr_size) - get_word(vec)) / OFF("arr_record_size"));
+}
+static void show_focus(uint8_t *page) {
+  char text[64];
+  snprintf(text, sizeof text, "Buttons.altArrangementsP1_slot%d.States", focus_pos + 1);
+  put_string(page + OFF("menu_page_focus"), text);
+}
+
+// The page's builder: a new root and page node with the recommendation buttons (without their States), the root's
+// point, then each record but the selected one through the loop's point; a slot for each that goes on, its Label
+static void g_build(uint8_t *page) {
+  uint64_t sv[16];
+  memcpy(sv, ctx->r, sizeof sv);
+  op("build");
+  builds++;
+  node_t *root = node_new(NULL, "root"), *pn = node_new(root->o, "page");
+  put_ptr(page + OFF("menu_page_root"), root->o);
+  put_ptr(page + OFF("menu_page_node"), pn->o);
+  for (int k = 1; k <= 3; k++) {
+    char name[32];
+    snprintf(name, sizeof name, "playnext_slot%d", k);
+    node_new(pn->o, name);
+  }
+  mid_page(M_ROOT, page);
+  if (!records_of(page + OFF("las_page_records"))) set_records(page + OFF("las_page_records"), (uint32_t)song_n);
+  uint32_t selected = (uint32_t)song_sel;
+  memcpy(page + OFF("las_page_selected"), &selected, 4);
+  built_slots = 0;
+  memset(labels, 0, sizeof labels);
+  for (uint32_t i = 0; i < (uint32_t)song_n; i++) {
+    if (i == selected) continue;
+    if (mid_alts(page, (uint32_t)built_slots, i * OFF("arr_record_size"))) continue;  // to the loop's latch
+    uint8_t *str = game_alloc(0x20);
+    char name[16];
+    snprintf(name, sizeof name, "Arr%u", i);
+    put_string(str, name);
+#ifdef RC_GUEST32
+    ctx->r[7] = as_game(str);
+#else
+    ctx->r[1] = as_game(str);
+#endif
+    CHECK_EQ(run_mid(M_LABEL), 0);
+#ifdef RC_GUEST32
+    gs_text(as_host((uint32_t)ctx->r[7]), labels[built_slots]);
+#else
+    gs_text(as_host(ctx->r[1]), labels[built_slots]);
+#endif
+    snprintf(name, sizeof name, "altArrangementsP1_slot%d", built_slots + 1);
+    node_new(pn->o, name);
+    built_slots++;
+  }
+  memcpy(ctx->r, sv, sizeof sv);
+}
+
+// The menu class's focus step: its point first, with the page and the steps; the focus moves by the steps it is left with
+static int is_coop(const uint8_t *page) { return get_ptr(page) == data + D_COOP_VTABLE; }
+static size_t gstr_size(void) { return (size_t)rc_off("efd_str_inline") + (size_t)rc_guest_ptr_size; }
+static uint8_t *ids_of(const uint8_t *page) { return (uint8_t *)page + OFF("menu_page_focus_lists") + 3 * rc_guest_ptr_size; }
+static int ids_count(const uint8_t *page) {
+  return (int)((get_word(ids_of(page) + rc_guest_ptr_size) - get_word(ids_of(page))) / gstr_size());
+}
+static void id_text(const uint8_t *page, int pos, char *out) {
+  gs_text((const uint8_t *)as_host(get_word(ids_of(page)) + (uint64_t)pos * gstr_size()), out);
+}
+static void g_focus(uint8_t *page, int steps, int down) {
+  uint64_t sv[16];
+  memcpy(sv, ctx->r, sizeof sv);
+  op(down ? "down" : "up");
+#ifdef RC_GUEST32
+  int saved;
+  memcpy(&saved, MID_FRAME + 8, 4);
+  ctx->r[7] = as_game(page);
+  ctx->r[5] = as_game(MID_FRAME);
+  memcpy(MID_FRAME + 8, &steps, 4);
+  CHECK_EQ(run_mid(down ? M_FDOWN : M_FUP), 0);
+  memcpy(&steps, MID_FRAME + 8, 4);
+  memcpy(MID_FRAME + 8, &saved, 4);
+#else
+  ctx->r[down ? 13 : 3] = as_game(page);
+  ctx->r[12] = (uint64_t)(uint32_t)steps;
+  CHECK_EQ(run_mid(down ? M_FDOWN : M_FUP), 0);
+  steps = (int)(uint32_t)ctx->r[12];
+#endif
+  memcpy(ctx->r, sv, sizeof sv);
+  focus_pos += down ? steps : -steps;
+  if (is_coop(page)) {
+    char id[64];
+    focus_pos = focus_pos < 0 ? 0 : focus_pos > ids_count(page) - 1 ? ids_count(page) - 1 : focus_pos;
+    id_text(page, focus_pos, id);
+    put_string(page + OFF("menu_page_focus"), id);
+    return;
+  }
+  focus_pos = focus_pos < 0 ? 0 : focus_pos > built_slots - 1 ? built_slots - 1 : focus_pos;
+  show_focus(page);
+}
+
+// The co-op list's builder: every record's SortOrder through the point (its position, here the record index, as the
+// row), then the movie orders its focus ids by row into the lists the page has at the time (the spare ones in a rebuild)
+static double coop_rows[32];
+static double mid_coop_sort(uint8_t *page, uint32_t index, double row) {
+#ifdef RC_GUEST32
+  ctx->r[4] = esp0 - 1024;
+  wr((uint32_t)ctx->r[4] + 0x38, index);
+  wr((uint32_t)ctx->r[4] + 0x18, (uint32_t)as_game(page));
+  ctx->fpu.top = 0;
+  ctx->fpu.st[0] = row;
+  CHECK_EQ(run_mid(M_CSORT), 0);
+  return ctx->fpu.st[ctx->fpu.top & 7];
+#else
+  uint64_t pg = as_game(page);
+  ctx->r[13] = index;
+  ctx->r[5] = as_game(MID_FRAME);
+  memcpy(MID_FRAME - 0x2e8, &pg, 8);
+  memcpy(&ctx->x[0], &row, 8);
+  CHECK_EQ(run_mid(M_CSORT), 0);
+  memcpy(&row, &ctx->x[0], 8);
+  return row;
+#endif
+}
+static uint32_t mid_coop_select(uint8_t *page, uint32_t record) {
+#ifdef RC_GUEST32
+  ctx->r[1] = record;
+  ctx->r[3] = as_game(page);
+  CHECK_EQ(run_mid(M_CSEL), 0);
+  return (uint32_t)ctx->r[1];
+#else
+  ctx->r[0] = record;
+  ctx->r[14] = as_game(page);
+  CHECK_EQ(run_mid(M_CSEL), 0);
+  return (uint32_t)ctx->r[0];
+#endif
+}
+static void g_cbuild(uint8_t *page) {
+  uint64_t sv[16];
+  memcpy(sv, ctx->r, sizeof sv);
+  op("cbuild");
+  builds++;
+  uint8_t *rec = page + OFF("arr_coop_records");
+  if (!records_of(rec)) set_records(rec, (uint32_t)song_n);
+  uint32_t n = records_of(rec), order[32];
+  CHECK(n <= 32);
+  for (uint32_t i = 0; i < n; i++) {
+    coop_rows[i] = mid_coop_sort(page, i, (double)i);
+    order[i] = i;
+  }
+  for (uint32_t i = 1; i < n; i++)  // by row, then by record
+    for (uint32_t j = i; j > 0 && coop_rows[order[j]] < coop_rows[order[j - 1]]; j--) {
+      uint32_t t = order[j];
+      order[j] = order[j - 1], order[j - 1] = t;
+    }
+  uint8_t *ids = game_alloc((uint32_t)(n * gstr_size()));
+  for (uint32_t i = 0; i < n; i++) {
+    char id[48];
+    snprintf(id, sizeof id, "Buttons.arrangement%u.States", order[i]);
+    put_string(ids + i * gstr_size(), id);
+  }
+  put_ptr(ids_of(page), ids);
+  put_ptr(ids_of(page) + rc_guest_ptr_size, ids + n * gstr_size());
+  put_ptr(ids_of(page) + 2 * rc_guest_ptr_size, ids + n * gstr_size());
+  memcpy(ctx->r, sv, sizeof sv);
+}
+
+// The page as the game opens it: a page update (its point), the builder, the States nodes of the recommendations
+static uint8_t *open_page(int records, int selected, uint8_t *vtable) {
+  uint8_t *page = game_alloc(0x800);
+  put_ptr(page, vtable);
+  song_n = records, song_sel = selected;
+  mid_page(M_OPEN, page);
+  g_build(page);
+  node_t *pn = node_of(get_ptr(page + OFF("menu_page_node")));
+  for (int k = 1; k <= 3; k++) {
+    char name[32];
+    snprintf(name, sizeof name, "playnext_slot%d", k);
+    node_new(child_of(pn->o, name)->o, "States");
+  }
+  focus_pos = 0;
+  show_focus(page);
+  return page;
+}
+static void check_labels(const char *a, const char *b, const char *c, const char *d) {
+  if (strcmp(labels[0], a) || strcmp(labels[1], b) || strcmp(labels[2], c) || strcmp(labels[3], d))
+    log_end(), fprintf(stderr, "labels [%s] [%s] [%s] [%s], not [%s] [%s] [%s] [%s]\n", labels[0], labels[1], labels[2], labels[3], a,
+            b, c, d);
+  CHECK(!strcmp(labels[0], a) && !strcmp(labels[1], b) && !strcmp(labels[2], c) && !strcmp(labels[3], d));
+}
+// The window moves: Down on the last shown alternate scrolls, the entries are rebuilt with " (-N)" / " (+N)" on the
+// first / last, and the focus ends where it was; the rest is the game's step.
+static void alt_scroll(void) {
+  no_switches();
+  setenv("RS_MODS_LOG", "1", 1);
+  rs_mods_reload_config();
+  if (!mid_frame) mid_frame = game_alloc(0x800);
+  const uint32_t fl = 0x40;
+  (void)fl;
+  log_start();
+  uint8_t *a = open_page(8, 0, data + D_LAS_VTABLE);  // seven alternates, four of them shown
+  CHECK_EQ(built_slots, 4);
+  check_labels("Arr1", "Arr2", "Arr3", "Arr4 (+3)");
+  CHECK_EQ(records_of(a + OFF("las_page_records")), 8);
+
+  // Down on slot 4: scrolls one, the focus returns to slot 4 through one step up and one down
+  focus_pos = 3;
+  show_focus(a);
+  ops[0] = 0;
+  builds = 0;
+  g_focus(a, 1, 1);
+  CHECK_EQ(builds, 1);
+  CHECK_EQ(focus_pos, 3);
+  check_labels("Arr2 (-1) ", "Arr3 ", "Arr4 ", "Arr5 (+2) ");
+  CHECK(!strcmp(ops, "down dtor dtor dtor dtor dtor dtor dtor dtor remove:altArrangementsP1_slot1 "
+                     "remove:altArrangementsP1_slot2 remove:altArrangementsP1_slot3 remove:altArrangementsP1_slot4 "
+                     "ref+ remove:States ref+ remove:States ref+ remove:States ref+ build merge ref- set:States ref- "
+                     "set:States ref- set:States ref- up down "));
+  CHECK(merge_target == get_ptr(a + OFF("menu_page_root")));
+  CHECK(child_of(get_ptr(a + OFF("menu_page_node")), "playnext_slot2") &&
+        child_of(child_of(get_ptr(a + OFF("menu_page_node")), "playnext_slot2")->o, "States"));  // given to the new buttons
+  CHECK_EQ(records_of(a + OFF("las_page_records")), 8);
+  // down twice more reaches the end (seven alternates: the window starts at 3 at most); then the step is the game's
+  focus_pos = 3;
+  show_focus(a);
+  g_focus(a, 1, 1);
+  check_labels("Arr3 (-2) ", "Arr4 ", "Arr5 ", "Arr6 (+1) ");
+  g_focus(a, 1, 1);
+  check_labels("Arr4 (-3) ", "Arr5 ", "Arr6 ", "Arr7 ");
+  CHECK_EQ(focus_pos, 3);
+  builds = 0;
+  g_focus(a, 1, 1);  // no more alternates below: the game's step, which stops at the end
+  CHECK_EQ(builds, 0);
+  CHECK_EQ(focus_pos, 3);
+  // Up on slot 3 is the game's step; on slot 1 it scrolls back, and the focus is slot 1 again
+  g_focus(a, 1, 0);
+  CHECK_EQ(builds, 0);
+  CHECK_EQ(focus_pos, 2);
+  focus_pos = 0;
+  show_focus(a);
+  ops[0] = 0;
+  g_focus(a, 1, 0);
+  CHECK_EQ(builds, 1);
+  CHECK_EQ(focus_pos, 0);
+  check_labels("Arr3 (-2) ", "Arr4 ", "Arr5 ", "Arr6 (+1) ");
+  CHECK(strstr(ops, "build merge") && !strncmp(ops, "up ", 3) && !strcmp(ops + strlen(ops) - strlen("up down up "), "up down up "));
+
+  // a page opened anew starts at the top: the update's point, with records already there, builds it again
+  uint8_t *d = game_alloc(0x800);
+  put_ptr(d, data + D_LAS_VTABLE);
+  song_n = 8, song_sel = 0;
+  g_build(d);
+  check_labels("Arr3 (-2)", "Arr4", "Arr5", "Arr6 (+1)");  // the window is where the last page left it
+  builds = 0;
+  mid_page(M_OPEN, d);
+  CHECK_EQ(builds, 1);
+  check_labels("Arr1 ", "Arr2 ", "Arr3 ", "Arr4 (+3) ");
+  builds = 0;
+  mid_page(M_OPEN, d);  // the same page, updated again at once: nothing
+  CHECK_EQ(builds, 0);
+
+  // five arrangements or fewer: nothing to scroll; the focus steps are the game's, whatever slot they are on
+  uint8_t *e = open_page(5, 2, data + D_LAS_VTABLE);
+  CHECK_EQ(built_slots, 4);
+  check_labels("Arr0", "Arr1", "Arr3", "Arr4");
+  focus_pos = 3;
+  show_focus(e);
+  builds = 0;
+  g_focus(e, 1, 1);
+  CHECK_EQ(builds, 0);
+  CHECK_EQ(focus_pos, 3);
+  // another page class is not ours
+  uint8_t *o = open_page(8, 0, data + D_OTHER_VTABLE);
+  focus_pos = 3;
+  show_focus(o);
+  builds = 0;
+  g_focus(o, 1, 1);
+  CHECK_EQ(builds, 0);
+  log_stop();
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song: a song with more than five arrangements shows four alternates at a "
+                        "time; the arrow keys and the mouse wheel scroll the rest"), 1);  // said once
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song: Down, window 0 -> 1 of 7 alternates"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song: Down, window 3 -> 3 of 7 alternates"), 1);
+
+  // RS_MODS_ARRANGEMENTS=0 is the original: the builder takes every alternate it is given, the page nothing
+  setenv("RS_MODS_ARRANGEMENTS", "0", 1);
+  rs_mods_reload_config();
+  for (uint32_t filled = 0; filled < 7; filled++) CHECK_EQ(mid_alts(a, filled, OFF("arr_record_size")), 0);
+  focus_pos = 3;
+  show_focus(a);
+  builds = 0;
+  g_focus(a, 1, 1);
+  CHECK_EQ(builds, 0);
+  no_switches();
+  rs_mods_reload_config();
+}
+
+// The co-op arrangement list: more records than rows: the window over the selected record, the rows, the focus steps
+// by record through a list that is not in record order, and Enter naming the focused record.
+static int coop_focus_record(const uint8_t *page) {
+  char focus[64];
+  gs_text((const uint8_t *)page + OFF("menu_page_focus"), focus);
+  return rs_mods_coop_focus_index(focus);
+}
+static void coop_focus_on(uint8_t *page, int record) {
+  char id[64], want[64];
+  snprintf(want, sizeof want, "Buttons.arrangement%d.States", record);
+  for (int k = 0; k < ids_count(page); k++) {
+    id_text(page, k, id);
+    if (!strcmp(id, want)) focus_pos = k;
+  }
+  id_text(page, focus_pos, id);
+  put_string(page + OFF("menu_page_focus"), id);
+}
+static void coop_order(const uint8_t *page, int *out) {  // the records in the order of the page's own focus id list
+  char id[64];
+  for (int k = 0; k < ids_count(page); k++) id_text(page, k, id), out[k] = rs_mods_coop_focus_index(id);
+}
+static void alt_coop(void) {
+  no_switches();
+  setenv("RS_MODS_LOG", "1", 1);
+  rs_mods_reload_config();
+  log_start();
+  // twelve records, the tenth selected: the window starts at 3, records 3..10 take rows 0..7, the others a row below
+  uint8_t *page = game_alloc(0x800);
+  uint32_t sel = 10;
+  put_ptr(page, data + D_COOP_VTABLE);
+  memcpy(page + OFF("arr_coop_selected"), &sel, 4);
+  song_n = 12;
+  g_cbuild(page);
+  for (int i = 0; i < 12; i++) CHECK_EQ((int)coop_rows[i], i >= 3 && i <= 10 ? i - 3 : 100 + i);
+  int order[16], want_entry[12] = {3, 4, 5, 6, 7, 8, 9, 10, 0, 1, 2, 11};
+  coop_order(page, order);
+  CHECK(!memcmp(order, want_entry, sizeof want_entry));
+  // Enter on record 10: the game's map gives the list position (7: the 8th entry), the focused entry's name the record
+  coop_focus_on(page, 10);
+  CHECK_EQ(focus_pos, 7);
+  CHECK_EQ(mid_coop_select(page, (uint32_t)focus_pos), 10);
+  CHECK_EQ(mid_coop_select(page, 10), 10);
+  // Down: the target is record 11, the window moves to 4, the list stays as it was, the focus is record 11 (position 11)
+  ops[0] = 0;
+  builds = 0;
+  g_focus(page, 1, 1);
+  CHECK_EQ(builds, 1);
+  CHECK_EQ(coop_focus_record(page), 11);
+  // the step the game was given is 0 steps long: ours is the second; the builder runs after its records are destroyed
+  CHECK(!strcmp(ops, "down dtor dtor dtor dtor dtor dtor dtor dtor dtor dtor dtor dtor cbuild down "));
+  for (int i = 0; i < 12; i++) CHECK_EQ((int)coop_rows[i], i >= 4 && i <= 11 ? i - 4 : 100 + i);
+  coop_order(page, order);
+  CHECK(!memcmp(order, want_entry, sizeof want_entry));  // the page's own focus lists, not the builder's
+  // Up: the target is record 10, which is in the window: no rebuild, four positions back
+  builds = 0;
+  ops[0] = 0;
+  g_focus(page, 1, 0);
+  CHECK_EQ(builds, 0);
+  CHECK_EQ(coop_focus_record(page), 10);
+  CHECK(!strcmp(ops, "up up "));
+  // up to record 3, then once more: record 2 is before the window (moves to 2), eight positions the other way
+  for (int r = 9; r >= 3; r--) {
+    g_focus(page, 1, 0);
+    CHECK_EQ(coop_focus_record(page), r);
+  }
+  builds = 0;
+  g_focus(page, 1, 0);
+  CHECK_EQ(builds, 1);
+  CHECK_EQ(coop_focus_record(page), 2);
+  for (int i = 0; i < 12; i++) CHECK_EQ((int)coop_rows[i], i >= 2 && i <= 9 ? i - 2 : 100 + i);
+  // eight records or fewer fit: the steps are the game's, no window, rows as the builder has them
+  uint8_t *small = game_alloc(0x800);
+  sel = 3;
+  put_ptr(small, data + D_COOP_VTABLE);
+  memcpy(small + OFF("arr_coop_selected"), &sel, 4);
+  song_n = 8;
+  g_cbuild(small);
+  for (int i = 0; i < 8; i++) CHECK_EQ((int)coop_rows[i], i);
+  coop_focus_on(small, 2);
+  builds = 0;
+  ops[0] = 0;
+  g_focus(small, 1, 1);
+  CHECK_EQ(builds, 0);
+  CHECK_EQ(coop_focus_record(small), 3);
+  CHECK(!strcmp(ops, "down "));
+  // a second player's page has a window of its own (the small one's page is gone: its first word is not the list's now)
+  put_ptr(small, NULL);
+  uint8_t *other = game_alloc(0x800);
+  sel = 0;
+  put_ptr(other, data + D_COOP_VTABLE);
+  memcpy(other + OFF("arr_coop_selected"), &sel, 4);
+  song_n = 12;
+  g_cbuild(other);
+  for (int i = 0; i < 12; i++) CHECK_EQ((int)coop_rows[i], i < 8 ? i : 100 + i);
+  coop_focus_on(page, 5);  // the first page's window is untouched by the second's build
+  g_focus(page, 1, 1);
+  CHECK_EQ(coop_focus_record(page), 6);
+  log_stop();
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song: co-op list scrolled to 4 of 12"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song: co-op list scrolled to 2 of 12"), 1);
+  CHECK_EQ(logged_lines("[rs-mods] Learn a Song: co-op select Buttons.arrangement10.States -> record 10 (the list "
+                        "position gave 7)"), 1);
+  setenv("RS_MODS_ARRANGEMENTS", "0", 1);  // the original: the point leaves the rows and the record alone
+  rs_mods_reload_config();
+  song_n = 12;
+  uint8_t *orig = game_alloc(0x800);
+  sel = 10;
+  put_ptr(orig, data + D_COOP_VTABLE);
+  memcpy(orig + OFF("arr_coop_selected"), &sel, 4);
+  g_cbuild(orig);
+  for (int i = 0; i < 12; i++) CHECK_EQ((int)coop_rows[i], i);
+  CHECK_EQ(mid_coop_select(orig, 7), 7);
+  no_switches();
+  rs_mods_reload_config();
+}
+
+
+// The window arithmetic of the scrollable arrangement lists
+static void alt_window(void) {
+  // selected 2 of 9 records: alternates are records 0,1,3,4,5,6,7,8 (ranks 0..7)
+  int shown[9] = {0};
+  for (uint32_t i = 0; i < 9; i++) shown[i] = rs_mods_alt_in_window(i, 2, 0);
+  CHECK(shown[0] && shown[1] && !shown[2] && shown[3] && shown[4] && !shown[5] && !shown[8]);
+  CHECK(rs_mods_alt_in_window(8, 2, 4) && !rs_mods_alt_in_window(0, 2, 1) && rs_mods_alt_in_window(1, 2, 1));
+  CHECK_EQ(rs_mods_alt_scroll(0, 8, 1, 0), 1);
+  CHECK_EQ(rs_mods_alt_scroll(4, 8, 1, 0), 4);  // the window ends at the last alternate
+  CHECK_EQ(rs_mods_alt_scroll(0, 8, 0, 1), 0);
+  CHECK_EQ(rs_mods_alt_scroll(3, 8, 0, 1), 2);
+  CHECK_EQ(rs_mods_alt_scroll(0, 4, 1, 0), 0);  // four alternates: nothing to scroll
+  char t[16];
+  rs_mods_alt_label_tag(1, 0, 8, t, sizeof t); CHECK_EQ(strcmp(t, ""), 0);
+  rs_mods_alt_label_tag(4, 0, 8, t, sizeof t); CHECK_EQ(strcmp(t, " (+4)"), 0);
+  rs_mods_alt_label_tag(1, 2, 8, t, sizeof t); CHECK_EQ(strcmp(t, " (-2)"), 0);
+  rs_mods_alt_label_tag(2, 2, 8, t, sizeof t); CHECK_EQ(strcmp(t, ""), 0);
+  rs_mods_alt_label_tag(4, 4, 8, t, sizeof t); CHECK_EQ(strcmp(t, ""), 0);
+  CHECK_EQ(rs_mods_coop_window_for(0, 8, 7), 0);  // eight rows fit
+  CHECK_EQ(rs_mods_coop_window_for(0, 12, 3), 0);
+  CHECK_EQ(rs_mods_coop_window_for(0, 12, 8), 1);
+  CHECK_EQ(rs_mods_coop_window_for(5, 12, 6), 4);  // 6 is in rows 5..12 but the list ends at 4..11
+  CHECK_EQ(rs_mods_coop_window_for(3, 12, 1), 1);
+  CHECK_EQ(rs_mods_coop_window_for(0, 12, 11), 4);
+  CHECK(rs_mods_coop_in_window(0, 8, 0) && rs_mods_coop_in_window(11, 8, 0));  // nothing to window
+  CHECK(!rs_mods_coop_in_window(2, 12, 3) && rs_mods_coop_in_window(3, 12, 3) && rs_mods_coop_in_window(10, 12, 3) &&
+        !rs_mods_coop_in_window(11, 12, 3));
+  CHECK_EQ(rs_mods_coop_step(3, 12, 1), 4);
+  CHECK_EQ(rs_mods_coop_step(0, 12, -1), 0);   // stops at the ends
+  CHECK_EQ(rs_mods_coop_step(11, 12, 5), 11);
+  CHECK_EQ(rs_mods_coop_step(5, 12, -9), 0);
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.arrangement3.States"), 3);
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.arrangement.States"), -1);
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.back"), -1);
+  CHECK_EQ(rs_mods_coop_focus_index(NULL), -1);
+}
+
+// The same arithmetic at its edges: no alternates, exactly as many as the slots (no scroll), one more (the smallest
+// scroll), the selected record first, last or not a record, the co-op list at exactly RS_MODS_COOP_ROWS and one more;
+// then every list length up to twenty, scrolled from top to bottom and back
+static void alt_window_edges(void) {
+  char t[16];
+  // no records, and a song of one arrangement: nothing shown, nothing to scroll, no tags
+  CHECK(!rs_mods_alt_in_window(0, 0, 0));
+  CHECK_EQ(rs_mods_alt_scroll(0, 0, 1, 0), 0);
+  CHECK_EQ(rs_mods_alt_scroll(0, 0, 0, 1), 0);
+  for (uint32_t s = 1; s <= 4; s++) {
+    rs_mods_alt_label_tag(s, 0, 0, t, sizeof t);
+    CHECK_EQ(t[0], 0);
+  }
+  // five records, four alternates: all shown, whichever is selected; no tag, no scroll
+  for (uint32_t sel = 0; sel < 5; sel++)
+    for (uint32_t i = 0; i < 5; i++) CHECK_EQ(rs_mods_alt_in_window(i, sel, 0), i != sel);
+  CHECK_EQ(rs_mods_alt_scroll(0, 4, 1, 0), 0);
+  rs_mods_alt_label_tag(4, 0, 4, t, sizeof t);
+  CHECK_EQ(t[0], 0);
+  // six records, five alternates, the selected one last: records 0..3, then 1..4
+  CHECK(rs_mods_alt_in_window(0, 5, 0) && rs_mods_alt_in_window(3, 5, 0) && !rs_mods_alt_in_window(4, 5, 0));
+  rs_mods_alt_label_tag(4, 0, 5, t, sizeof t);
+  CHECK_EQ(strcmp(t, " (+1)"), 0);
+  CHECK_EQ(rs_mods_alt_scroll(0, 5, 1, 0), 1);
+  CHECK(!rs_mods_alt_in_window(0, 5, 1) && rs_mods_alt_in_window(4, 5, 1) && !rs_mods_alt_in_window(5, 5, 1));
+  CHECK_EQ(rs_mods_alt_scroll(1, 5, 1, 0), 1);  // the last alternate is in the last slot
+  rs_mods_alt_label_tag(1, 1, 5, t, sizeof t);
+  CHECK_EQ(strcmp(t, " (-1)"), 0);
+  rs_mods_alt_label_tag(4, 1, 5, t, sizeof t);
+  CHECK_EQ(t[0], 0);
+  CHECK_EQ(rs_mods_alt_scroll(1, 5, 0, 1), 0);
+  // the selected one first: the window starts at record 1
+  CHECK(!rs_mods_alt_in_window(0, 0, 0) && rs_mods_alt_in_window(1, 0, 0) && rs_mods_alt_in_window(4, 0, 0) &&
+        !rs_mods_alt_in_window(5, 0, 0) && rs_mods_alt_in_window(5, 0, 1) && !rs_mods_alt_in_window(1, 0, 1));
+  // a selection that is no record: every record is an alternate
+  CHECK(rs_mods_alt_in_window(0, 0xffffffffu, 0) && rs_mods_alt_in_window(3, 0xffffffffu, 0) &&
+        !rs_mods_alt_in_window(4, 0xffffffffu, 0));
+  // both ways at once, and neither: a step one way (down first), or none
+  CHECK_EQ(rs_mods_alt_scroll(1, 8, 1, 1), 2);
+  CHECK_EQ(rs_mods_alt_scroll(1, 8, 0, 0), 1);
+  // a tag in a buffer too small for it is cut, a buffer of none is left alone
+  rs_mods_alt_label_tag(4, 0, 9, t, 3);
+  CHECK_EQ(strcmp(t, " ("), 0);
+  t[0] = 'x';
+  rs_mods_alt_label_tag(4, 0, 9, t, 0);
+  CHECK_EQ(t[0], 'x');
+  rs_mods_alt_label_tag(4, 0, 1000, t, sizeof t);
+  CHECK_EQ(strcmp(t, " (+996)"), 0);
+
+  // every song of up to twenty arrangements, any one selected: from the top, Down to the end and Up back. At every
+  // position the window shows min(4, the alternates left from there) of them, each alternate shown in exactly one slot
+  // position, the tags count what is out of sight, and Down stops with the last alternate in the window
+  for (uint32_t count = 0; count <= 20; count++)
+    for (uint32_t sel = 0; sel < (count ? count : 1); sel++) {
+      uint32_t alts = count ? count - 1 : 0, offset = 0, last = alts > 4 ? alts - 4 : 0, steps = 0;
+      for (;;) {
+        uint32_t shown = 0;
+        for (uint32_t i = 0; i < count; i++) shown += (uint32_t)rs_mods_alt_in_window(i, sel, offset);
+        CHECK_EQ(shown, alts - offset < 4 ? alts - offset : 4);
+        uint32_t hidden = 0;
+        char a[16], b[16];
+        rs_mods_alt_label_tag(1, offset, alts, a, sizeof a);
+        rs_mods_alt_label_tag(4, offset, alts, b, sizeof b);
+        if (a[0]) hidden += (uint32_t)strtoul(a + 3, NULL, 10);
+        if (b[0]) hidden += (uint32_t)strtoul(b + 3, NULL, 10);
+        CHECK_EQ(hidden, alts - shown);
+        CHECK_EQ(a[0] != 0, offset > 0);
+        uint32_t next = rs_mods_alt_scroll(offset, alts, 1, 0);
+        if (next == offset) break;
+        CHECK_EQ(next, offset + 1);
+        offset = next, steps++;
+        CHECK(steps <= 20);
+      }
+      CHECK_EQ(offset, last);
+      while (offset) {
+        uint32_t next = rs_mods_alt_scroll(offset, alts, 0, 1);
+        CHECK_EQ(next, offset - 1);
+        offset = next;
+      }
+      CHECK_EQ(rs_mods_alt_scroll(0, alts, 0, 1), 0);
+    }
+
+  // the co-op list: none, eight (all shown, no window) and nine records (one row to scroll)
+  CHECK_EQ(rs_mods_coop_window_for(0, 0, 0), 0);
+  CHECK_EQ(rs_mods_coop_step(0, 0, 1), 0);
+  CHECK_EQ(rs_mods_coop_step(0, 0, -1), 0);
+  CHECK_EQ(rs_mods_coop_window_for(3, 8, 7), 0);  // a stale offset of a longer list
+  for (uint32_t i = 0; i < 8; i++) CHECK(rs_mods_coop_in_window(i, 8, 0));
+  CHECK_EQ(rs_mods_coop_window_for(0, 9, 7), 0);
+  CHECK_EQ(rs_mods_coop_window_for(0, 9, 8), 1);
+  CHECK_EQ(rs_mods_coop_window_for(1, 9, 0), 0);
+  CHECK_EQ(rs_mods_coop_window_for(5, 9, 4), 1);  // an offset past the last window is pulled back to it
+  CHECK_EQ(rs_mods_coop_window_for(0, 9, 20), 1); // a selection past the end: the last window
+  CHECK(!rs_mods_coop_in_window(8, 9, 0) && rs_mods_coop_in_window(8, 9, 1) && !rs_mods_coop_in_window(0, 9, 1));
+  CHECK_EQ(rs_mods_coop_step(7, 9, 1), 8);
+  CHECK_EQ(rs_mods_coop_step(8, 9, 1), 8);
+  CHECK_EQ(rs_mods_coop_step(1, 9, -1), 0);
+  CHECK_EQ(rs_mods_coop_step(0, 9, 0), 0);
+  // every list of up to twenty records, from every offset, onto every record: the window shows it, moved no further
+  // than it has to (not at all when it is shown already), never past the last window
+  for (uint32_t count = 1; count <= 20; count++) {
+    uint32_t last = count > RS_MODS_COOP_ROWS ? count - RS_MODS_COOP_ROWS : 0;
+    for (uint32_t from = 0; from <= count; from++)
+      for (uint32_t sel = 0; sel < count; sel++) {
+        uint32_t o = rs_mods_coop_window_for(from, count, sel), start = from > last ? last : from;
+        CHECK(o <= last && rs_mods_coop_in_window(sel, count, o));
+        if (count > RS_MODS_COOP_ROWS && rs_mods_coop_in_window(sel, count, start)) CHECK_EQ(o, start);
+        else if (count > RS_MODS_COOP_ROWS) CHECK_EQ(o, sel < start ? sel : sel - RS_MODS_COOP_ROWS + 1);
+      }
+  }
+  // the focused button's record: the digits after "arrangement", and nothing else
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.arrangement12.States"), 12);
+  CHECK_EQ(rs_mods_coop_focus_index("arrangement0"), 0);
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.arrangement99999999.States"), -1);
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.altArrangementsP1_slot1.States"), -1);  // Learn a Song's slots: not co-op
+  CHECK_EQ(rs_mods_coop_focus_index("Buttons.arrangementX1.States"), -1);
+}
+
 int main(void) {
 #ifdef RC_GUEST32
   CHECK(!rc32_mem_init());
@@ -1288,6 +2363,8 @@ int main(void) {
   strcpy((char *)data + D_TEXT_MIC, "MicKey");
   put_ptr(data + D_KEY_DIRECT, data + D_TEXT_DIRECT);
   put_ptr(data + D_KEY_MIC, data + D_TEXT_MIC);
+  put_ptr(data + D_NODE_VTABLE, as_host(ADDR(G_ADDREF)));  // the nodes' reference methods (the 32-bit runtime calls
+  put_ptr(data + D_NODE_VTABLE + rc_guest_ptr_size, as_host(ADDR(G_RELEASE)));  // these; the 64-bit test dispatches by slot)
   input_obj = game_alloc(64);
   manager_obj = game_alloc(16);
   text_heap = game_alloc(TEXT_HEAP);
@@ -1304,6 +2381,11 @@ int main(void) {
   ownership();
   saved_input();
   skip_tuner();
+  menu_retry();
+  alt_scroll();
+  alt_coop();
+  alt_window();
+  alt_window_edges();
   manifests();
   mounting_edges();
   file_questions();

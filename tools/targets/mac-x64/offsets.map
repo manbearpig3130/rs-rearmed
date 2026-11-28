@@ -398,6 +398,9 @@ nf_adapter_size              0x30  # bytes (the stack object at rbp-0x90 .. -0x5
 seven_fretgrid_wire_head     0xa0  # fret-wire row: the header before record 0 (0x100199fd0); Learn & Play 0xa0
 seven_fretgrid_wire_rec      0x38  # fret-wire record (ctor 0x10019dc30); Learn & Play 0x30
 seven_fretgrid_wire_state    0x8  # fret-wire record: u32 state, 2 = settled (0x10019a0b0); Learn & Play 0x8
+seven_marker_player        0xa0  # the neck's finger marker manager (the owner of the marker update and the marker function): its player (session at session_guitar)
+instrument_type             0x0   # InstrumentInfo: int, the instrument class (the profile's +0x1c, copied at 0x100194e5d): 1 guitar, 2 bass (wave2 P1)
+seven_profile_pegs          0x4a  # profile: u16, the peg pool's request (GuitarProfile_Load 0x1001a1db6 stores cx = 6 / 4 there) (wave2 P1)
 detect_target_string         0x10  # [0x10] the target note PUBAN gets: u8 its string (0x10010fa23; LP 0x13f5265)
 detect_target_fret           0x11  # [0x11] u8 its fret (0x10010fa28; LP 0x13f525f)
 tuner_entity_release_slot    0x2  # [0x2] the vtable slot the game releases the session's picks and letters with (Mac dtor
@@ -405,6 +408,14 @@ sng_note_time                0xc  # SNG note: float time (SH 0x100014510 reads [
 sng_note_sustain             0x3c  # SNG note: float sustain (the same reads, +0x3c; LP the same)
 headstock_seg_values         0x8  # a segment's params: its nine value pointers start at +0x8 (Rnd_SetStringShaderParams 0x1001af5e0: g_flickerPhase +0x8 ... g_diffuseColor +0x20, v_positionString +0x28, the last +0x48); Learn & Play 0x0
 guitar_string_size           0x168  # string object size (efd_alloc in the ctor 0x1001b00e7; LP 0x110)
+rangefx_end                 0x14    # fret range glow effect (Rnd_FretRangeFx_Init 0x100657170): four vec3 wire ends from here, world (0x1006577d1, 0x1006577d5, 0x100657814, 0x100657818); Learn & Play 0x10
+rangefx_pieces              0x78    # fret range glow effect: its box, then its four bars, a pointer each (0x1006572a5, 0x100657363, 0x100657425, 0x1006574e7, 0x1006575a9); Learn & Play 0x6c
+fxpiece_hash                0x10    # a glow piece (box, bar): u32 its effect hash (0x1006572b3); Learn & Play 0xc
+fxpiece_entity              0x18    # a glow piece: its entity (0x100654d53, 0x1006547a6); Learn & Play 0x10
+# tuner and pitch fixes (rs7string beta.4)
+detection_floor             0x1308  # [0x11f4] detection: s32 raw candidate floor MIDI, 0x18 from Play_Detector_Reset (0x10021bda7); read at 0x100221fe5, 0x10022244b, 0x10022519f
+# wave2 P2 extended bass
+sng_note_string                0x10    # SNG note: u8, the string (Rnd_Note_UpdateInProgress 0x10043a687's [note + 0x10])
 # --- Seven-String Guitar: end
 # --- Frame rate (built in: overrides/mods/framerate.c)
 service_holder_frame_dt      0x16c  # the frame tick 0x1000e0330 stores min((ms now - ms before) / 1000, 1/15) here (movss at 0x1000e0520); its getter is 0x1000dd0c0
@@ -421,3 +432,23 @@ ui_class_slot                 0x3
 ui_class_parent               0x8
 ui_checkbox_checked           0xb0
 ui_slider_value               0xb8
+
+# Stock-game fixes (built in: tools/ws7/recomp/overrides/mods/mods_shared.c)
+menu_movie_uri                    0xe0    # GFxMovieModel: the URI string, read by the request (0x100b7094f: [rbx+0xf8], [rbx+0xe0], size word at 0xf0, inline pointer at 0xf8)
+file_index_name                   -0x498  # the index writer 0x100496b20: the string of the file's name and extension (rbp-0x498, its size word at rbp-0x488), destroyed first at its tail 0x100497827
+
+# wave3 headstock (the extended headstock: width, a bass's added segments)
+ni_local_rotate                   0x78    # NiAVObject: the local rotation, nine floats (the local NiTransform at +0x74: the identity matrix constructor 0x101309170 writes 9 floats at +4; translation +0x28, scale +0x34 = ni_local_scale)
+headstock_seg_loaded              0x30    # Rnd_Headstock: u8 per segment, loaded (GSHC 0x100199b10: cmp byte [r12+rbx+0x30], 0)
+# wave3 alts: the scrollable "Other arrangements" list (built in: overrides/mods/mods_shared.c)
+menu_page_root          0x250   # the menu class: the view definition root, replaced by each build (0x10062b1c0 stores it at 0x10062b228, from the view +0x148); Learn & Play's 0x1a0
+menu_page_node          0x290   # the page's node under the root (0x10062b2ad stores it); Learn & Play's 0x1c4
+menu_page_focus         0x2e8   # the focused button's id, a game string (0x1002ee8bb: lea r15,[rbx+0x2e8]); Learn & Play's 0x1fc
+menu_page_focus_lists   0x308   # the focus key list (0x308, 0x310, 0x318) and id list (0x320, 0x328, 0x330) the focus steps move through (0x1002ee8a4: [rbx+0x320]); Learn & Play's 0x214
+las_page_records        0x500   # the Learn a Song page's records, begin and end (0x100339500, 0x100339442); Learn & Play's 0x388
+las_page_records2       0x518   # the second player's (the page's destructor 0x100342490: 0x100342611); Learn & Play's 0x394
+las_page_selected       0x530   # the selected record's index (0x100339434); Learn & Play's 0x3a0
+las_page_slot_counter   0x534   # raised by the builder for each slot it fills (0x100339e0c); Learn & Play's 0x3a4
+arr_record_size         0x180   # an arrangement record (0x1003394a6: lea rax,[rax+2*rax]; shl rax,7); Learn & Play's 0xfc
+arr_coop_records        0x4e0   # the co-op arrangement list page's records, begin and end (0x10073ef8a, 0x10073f23a); Learn & Play's 0x370
+arr_coop_selected       0x4f8   # the selected record's index (0x10073efc8, 0x10074080b); Learn & Play's 0x37c

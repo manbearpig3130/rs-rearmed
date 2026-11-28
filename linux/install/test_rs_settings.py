@@ -31,7 +31,7 @@ class TheMacsLists(unittest.TestCase):
 
     def test_the_built_in_mods_are_the_macs(self):
         mods = re.findall(r'BuiltInMod\(key: "(\w+)", title: "([^"]+)",\s*detail: "([^"]+)"', self.swift)
-        self.assertEqual(len(mods), 9)
+        self.assertEqual(len(mods), 11)
         self.assertEqual([(m.key, m.title, m.detail) for m in rs_settings.MODS], mods)
 
     def test_the_options_are_the_macs_in_their_order(self):

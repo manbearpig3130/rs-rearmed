@@ -36,9 +36,14 @@ MODS = (
         "Off: Player 2 needs a Real Tone cable, as in the original game."),
     Mod("RS_MODS_GUITARCADE_SKIP", "Skip Tuner in the Guitarcade",
         "Off: a Guitarcade game's tuner can't be skipped, as in the original game."),
+    Mod("RS_MODS_MENU_RETRY", "Menus that don't stay white while loading",
+        "Off: a menu can stay on the white loading screen for good, as in the original game."),
+    Mod("RS_MODS_ARRANGEMENTS", "Songs with more than five arrangements in Learn a Song",
+        "Off: the page crashes on such a song, as in the original game."),
     Mod("RS_MODS_FRAME_RATE", "Calibration and the tuner the same at any frame rate",
         "Off: they count in frames, as in the original game, which goes wrong above 60 Hz."),
-    Mod("RS_REARMED", "Re-ARMed title logo", "Off: the game's own logo."),
+    Mod("RS_REARMED", "RS Re-ARMed branding",
+        "Off: the game's own title as the logo and app name, in the Dock, the menu, the window title and the launcher's icon. "),
 )
 
 
@@ -132,6 +137,8 @@ OPTIONS = (
            PICTURE, True, "no"),
     Option("RS_METAL_MSAA", "Anti-aliasing", "MSAA on the game's 3D picture.",
            choice(("Default (4x)", ""), ("Off", "1"), ("2x", "2"), ("4x", "4"), ("8x", "8")), PICTURE, False, "no"),
+    Option("RS_METAL_SHARPEN", "Sharpening", "Sharpens the picture on the screen, after any upscaling: 0-100%.",
+           choice(("Off", ""), ("Low (30%)", "30"), ("Medium (60%)", "60"), ("High (100%)", "100")), PICTURE, False, "no"),
     Option("RS_METAL_DRAWABLES", "Low-latency presentation",
            "2 frames queued instead of 3: each one shows a refresh sooner, a late one as a repeat.",
            choice(("Default (3 with vsync)", ""), ("On (2)", "2")), PICTURE, True, "no"),
@@ -166,6 +173,7 @@ OPTIONS = (
 
 # Where a detail's words are the Mac's: the same switch in Linux's.
 LINUX_DETAIL = {
+    "RS_REARMED": "Off: the game's own title logo.",
     "RS_AUDIO_FRAMES": "Frames per callback asked of PipeWire, which may give another size. Default 256.",
     "RS_WINDOW_ANY_SHAPE": "Off: a window keeps 16:9, as the original game's.",
     "RS_AUDIO_RT": "The game's audio engine thread runs real-time, as PipeWire's own threads do. Off: as the original.",
@@ -181,6 +189,7 @@ SOON = "Not in the Linux build yet."
 
 
 def detail(option):
+    """An option's or a mod's words on this page."""
     return LINUX_DETAIL.get(option.key, option.detail)
 
 

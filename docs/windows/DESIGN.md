@@ -236,7 +236,7 @@ steps: `build-msl-corpus.sh --pairs`, `msl_verify --translate-only`, `merge_corp
 
 **The warm-up**: `--warm-shaders` in `lp_main.c`, before anything of the game is loaded, calls `rs_gfx_warm_only`, the loop the Mac
 app runs ([METAL.md](../mac/METAL.md#safe-load)). There is no safe load: its reason on the Mac is the loading screen's race with a
-fast-load `cache.psarc` and a busy CPU, and after the warm-up nothing here keeps the CPU busy while the game loads
+fast-load `cache.psarc` and a busy CPU (the [loading-screen fix](#built-in-fixes-and-mods) covers the race itself), and after the warm-up nothing here keeps the CPU busy while the game loads
 ([PERFORMANCE.md](PERFORMANCE.md#shader-preparation)). A program the list doesn't have is compiled when the game first draws with
 it, kept in the disk cache and warmed from the manifest at the next start.
 
@@ -296,6 +296,10 @@ The policy is the Mac edition's, from the same code (`shims/coreaudio/rs_audio_h
   and tones get what a hook wrote. With no mod the hooks cost one test.
 - **The list of inputs.** `wa_engine.c` lists an interface's channels as mono endpoints, in the priority order
   the game's limit of 10 needs.
+- **The test input** (`RS_AUDIO_FAKE_INPUT`): the Mac edition's device, from the same code
+  (`shims/coreaudio/rs_audio_fake.c`), which the endpoints, rates and buffer sizes here reach through the same
+  `rs_audio_hal_*` calls. A capture stream on it has no HAL unit: the device calls the stream's I/O function, which
+  does what the input callback does with a unit's buffer (`fake_input_cb`).
 - **An input's level.** The game sets the level through `IAudioEndpointVolume` and the winmm mixer, which share
   one value per endpoint (`wa_com.c`). For any input but the cable that value is the shared level, applied in
   the capture callback.
@@ -393,7 +397,9 @@ engine: `DefWindowProc` destroys the window, the game's `WM_DESTROY` posts `WM_Q
 tells its service to quit. A game that does not answer in 8 s goes anyway. Every end of the process runs
 `w32_host_exit` (the shader cache saved, the streams flushed, `_exit`), since the game's threads still run there,
 and DLLs get `DLL_PROCESS_DETACH` with `lpReserved` set, the process-exit form, which leaves the CRT's locks and
-TLS to those threads.
+TLS to those threads. The game's teardown of its JSON tables frees them whatever documents still hold entries, so a
+quit while the profile's gear is loading ends cleanly here; the Mac game's checks the tables first and needs a fix
+([Mac design](../mac/DESIGN.md#built-in-fixes-and-mods)).
 
 ## Built-in fixes and mods
 
@@ -462,7 +468,20 @@ What differs, fix by fix:
   the hook reads the count and picks where the function goes on instead of changing it.
 - **Skip Tuner in the Guitarcade**: the shared hook, with this game's mid point. The game makes the same test and
   keeps its answer in a local, where the Mac's is in a register.
-- **Loading-screen fix.** Not needed here ([Shader corpus](#shader-corpus)).
+- **Loading-screen fix**: the shared fix, with this game's points. The game has the same race: its request to the
+  asset locator takes the movie in `eax` and the id as two words on the stack (the Mac's takes a pointer to the id), so
+  the replay sets `eax` in the thread's context and calls the request by its address
+  (`menu_movie_request_reg`; a call by name does not do a `custom` function). The safe load of the Mac's Metal is not
+  here ([Shader corpus](#shader-corpus)): after the warm-up nothing keeps the CPU busy while the game loads, but the
+  index can be late for other reasons too (a fast-load `cache.psarc`, a busy machine), which the fix covers.
+- **Learn a Song with more than five arrangements**: the shared fix, with this game's mid point `las_alt_slot`: the
+  slots filled so far are a local at `[esp+0x6c]` here, where the Mac's is `[rbp-0x348]`; the scroll of the other
+  arrangements is shared too ([Mac design](../mac/DESIGN.md)), with this game's sites for its points (the page
+  builder 0x11bf440, the page update 0x11beb70, the menu class's focus steps 0x115b1a0 / 0x115b280) and the forms of
+  the game's functions it calls: the member lookup by name takes the name in `eax` (`json_find_ecx`, set in the
+  thread's context before the call), the key maker takes its text in `ecx`, and the others are `thiscall` / `stdcall`.
+  The co-op list's points are the co-op page's builder 0x11c6d40 (the entry's `SortOrder`, an x87 value here, the
+  Mac's `xmm0`) and its select handler 0x11c8260.
 - **Direct Connect choice**: the same overlay, made by the same `tools/play-native/cache_overlay.py`. The archives' key
   comes from the unpacked code image, which the build step hands to the copy (`gamefiles.key_from_image`).
   `frontend_open_file` is a native function here: the original's lower-casing of the path is behind a packer stub. For a
@@ -475,19 +494,24 @@ What differs, fix by fix:
   game's, with the same bug. The other lists of `static.psarc`, with a bar for those that had none, come through
   this edition's hook on FrontEnd_OpenFile by the Mac's rule (`rs_mods_overlay_name`), from this game's own
   `static.psarc`.
-- **RS Re-ARMed's options in ADV DISPLAY SETTINGS**: the Mac edition's, with ten of its twelve switches (no RENDERER
-  or MULTITHREADED GL ENGINE: Metal only). The overlay's edits are the same, the menu's definition and text rows for
-  this edition's list (`LP_MENU_OPTIONS`) and the same movie edit, since this game's `displaysettings.gfx` is byte for
-  byte the Mac game's. The options themselves, their switches and files and why a row is locked, are one source
-  (`overrides/mods/menu_options_common.c`). The native half is `win-x86/shims/win32_menu_options.c`: the same five
-  methods as the Mac's, matched in this game (`tools/targets/win-x86`), but as `wrap` lines of the win32 override
-  module rather than vtable slots, so each runs in front of the translated method whoever calls it. The game's helpers
-  it calls differ in their calls, as the tables say: several take register arguments, a JSON key is one word, the
-  game's string is 24 bytes, and `json_get_number`, `json_get_bool`, `menu_screens` and `get_resolution` are inlined
-  here, so they are made from the same pieces the game's own code uses. A change is written to `options.env` in
-  `LP_HOME`.
+- **RS Re-ARMed's options in ADV DISPLAY SETTINGS**: the Mac edition's, with eleven of its thirteen switches (no
+  RENDERER or MULTITHREADED GL ENGINE: Metal only). The overlay's edits are the same, the menu's definition and text
+  rows for this edition's list (`LP_MENU_OPTIONS`) and the same movie edit, since this game's `displaysettings.gfx` is
+  byte for byte the Mac game's. The options themselves, their switches and files and why a row is locked, are one source
+  (`overrides/mods/menu_options_common.c`). A change takes effect at once where the renderer can take it, as on the Mac:
+  SHARPENING, ANTI-ALIASING, TEXTURE FILTERING and COLOR go to libRSOpenGL's `rs_gfx_set_switch` (looked up at run time,
+  as the Mac's shell does); LOW LATENCY and PERFORMANCE OVERLAY are the window's layer's, set as the game starts, so the
+  next start. The native half is `win-x86/shims/win32_menu_options.c`: the same five methods as the Mac's, matched in
+  this game (`tools/targets/win-x86`), but as `wrap` lines of the win32 override module rather than vtable slots, so
+  each runs in front of the translated method whoever calls it. The game's helpers it calls differ in their calls, as
+  the tables say: several take register arguments, a JSON key is one word, the game's string is 24 bytes, and
+  `json_get_number`, `json_get_bool`, `menu_screens` and `get_resolution` are inlined here, so they are made from the
+  same pieces the game's own code uses. A change is written to `options.env` in `LP_HOME`.
 - **Song ownership during a mount**: the shared hook, which this edition's mounting loop tells when its steps run.
   `RS_MODS_BYPASS=0` also brings back the song-key table, which hides custom songs here whatever their AppID.
+- **A clean quit while the gear loads**: not needed. This game's teardown of the JSON number table (`0x13fff00`) frees
+  it with no check of what is left, so the quit that crashes the Mac game is a clean one here (`num_table_free` and
+  `json_key_table_free` are `unsupported` in its table).
 - **Title logo.** The same `tools/loadscreen` and layout as the Mac edition's. `lp_install.py build` makes
   `static.psarc.rearmed` in the copy, and `title_logo()` in `lp_main.c` links `static.psarc` at each start as
   `launch.sh` does (`RS_REARMED=0` for the original).
@@ -524,11 +548,17 @@ What differs, fix by fix:
       of 128 first.
     - An argument this game's code has folded away is not taken (`input_bind`'s `force`, `ui_event`'s last two): a hook
       reads its one value, and a change to it goes nowhere.
-  - **Edits and mid points** (`tools/targets/win-x86/edits.map` and `mids.map`): the Mac edition's two groups,
-    `seven_string` (735 edits and 127 mid points: the game's arrays for six strings grown to eight) and `plain_packages`
-    (2 edits and a mid point on the song file's decrypt), and the built-in fixes' thirteen mid points, as on the Mac:
-    the eight `fps_*`, `tuner_skip_offer`, and `manifest_request`, `manifest_response`, `fs_mount` and `fs_exists`.
-    The 29 points only the Mac needs are `none` here.
+  - **Edits and mid points** (`tools/targets/win-x86/edits.map` and `mids.map`): the Mac edition's groups,
+    `seven_string` (731 edits: the game's arrays for six strings grown to eight), `seven_line` (7 edits: the section
+    string mask's bits of strings 6 and 7) and `plain_packages` (2 edits and a mid point on the song file's decrypt),
+    146 mid points of the Seven-String Guitar, and two groups the Mac has not: `seven_glow` (3 edits) and
+    `seven_barre` (1), the fret range glow's and the barre markers' `Entity_SetScale` calls, which this game's edits
+    inject with the scale a mid point at the same address put in `ecx` (`seven_frg*_scale`, `seven_pubbc_scale`), so the
+    mod switches them on only with those points taken (the Mac calls it from the C of the points `*_setscale`, `none`
+    here). The built-in fixes' twenty-five mid points are the Mac's: the eight `fps_*`, `tuner_skip_offer`,
+    `manifest_request`, `manifest_response`, `fs_mount`, `fs_exists`, and the twelve of the stock-game fixes. The 35
+    points only the Mac needs are `none` here. The checks of the two tables are the Mac's
+    ([Mac design](../mac/DESIGN.md)).
   - **Files** (`rc_file_provide`, `rc_file.h`): the same interface as the Mac edition's. The Win32 seam's opens for
     reading, reads, seeks, sizes, attributes, finds and mapped views (`win32_kfile.c`, `win32_ksync.c`) go through the
     runtime's `rc_file_*`, which ask the mod's provider first. The provider sees host paths, after the seam's mapping of
@@ -575,7 +605,7 @@ editions and the parts both share). Neither touches the Mac game install or its 
    (`lp_game.exe`), the DLL images, the shader corpus and the game's icon. It sets no environment; `lp_main.c` takes its
    folders from `~/Library/Application Support/RS Re-ARMed/learn-play/` (`LP_HOME`), and the built-in mods switched off
    and the other switches set from `settings.env` and `options.env` there (`lp_settings.c`, the Mac launcher's rules:
-   only their nine and 38 keys, and a value in the environment wins), read before `mods_guard`, so the start again with
+   only their nine and 39 keys, and a value in the environment wins), read before `mods_guard`, so the start again with
    the network guard keeps them.
 8. **Clean** (`build-clean`): the intermediates go; the translated libraries (about 140 MB) stay as the
    cache that makes the next run skip to the link.

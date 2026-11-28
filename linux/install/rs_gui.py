@@ -90,7 +90,7 @@ class SettingsPage(Gtk.Dialog):
             check.set_active(mod.key not in off)
             check.set_tooltip_text("%s in %s" % (mod.key, rs_settings.settings_file(home)))
             self.mods[mod.key] = check
-            box.pack_start(self.row(check, mod.detail), False, False, 0)
+            box.pack_start(self.row(check, rs_settings.detail(mod)), False, False, 0)
 
         values = rs_settings.read_options(home)
         options = rs_settings.shown()

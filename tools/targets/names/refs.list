@@ -18,6 +18,8 @@ dlc_package_queue        # the packages of mounted archives that wait for the up
 std_tree_destroy         # std::map node destruction
 json_number_table        # global table of JSON number values
 json_number_table_lock   # its recursive mutex
+json_key_table           # global table of the JSON keys and strings (interned names with a reference count)
+json_key_table_lock      # its recursive mutex
 json_number_vtable       # number object vtable
 const_two_pow_63         # 2^63
 hashtable_prime_sizes    # table sizes, lower_bound'ed by rehash
@@ -498,6 +500,8 @@ peg_slot_dtor
 tuning_store_song_select2
 tuning_store_song_select3
 tuning_store_guitarcade3
+# wave2 P2 extended bass
+tuner_bass_open_midi  # int32[6]: the tuner's bass open notes (28 33 38 43 0 0): the low B / high C slots take 23 / 48
 # --- Seven-String Guitar: end
 # --- Adv Display Settings' own options (built in: overrides/mods/menu_options.c)
 menu_current_setting      # const char *: the setting Edit Setting edits, the fixed string a press sets
@@ -526,3 +530,18 @@ json_set_array            # (&out, object, &key): sets an array, empty, and give
 json_array_add            # (array, value): appends a value
 menu_slider_xscale        # double: the size of a notched slider Edit Setting makes (80)
 menu_slider_yscale        # double: its other (90)
+
+# stock-game fixes (overrides/mods/mods_shared.c): the white loading screen's resend
+menu_movie_request      # (movie, const void *id): a menu movie's request to the asset locator; the id is a pointer to its two words (the Mac's form)
+menu_movie_request_reg  # (movie@eax, id_lo, id_hi): the same, the movie in a register and the id on the stack (Learn & Play's form)
+# wave3 alts: the scrollable "Other arrangements" list (overrides/mods/mods_shared.c)
+json_find_ecx           # (object; the name in eax, set in the thread's context first): json_find in Learn & Play's form
+json_object_remove      # (object, &key): removes a member (a JSON object's), true when it was there
+json_object_merge       # (target, source, replace): merges a node's members into another's, recursively
+las_build               # (page): the Learn a Song page's builder (the page vtable's +0xb0 on Learn & Play)
+las_page_vtable         # the Learn a Song page's vtable: a page is that one when its first word is its address
+menu_focus_up           # (page, steps): a menu's focus step up, by that many buttons, stopping at the first
+menu_focus_down         # (page, steps): the same, down
+arr_record_dtor         # (record): an arrangement record's destructor (a menu page keeps a vector of them)
+arr_coop_vtable         # the co-op arrangement list page's vtable: a page is that one when its first word is its address
+arr_coop_build          # (page): the co-op list page's builder (the page vtable's +0xb0 on Learn & Play)

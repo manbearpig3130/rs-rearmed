@@ -7,8 +7,8 @@ seven_gke           0x01117711  (void *profile@esi, void *other@edi) -> differ=0
 seven_gkm           0x0111729b  (void *manager@ebx, int player@[ebp+0x0c])                             # GKM
 seven_gkl           0x012fdbbb  (int count@ecx, int player@[esp+0x0c])                                 # GKL
 seven_gkt           0x011375d6  (int player@esi, void *tuning@[ebp+0x08], uint32_t caller@[ebp+0x04])  # GKT
-seven_gkh1          0x0110f86d  (uint8_t count@eax)                                                    # GKH1
-seven_gkh2          0x0110fa23  (uint8_t count@eax)                                                    # GKH2
+seven_gkh1          0x0110f86d  (uint8_t count@eax, void *info@ebx)                                    # GKH1 (info: wave2 P1, its +0x0 is the instrument class: a bass loads at most four meshes)
+seven_gkh2          0x0110fa23  (uint8_t count@eax, void *info@edx)                                    # GKH2 (info: wave2 P1; edx = [ebp-0x40])
 seven_gia1          0x01113ccc  (void *info@eax)                                                       # GIA1
 seven_gsc1          0x01113cea  (void *strings@eax, void *guitar@esi)                                  # GSC1
 seven_info_counts   0x0110c381  (void *info@ecx)                                                       # (new)
@@ -184,6 +184,41 @@ seven_pd2_chord     none  the Mac inlines the all-strings-slide test into the ch
 seven_pd4_sustain   none  the Mac inlines the all-strings-tremolo test into the sustain update; Learn & Play's is the function seven_pd4
 seven_pd5_eval      none  the Mac's unrolled slide-distance function; Learn & Play's is seven_pd5
 
+# native N-string charts (rs7string beta.5, docs/release/NATIVE-FORMAT.md): the package, manifest and chart read in the unit's own form
+seven_native_psarc  0x01422da0  (uint32_t magic@eax, uint32_t stored@[ebp-0x70])  # PN1 the PSARC open function 0x1422d10: the byte-swapped header magic, at its `cmp eax, "PSAR"`; stored is where it was just kept ([ebp-0x70], copied into the table of contents buffer): a native package's "PSXR" becomes "PSAR" in both
+seven_native_json   0x01408a90  (void *cursor@[esp+0xc])  # JM1 the JSON parser's entry 0x1408a90 (cdecl: the output, a word, the address of the text pointer; the word is 0 from the outer callers, the object and array parsers 0x13f810f, 0x1400f1f pass their own for each nested value, so the point runs for every value of a document): a text with native arrangements is rewritten, the text pointer moved to the new text
+seven_native_sng    0x010da186  (const void *body@[esp+0x24], uint32_t size@[esp+0x2c]) -> fail=0x010da5f9  # XI1 SNG_Song_Load 0x10d9f80 after its inflate checks (cmp [esp+0x6c], ecx; jne), before the first section's parser: the inflated body's memory stream (+0x10 buffer, +0x18 size, at [esp+0x14]); fail is the loader's own failure exit, the target of that jne
+# the fixes of rs7string 1.0.0-beta.4: the song camera, the fret range glow
+seven_cam             0x01114f6a  (void *guitar@esi, uint32_t z_a@[esp+0x18], uint32_t z_b@[esp+0x24], uint32_t z_c@[esp+0x30], uint32_t z_guitar@edx)  # SC1 Rnd_Guitar_SendCameraMarkers 0x1114ed0 (Steam 0x593A1A), before the guitar becomes its info: the four outgoing vectors' z (three on the stack, the guitar's offset z in edx) get the floor's shift
+seven_frg1            0x00f8dbdd  (void *fx@ebx, void *player@[ebp+0xc])  # FRG1 Rnd_FretRangeFx_Init 0xf8d950 (Steam 0x40DCCD), after its four GetFretWireEnd calls: the effect's wire ends move, its pieces are recorded for their scale
+seven_frg2_scale      0x00f8b9f3  (void *obj@ebx, uint32_t scale_bits@ecx)  # FRG2 the glow update 0xf8b7e0 (Steam 0x40BAE3), a bar placed: the start of the scale edit: ecx = the scale's float bits, 0 for no Entity_SetScale
+seven_frg2b_scale     0x00f8bb70  (void *obj@ebx, uint32_t scale_bits@ecx)  # FRG2B the same update (Steam 0x40BC60), a bar moved: the same
+seven_frg3_scale      0x00f8c4f7  (void *obj@edi, uint32_t scale_bits@ecx)  # FRG3 the glow box's update 0xf8c4a0 (Steam 0x40C5E7), the box first placed: the same
+seven_frg2_setscale   none  Learn & Play injects the scale call itself (seven_frg2_scale)
+seven_frg2b_setscale  none  Learn & Play injects the scale call itself (seven_frg2b_scale)
+seven_frg3_setscale   none  Learn & Play injects the scale call itself (seven_frg3_scale)
+# barre markers over all strings (rs7string PUBFA, PUBGF, PUBBC; the finger marker update 0x110dd80 / its marker 0x110e4b0 / span 0x110e680 are the Steam exe's 0x58c690 / 0x58cdc0 / 0x58cf90)
+seven_pubfa          0x0110e4b0  (uint32_t string@eax, void *template@ecx)  # PUBFA the neck's finger marker 0x110e4b0 (only caller 0x110e44f in the marker loop 0x110e370), its entry before `push ebp`: eax = the string the loop found (al), ecx = the template (a T8); the finger's anchor becomes its lowest string
+seven_pubgf          0x0110e6ab  (void *template@[ebp+0x8], uint32_t finger@edi, uint32_t lo@edx, uint32_t hi@ecx)  # PUBGF the finger span 0x110e680 (only caller 0x110e4d3; stdcall (template, span out), edi = the finger), after its scan of fingers[0..5]: dl = the lowest string, cl = the highest, before `movzx edx, dl`; the span is hi - lo + 1
+seven_pubbc_scale    0x0110df49  (void *owner@[ebp+0x8], int32_t span@[ebx+0x1c], void *entity1@[ebx+0x4], void *entity2@[ebx+0x8], uint32_t scale_bits@ecx)  # PUBBC the finger marker update 0x110dd80 (ebx = the marker, [ebp+8] its owner), the span changed: after the clip is seeked, at the state store `mov [ebx+0x14], 1`; the edit there calls Entity_SetScale(entity, scale_bits) on both capsules unless scale_bits is 0
+seven_pubbc_setscale none  Learn & Play injects the scale call itself (seven_pubbc_scale)
+# tuner camera pan (rs7string beta.4)
+seven_tf2           0x01133e85  (void *session@edi, uint8_t lefty@[ebp-0x44], float y@[ebp-0x24])  # TF2 (Steam 0x5B297F) the tuner camera pose 0x1133ba0 (TF1's), the start of the overview offset table's path (table 0x1e70c68; the other, 0x1e70de8, is the [edx+0x58] path): the camera's world y along the neck, before that table's offset is added
+
+# wave2 P3 eight-string chords: a marker (a callback that does nothing): its presence says this RS Re-ARMed's edits run the chord loops over eight strings
+seven_e8   0x010ea96f  ()  # E8 seven_pp1's function (run once a song loads; any harmless instruction would do), after the pp1 point, `test eax, eax`
+# wave2 P2 extended bass (rs7string PSN3, LT0, PBH)
+seven_psn3        0x01131ef2  (void *slot@[esp], uint32_t sp@esp) -> skip=0x01131ef7  # PSN3 the tuner's per-peg loop 0x1131e80 (Steam 0x5B0960, up to InstrumentInfo +0xb), the call of the named-colour dispatch 0x111d360 (the slot pushed, `ret 4`): a NULL slot (a bass peg without a seat on the stock 4-peg headstock) skips the call and drops its argument, as seven_psn2
+seven_lt0         0x01132fc0  (void *slot@eax, int index@edx, void *pegs@ecx)  # LT0 UI_PlayerTuner_PlacePegLetters 0x1132f00 (Steam 0x5B1A10), `mov esi,[eax+4]` of the peg slot edx's record (0 for an empty slot): a slot without a seat takes the record of the nearest seated one
+seven_pbh         0x01364952  (int channel@[ebp-0x7c], void *data@[ebp-0x78], float semis@[ebp-0x44], float now@[ebp-0x5c], uint8_t ok@eax)  # PBH Rnd_Note_UpdateInProgress, after the single-note bend read 0x106ad20 (its `add esp,8`; al = read ok, [ebp-0x44] the semitones): the low B of an extended bass holds its last good reading
+seven_s1_bass     none  Learn & Play's seven_s1 is the join the bass branch of 0x13f3d60 goes to: it covers the bass strings 4 / 5 too
+seven_s1b_bass    none  as seven_s1_bass
+# wave2 P1 the strings of 8-string guitars and 5/6-string basses: the profile's count and pegs
+seven_gkb             0x0111523d  (void *profile@esi)                                                    # GKB GuitarProfile_Load 0x1115091, the bass branch's store of its peg word (after `mov [esi+0x38], 4`; Steam 0x593D33's twin): the extended bass's count
+seven_gkp             0x01115244  (void *profile@esi)                                                    # GKP GuitarProfile_Load after both branches' peg-word stores (the guitar's `jmp 0x1115244` and the bass's fall-through): the peg word of 8 strings and of an extended bass
+# wave3 coop local co-op: player 1's guitar or bass rebuilt through the game's own rebuild
+seven_gkr             0x013e3abe  (int player@ecx)  # GKR guitar_rebuild_player0 0x13e3a60 (the Lua rebuild), before its `call Rnd_Guitar_EnsureForPlayer 0x1117400` (thiscall: ecx = player, one stack argument, `xor ecx, ecx` just before it): ecx is player 0 there, set to the player of the rebuild asked for; the attach after it runs for both holders
+
 # Frame rate (built in: tools/ws7/recomp/overrides/mods/framerate.c): what the game counts in frames, as at 60 Hz. The
 # Windows code keeps these values in memory or on the x87 stack, and its objects in esi.
 fps_calib_window      0x0116adf5  (uint32_t window@edx)  # the calibration meter's start 0x116a9d0 (virtual, vtable cell 0x1d3180c; the Mac's 0x10065ce30): max(30, (int)(1 / frame time)) in edx, before it is stored at +0x788; the samples are 100 floats a player at +0x3d4 and +0x564, the meter's own state from +0x6f4
@@ -203,3 +238,18 @@ manifest_request      0x00fac6c4  (void *request@ebx)  # in the mount's manifest
 manifest_response     0x00faaf77  (void *manager@ecx, void *response@[ebp+0x8])  # the ManifestManager's AssetLoadResponse handler 0xfaaf60 (thiscall; the Mac's 0x10055bc20), after its prologue: once a request, whatever the answer
 fs_mount              0x0101bd8b  (const char *path@[ebp+0x8], void **fs@eax)  # the package mount's call 0x101bd60 (cdecl (the mount point, the archive's file system object); the Mac's 0x1003c9750; called by the package mount at 0xf94819 and by the engine's own archives at 0x101b28a), once its own reference to the object is on the stack, where eax points
 fs_exists             0x0101bd1a  (void *fs@ecx, const char *path@eax, uint8_t found@eax) -> answered=0x0101bd20  # in the file-exists call 0x101bca0 (the Mac's 0x1003c9b80), before the path, in lower case, is pushed for its question to the whole file system (slot 6 of frontend_fs, the call at 0x101bd1e); `answered` goes on after that call, with found as the answer
+
+# Stock-game fixes (built in: tools/ws7/recomp/overrides/mods/mods_shared.c)
+menu_request          0x017989ec  (void *movie@esi, uint32_t id_lo@[ebp+0x8], uint32_t id_hi@[ebp+0xc])  # the request to the asset locator 0x17989e0 (menu_movie_request_reg; the Mac's 0x100b708f0), after `mov esi, eax`
+menu_locate           0x01798a73  ()  # the request's call into the locator (the service's slot 15, `call edx`), skipped when the movie's URI is empty (0x1798a3b)
+menu_located          0x01798a75  (uint8_t accepted@eax)  # after that call: al is the locator's answer, which the request ignores; the empty URI's jump lands here too (menu_locate says which)
+file_indexed          0x0101e770  (void *frame@ebp)  # the local file index's writer 0x101e250 (the Mac's 0x100496b20): the tail that both an indexed file and one already there reach (the jne at 0x101e516 skips the insert), the index lock released
+las_alt_slot          0x011bf5f8  (uint32_t filled@[esp+0x6c], void *page@ebx, uint32_t record@[esp+0x44]) -> latch=0x011bffe8  # the Learn a Song page builder 0x11bf440's alternate-arrangement loop (the Mac's 0x100339580), after the test for the selected record (the je ending at the site, 0x11bf5f2, goes to the latch); [esp+0x6c] counts the slots filled; page = the page (ebx), record = the record's byte offset in the page's record vector ([esp+0x44], index * 0xfc), for the scrollable list
+# wave3 alts: the scrollable "Other arrangements" list (rs7string's ALTS / ALTL / ALTR / ALTF and the focus steps)
+las_alt_label         0x011bf730  (void *text@edi)  # the call 0x1402ee0 (the Mac's 0x1000fd480) that sets the entry's "Label" (key 0x1d1ea40) from the game string the builder made of the record's name (0x11a9bf0 returned it in eax, `mov edi, eax` at 0x11bf72e): rs7string's ALTL 0x63E9A0; edi is the string, dead after the call
+las_alt_root          0x011bf468  (void *page@ebx)  # after the builder's first call 0x1148580 (the Mac's 0x10062b1c0), which took a new view definition root (page+0x1a0) and the page node (+0x1c4): rs7string's ALTR 0x63E6D3; ecx was moved to ebx at 0x11bf45c
+las_alt_page          0x011beb8e  (void *page@edi)  # the page update 0x11beb70 (vtable slot 5; the Mac's 0x100336e50), after its call 0x114ccb0 of the base update (the Mac's 0x1002f11d0) whose result is the page's state: rs7string's ALTF 0x63DDF9; edi = ecx = the page
+menu_focus_step_up    0x0115b1ac  (void *page@edi, int steps@[ebp+0x8])  # the menu class's focus step up 0x115b1a0 (vtable slot 55, +0xdc; the Mac's 0x1002ee890), after its prologue: ecx moved to edi, `ret 4` takes the steps; steps 0 leaves the focus where it is (the step ends at `cmp eax, ecx / je` with the same index)
+menu_focus_step_down  0x0115b28c  (void *page@edi, int steps@[ebp+0x8])  # the same, down: 0x115b280 (slot 56, +0xe0; the Mac's 0x1002ee9b0)
+coop_sort_order       0x011c716c  (double row@st0, uint32_t record@[esp+0x38], void *page@[esp+0x18])  # the co-op arrangement list builder 0x11c6d40 (the Mac's 0x10073eea0), after the FILD at 0x11c7168 of the entry's position counter ([esp+0x3c]) that the loop sets as its SortOrder (key 0x1d25d8c): rs7string's COAT 0x64637C; the unsigned fix-up after it (fadd when negative) tests the counter in memory, never negative, not st0: the row a hook sets is passed on as it is; [esp+0x38] is the loop's record index, [esp+0x18] the page
+coop_select           0x011c82cf  (uint32_t record@ecx, void *page@ebx)  # the co-op list's select handler 0x11c8260 (the Mac's 0x100740730): the store of the selected record (ecx = the map's entry for the focus's position in the focus id list, 0x1082e30 at 0x11c82c2) into page+0x37c: rs7string's COAS 0x6474DF

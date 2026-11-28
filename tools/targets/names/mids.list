@@ -2,6 +2,7 @@
 # may continue at (each target's mids.map: NAME ADDRESS (TYPE value@LOCATION, ...) [-> CONT=ADDRESS, ...];
 # runtime/rc_mid.h). The generated code and the runtime number the points by their place here.
 # --- Seven-String Guitar (a mod's: rearmed-mods, after rs7string): begin
+# (wave 2: each fix's points are a block of their own at the end of this section, headed by the fix's name)
 seven_gkc
 seven_gke
 seven_gkm
@@ -159,6 +160,38 @@ seven_pd4_update
 seven_pd2_chord
 seven_pd4_sustain
 seven_pd5_eval
+# native N-string charts (rs7string beta.5, docs/release/NATIVE-FORMAT.md): the package, manifest and chart read in the unit's own form
+seven_native_psarc
+seven_native_json
+seven_native_sng
+seven_cam
+seven_frg1
+seven_frg2_scale
+seven_frg2b_scale
+seven_frg3_scale
+seven_frg2_setscale
+seven_frg2b_setscale
+seven_frg3_setscale
+# barre markers over all strings: the finger marker's anchor, span and capsule scale
+seven_pubfa
+seven_pubgf
+seven_pubbc_scale
+seven_pubbc_setscale
+# tuner camera pan (rs7string beta.4)
+seven_tf2
+# wave2 P3 eight-string chords: the marker that says the tables' loops cover eight strings
+seven_e8
+# wave2 P2 extended bass (rs7string PSN3, LT0, PBH; the Mac's bass paths of S1)
+seven_psn3
+seven_lt0
+seven_pbh
+seven_s1_bass
+seven_s1b_bass
+# wave2 P1 the strings of 8-string guitars and 5/6-string basses: the profile's count and pegs
+seven_gkb
+seven_gkp
+# wave3 coop local co-op: player 1's guitar or bass rebuilt through the game's own rebuild
+seven_gkr
 # --- Seven-String Guitar: end
 # --- Frame rate (built in: tools/ws7/recomp/overrides/mods/framerate.c): what the game counts in frames, as at 60 Hz
 fps_calib_window      # calibration's start: its averaging window, before it is stored
@@ -176,3 +209,18 @@ manifest_request      # the ManifestManager has asked for a mounted archive's so
 manifest_response     # the ManifestManager is handed the answer to one such request, read or failed
 fs_mount              # an archive is about to join the game's file system: where, and the archive
 fs_exists             # the game asks its file system whether a file is there; a hook may answer in its place
+# --- Stock-game fixes (built in: tools/ws7/recomp/overrides/mods/mods_shared.c): the white loading screen
+menu_request          # a menu movie's request to the asset locator: the movie and the request's id, at the function's start
+menu_locate           # the request is about to ask the locator (not when the movie has no name)
+menu_located          # the locator has answered: accepted or not
+file_indexed          # a file is in the local file index (or was already), its lock released: on the indexing threads
+# --- Stock-game fixes: Learn a Song with more than five arrangements
+las_alt_slot          # the Learn a Song page's builder, at an alternate arrangement: the slots filled so far, and where to skip it
+# wave3 alts: the scrollable "Other arrangements" list of Learn a Song (mods_shared.c)
+las_alt_label         # the alternate loop, before an entry's Label is set from the record's name (a game string): the first / last entry get " (-N)" / " (+N)"
+las_alt_root          # the page builder's start, after it took a new view definition root: a scroll rebuild merges the previous root into it
+las_alt_page          # the Learn a Song page's update, after its base update: the page is open (a page opened anew starts at the top of the alternates)
+menu_focus_step_up    # a menu's focus step up (arrow Up, the mouse wheel): the menu and the number of steps, which the page may take over
+menu_focus_step_down  # the same, down
+coop_sort_order       # the co-op arrangement list's builder, an entry's SortOrder (the movie's row) about to be set: the entry's record index; the row, which the page may change
+coop_select           # the co-op list's select handler, about to store the record that was selected: the record, which the page may replace
