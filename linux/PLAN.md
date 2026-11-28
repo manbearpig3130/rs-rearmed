@@ -318,8 +318,9 @@ program with its libraries beside it, as it looks for them, `usr/share/rs-rearme
 appimage` packs it with appimagetool 1.9.1 and the runtime of 2025-11-08, each downloaded once and checked
 against its SHA-256. 3.2 MB, nothing of the game in it. On the Bazzite host (not the build's container) it set
 the game up in the player's real folder and started it. The build system's SDL 3 is carried, the one library a
-system may lack; the system's Python 3 runs the setup. Built on Fedora 45 it needs glibc 2.44: a build on an
-older base (a container with an older distribution, SDL 3 from source) is the next step for other systems.
+system may lack; the system's Python 3 runs the setup. Built on Fedora 45 it needs glibc 2.44, so the one to hand
+out is built on an old base: `install/container-build.sh`, in a container of Ubuntu 22.04 with SDL 3 from source
+(glibc 2.35; the log, 2026-11-28).
 
 **Done (2026-11-28): the title logo.** The Mac draws the tag with Pillow, numpy, etcpak and a font of macOS's,
 none of which a Linux desktop is sure to have. The tag itself is our own artwork and no part of the game, so it
@@ -798,6 +799,15 @@ Proposed; none is final before the step that tests it.
   switches came with it, for a test's devices: `RS_AUDIO_ONLY_INPUT` (the one input listed) and
   `RS_AUDIO_OUTPUT_NODE` (the output's node; PipeWire's `PIPEWIRE_NODE` sends the inputs' streams there too,
   which had the game hearing itself). Not tried: smaller buffers than 128, and the same measure on the Mac.
+- **2026-11-28, the AppImage on an old base.** `install/container-build.sh` builds the packaged edition in a
+  container of Ubuntu 22.04 (`install/Containerfile`: gcc 11, glibc 2.35, PipeWire 0.3.48's headers, SDL 3.4.20
+  from its source with Wayland and X11). The result asks for glibc 2.35 at most, and for the C++ library of gcc
+  11. What the old system showed: PipeWire's buffer had no `requested` field yet (read by its place now, where
+  the library that runs has it); and glibc's `exp10` was not exact before 2.39, so `__exp10` is `pow(10, x)`, as
+  Apple's compiler means it (the layer's test caught 10 to the 3rd a hair off a thousand). The build's tests
+  pass in the container, the setup's on its Python 3.10; on the Bazzite host the AppImage's `status` runs, and
+  the program from that build goes through the menus into the Tone Designer with the same 15.6 ms from input to
+  output. Not tried: a desktop that old with a display and a graphics driver (a container has neither).
 - **2026-11-28, a real interface.** A mixer with a 12-channel USB input (TC-Helicon Blender) on the Bazzite PC:
   the game lists "Blender channel 1" to "channel 10" and opens them, 128 frames each. An input may have up to 32
   channels now (it was eight; the layer's buffer for what the game hears is the entry's own, not a thread's).

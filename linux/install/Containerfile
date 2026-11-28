@@ -1,0 +1,24 @@
+# The system the packaged Linux edition is built on (linux/install/container-build.sh): an old one, so that the
+# AppImage runs on it and on everything newer. A program asks for the C library it was built with or a newer one;
+# built on a current desktop it would ask for that desktop's (glibc 2.44 on Fedora 45). Ubuntu 22.04 has glibc
+# 2.35, which is what Ubuntu 22.04, Debian 12, Fedora 36, SteamOS 3 and their successors have or pass.
+#
+# What it has beyond the compilers: the headers of what the program takes from the system as it runs (PipeWire,
+# ALSA, OpenGL and EGL), what SDL 3 is built with, and SDL 3 itself from its source, which this system has no
+# package of: a fixed release, checked against its SHA-256. The AppImage carries that SDL beside the program.
+FROM docker.io/library/ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build pkg-config python3 curl ca-certificates xz-utils patch file \
+        libasound2-dev libpipewire-0.3-dev libgl-dev libegl-dev libopengl-dev libgles-dev zlib1g-dev \
+        libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev libdrm-dev libgbm-dev libudev-dev libdbus-1-dev \
+        libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libibus-1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+ARG SDL_VERSION=3.4.20
+ARG SDL_SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+RUN curl -fL --retry 3 -o /tmp/sdl.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL3-${SDL_VERSION}.tar.gz \
+    && echo "${SDL_SHA256}  /tmp/sdl.tar.gz" | sha256sum -c - \
+    && tar -C /tmp -xf /tmp/sdl.tar.gz \
+    && cmake -S /tmp/SDL3-${SDL_VERSION} -B /tmp/sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_INSTALL_DOCS=OFF \
+    && cmake --build /tmp/sdl-build && cmake --install /tmp/sdl-build && ldconfig && rm -rf /tmp/sdl.tar.gz /tmp/SDL3-* /tmp/sdl-build

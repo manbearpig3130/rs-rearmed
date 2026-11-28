@@ -117,16 +117,22 @@ from a terminal, and `settings.env` and `options.env` hold the switches as on th
 **As an AppImage**, one file that holds the program, its libraries and the setup, and nothing of the game:
 
 ```sh
-make -C linux all gl bink appimage            # build/linux/RS_Re-ARMed-<version>-x86_64.AppImage (3 MB)
-./RS_Re-ARMed-1.20.0-x86_64.AppImage          # the game, after the setup when there has been none
-./RS_Re-ARMed-1.20.0-x86_64.AppImage status   # and setup, refresh, run -- ARGS, as above
+linux/install/container-build.sh              # build/linux-release/RS_Re-ARMed-<version>-x86_64.AppImage (3 MB)
+./RS_Re-ARMed-1.21.0-x86_64.AppImage          # the game, after the setup when there has been none
+./RS_Re-ARMed-1.21.0-x86_64.AppImage status   # and setup, refresh, run -- ARGS, as above
 ```
 
 Started from a terminal it says what it does there; started from the desktop, the setup's progress and Steam's
 steps are in a window (zenity), and the game's output is in `logs/last-run.log`. `make -C linux appdir` makes the
 same thing as a folder (`build/linux/AppDir`), which runs from wherever it is: `AppDir/AppRun`. It carries the
-build system's SDL 3 and uses the system's Python 3, C and C++ libraries, PipeWire, ALSA and OpenGL. It runs on
-systems as new as the one it was built on (Bazzite 45 so far: glibc 2.44); a build on an older base is to come.
+build system's SDL 3 and uses the system's Python 3, C and C++ libraries, PipeWire, ALSA and OpenGL.
+
+A program runs on systems whose C library is as new as the one it was built with. So the AppImage to hand out is
+built on an old system: `container-build.sh` builds it in a container (podman or docker) of Ubuntu 22.04
+(`install/Containerfile`: glibc 2.35, with SDL 3 built from its source, a fixed release checked against its
+SHA-256), runs the build's own tests there, and says which C library the result asks for: 2.35, which Ubuntu
+22.04, Debian 12, Fedora 36, SteamOS 3 and everything since have or pass. The setup's tests pass on that system's
+Python (3.10). `make -C linux all gl bink appimage` builds one on the system at hand, for that system and newer.
 
 **The setup** asks the running Steam for the Mac game (`download_depot`, the console command, sent on Steam's own
 command line, so nothing is typed; 6.9 GB into Steam's `steamapps/content`), then for each DLC the account owns,
