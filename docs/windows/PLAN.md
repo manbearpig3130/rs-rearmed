@@ -56,10 +56,10 @@ edition" is described there. What has not been tested is under [Open issues](#op
   header: the desktop the game sees and a resized window at N%. Played full screen on a 1470x956 Retina screen to a
   song's note highway: 50% (a 735x478 frame) is fine. Above 100 (more pixels, scaled down to the screen's when there
   are more than it has): not yet run in this game.
-- **In the game's menu** (new in 1.20.0; SHARPENING not released): OPTIONS → ADV DISPLAY SETTINGS lists eleven of the
-  picture switches after the game's own rows, as the Mac edition's thirteen without RENDERER and MULTITHREADED GL ENGINE
-  (this edition has Metal only), saved to `options.env`: SHARPENING, ANTI-ALIASING, TEXTURE FILTERING and COLOR taking
-  effect at once (not released, not yet run here), the others at the next start
+- **In the game's menu** (new in 1.20.0; SHARPENING and the rows taking effect at once new in 1.21.0): OPTIONS →
+  ADV DISPLAY SETTINGS lists eleven of the picture switches after the game's own rows, as the Mac edition's thirteen
+  without RENDERER and MULTITHREADED GL ENGINE (this edition has Metal only), saved to `options.env`: SHARPENING,
+  ANTI-ALIASING, TEXTURE FILTERING and COLOR taking effect at once (not yet run here), the others at the next start
   ([INSTALL.md](INSTALL.md#settings-and-switches)). Played on a test build: the rows, their values, FRAME RATE's slider,
   ANY WINDOW SHAPE's checkbox, LOW LATENCY greyed at a fixed frame rate and a change saved and set back. Not tried:
   dragging the list's scroll bar with the mouse, a switch set for the session, the installed app's next start with a
@@ -123,7 +123,7 @@ edition" is described there. What has not been tested is under [Open issues](#op
 - **Files a mod serves**: as the Mac edition, through the Win32 seam's file calls.
 - **Edits and mid points, and 7-string charts**: as the Mac edition, with this game's tables
   (`tools/targets/win-x86/edits.map`, `mids.map`); the points that are the Mac's own are `none` here. Also as the Mac
-  edition, not released: native charts, eight-string guitars, extended basses and local co-op, and two groups of this
+  edition, new in 1.21.0: native charts, eight-string guitars, extended basses and local co-op, and two groups of this
   game's own, `seven_glow` and `seven_barre`.
 - **What the game names for mods**: as the Mac edition. The palette textures are BGRA here, so their hashes differ
   from the Mac's; the note the game hears and the note counts are reached as RSMods reaches them on this game (the

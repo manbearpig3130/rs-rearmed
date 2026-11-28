@@ -65,7 +65,7 @@ What the edition does today. What has not been tested is under [Open issues](#op
   with `RS_METAL_RETINA=1` (6720x4200 scaled to 3360x2100, MSAA 4x) plays a song with much more detail, at a frame
   rate that drops but stays playable. Not measured: the frame rates and what they cost in GPU power.
 - **In the game's menu** (new in 1.19.0; LOW LATENCY and PERFORMANCE OVERLAY new in 1.20.0; SHARPENING and the rows
-  taking effect at once not released): OPTIONS → ADV DISPLAY SETTINGS lists thirteen of the picture switches after the
+  taking effect at once new in 1.21.0): OPTIONS → ADV DISPLAY SETTINGS lists thirteen of the picture switches after the
   game's own rows, saved where the installer saves them, five of them taking effect at once (PERFORMANCE OVERLAY too, in
   a game started with it); a row that can't apply is greyed with why, as is one a switch set for the session
   (`launchctl setenv`) holds, and the longer list scrolls, with a scroll bar that can be dragged
@@ -136,7 +136,7 @@ What the edition does today. What has not been tested is under [Open issues](#op
   (`tools/targets/mac-x64/edits.map`, `mids.map`) carry rearmed-mods' Seven-String Guitar, after
   [rs7string](https://github.com/SomeeName/rs7string), and Plain Packages, the same units as Learn & Play. The game's
   list of a chord's expected notes keeps six here (eight in Learn & Play); the mod's own chord detection judges larger
-  chords in both editions. Also, not released: what the mod needs for RS Extended Range's native charts, eight-string
+  chords in both editions. Also, new in 1.21.0: what the mod needs for RS Extended Range's native charts, eight-string
   guitars, five- and six-string basses and local co-op, and the edit groups `seven_line` (and Learn & Play's
   `seven_glow`, `seven_barre`); a 7-string and an 8-string chart played in both editions, bass and co-op not yet.
 - **What the game names for mods** (in `tools/targets`, the same names in both editions): the colors of notes and the
