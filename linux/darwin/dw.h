@@ -42,6 +42,9 @@ void dw_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 // when it is there, else BUF with each missing part replaced by the name that differs in case alone.
 const char *dw_path(const char *path, char *buf, size_t n);
 
+// The display's modes as the shell knows them, {width, height} each, for the renderer's list (dw_display.c).
+void dw_display_set_modes(const int (*modes)[2], int n);
+
 // errno: Darwin's number for the host's, and DW_ERR for a returned one.
 int dw_errno_from_host(int host);
 #define DW_ERR(r) dw_errno_from_host(r)

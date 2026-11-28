@@ -171,8 +171,15 @@ root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.ps
   `steam/` in the port's folder (`RS_NATIVE_HOME`, else `rs-rearmed` under XDG's data folder).
 - **With it, three frames run in a survey**, and ask for the display's modes (`CGMainDisplayID`,
   `CGDisplayCopyAllDisplayModes`, CoreFoundation's arrays), CoreAudio's devices, and Cg: the renderer starts.
-- **Next**: the display's modes and the audio layer's silent form; then Cg, the renderer's OpenGL path and the
-  shell, which need a distrobox for their headers.
+- **The display's modes and a small CoreFoundation** (`dw_display.c`, `dw_cf.c`): one display whose modes the
+  shell will give; strings that read the image's own constant strings as well as the layer's, arrays, UUIDs, the
+  locale; IOKit's registry answering that there is no Ethernet interface. The layer has 114 functions and 16
+  objects; who answers: 259 the host, 130 the layer, 12 the Steam library, 280 nothing yet (emulate 7: vDSP and
+  two matrix helpers; shim 150: Cg 29, OpenGL 105, Bink 16; layer 25: the audio devices and graph; stub 98).
+- **The first three frames then stop at two things only**: CoreAudio's devices and `cgCreateContext`, where the
+  renderer starts.
+- **Next**: the audio layer's silent form; Cg, the renderer's OpenGL path and the shell, which need a distrobox
+  for their headers.
 
 ### X3. Sound and the guitar
 
@@ -457,3 +464,5 @@ Proposed; none is final before the step that tests it.
 - **2026-11-28, the Steam library.** `shims/steam` built for Linux from its own sources (`linux/compat` for four
   macOS functions; one Linux branch in `shim.cpp`). Its tests pass on Bazzite. The game's first frames then
   initialize Steam and go on to the display's modes, the audio devices and Cg.
+- **2026-11-28, CoreFoundation and the display.** `dw_cf.c` and `dw_display.c`, with their tests. What the first
+  frames still ask for and do not get: CoreAudio's devices (two calls) and Cg.

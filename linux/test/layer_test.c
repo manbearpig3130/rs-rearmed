@@ -320,6 +320,84 @@ static void test_files(void) {
   rmdir(dir);
 }
 
+// CoreFoundation: the image's constant strings are {class, flags, characters, length} compiled into it.
+static void test_cf(void) {
+  struct constant { void *isa; uint64_t flags; const void *chars; long length; };
+  struct constant hello = {dw_data("___CFConstantStringClassReference"), 0x7c8, "Hello", 5};
+  static const uint16_t wide[] = {'H', 'e', 'l', 'l', 'o', 0x20ac};  // and a euro sign
+  struct constant hello_wide = {hello.isa, 0x7d0, wide, 6};
+  long (*length)(const void *) = FN(long (*)(const void *), "_CFStringGetLength");
+  unsigned char (*cstring)(const void *, char *, long, uint32_t) = FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString");
+  long (*compare)(const void *, const void *, unsigned long) = FN(long (*)(const void *, const void *, unsigned long), "_CFStringCompare");
+  void (*release)(void *) = FN(void (*)(void *), "_CFRelease");
+  char buf[64];
+  CHECK(length(&hello) == 5 && length(&hello_wide) == 6);
+  CHECK(cstring(&hello, buf, sizeof buf, 0x08000100) && !strcmp(buf, "Hello"));
+  CHECK(cstring(&hello_wide, buf, sizeof buf, 0x08000100) && !strcmp(buf, "Hello\xe2\x82\xac"));
+  CHECK(!cstring(&hello_wide, buf, sizeof buf, 0x600));  // the euro sign is no ASCII
+  CHECK(!cstring(&hello, buf, 3, 0x08000100));           // no room
+  CHECK(FN(const char *(*)(const void *, uint32_t), "_CFStringGetCStringPtr")(&hello, 0x600) == (const char *)hello.chars);
+  CHECK(FN(const char *(*)(const void *, uint32_t), "_CFStringGetCStringPtr")(&hello_wide, 0x600) == NULL);
+  release(&hello);  // the image's own: nothing happens
+  CHECK(hello.length == 5);
+
+  // Wwise's conversion: four-byte characters in, UTF-8 out
+  static const uint32_t utf32[] = {'A', 0xe9, 0x1f3b8};
+  void *made = FN(void *(*)(void *, const void *, long, uint32_t, unsigned char), "_CFStringCreateWithBytes")(NULL, utf32, 12, 0x1c000100, 0);
+  CHECK(made && length(made) == 4);  // the guitar is two UTF-16 units
+  CHECK(cstring(made, buf, sizeof buf, 0x08000100) && !strcmp(buf, "A\xc3\xa9\xf0\x9f\x8e\xb8"));
+  struct range { long location, length; } all = {0, 4};
+  long used = 0;
+  uint32_t back[4] = {0};
+  long (*bytes)(const void *, struct range, uint32_t, uint8_t, unsigned char, void *, long, long *) =
+      FN(long (*)(const void *, struct range, uint32_t, uint8_t, unsigned char, void *, long, long *), "_CFStringGetBytes");
+  CHECK(bytes(made, all, 0x1c000100, 0, 0, back, sizeof back, &used) == 4 && used == 12 && !memcmp(back, utf32, 12));
+  CHECK(bytes(made, all, 0x08000100, 0, 0, NULL, 0, &used) == 4 && used == 7);  // the size alone
+  CHECK(bytes(made, all, 0x600, '?', 0, buf, sizeof buf, &used) == 4 && used == 3 && !memcmp(buf, "A??", 3));
+  void *same = FN(void *(*)(void *, const void *, long, uint32_t, unsigned char), "_CFStringCreateWithBytes")(NULL, "hello", 5, 0x08000100, 0);
+  CHECK(compare(&hello, same, 0) == -1 && compare(&hello, same, 1) == 0 && compare(same, &hello_wide, 1) == -1);
+  release(made);
+  release(same);
+
+  void *uuid = FN(void *(*)(void *, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t,
+                            uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t), "_CFUUIDCreateWithBytes")(
+      NULL, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe);
+  void *text = FN(void *(*)(void *, const void *), "_CFUUIDCreateString")(NULL, uuid);
+  CHECK(cstring(text, buf, sizeof buf, 0x600) && !strcmp(buf, "01234567-89AB-CDEF-1032-547698BADCFE"));
+  release(text);
+  release(uuid);
+
+  void *locale = FN(void *(*)(void), "_CFLocaleCopyCurrent")();
+  const void *country = FN(const void *(*)(const void *, const void *), "_CFLocaleGetValue")(locale, *(void **)dw_data("_kCFLocaleCountryCode"));
+  CHECK(cstring(country, buf, sizeof buf, 0x600) && !strcmp(buf, "US"));
+  release(locale);
+  CHECK(FN(double (*)(void), "_CFAbsoluteTimeGetCurrent")() > 7.8e8);  // after 2025
+}
+
+// The display's modes as the renderer lists them, and IOKit's empty answer.
+static void test_display(void) {
+  const int modes[][2] = {{1280, 720}, {2560, 1440}};
+  dw_display_set_modes(modes, 2);
+  unsigned display = FN(unsigned (*)(void), "_CGMainDisplayID")();
+  CHECK(FN(unsigned (*)(unsigned), "_CGDisplayIDToOpenGLDisplayMask")(display) == 1);
+  void *list = FN(void *(*)(unsigned, const void *), "_CGDisplayCopyAllDisplayModes")(display, NULL);
+  CHECK(FN(long (*)(const void *), "_CFArrayGetCount")(list) == 2);
+  const void *mode = FN(const void *(*)(const void *, long), "_CFArrayGetValueAtIndex")(list, 1);
+  CHECK(FN(size_t (*)(const void *), "_CGDisplayModeGetWidth")(mode) == 2560 && FN(size_t (*)(const void *), "_CGDisplayModeGetHeight")(mode) == 1440);
+  CHECK(FN(const void *(*)(const void *, long), "_CFArrayGetValueAtIndex")(list, 2) == NULL);
+  void *encoding = FN(void *(*)(const void *), "_CGDisplayModeCopyPixelEncoding")(mode);
+  char buf[40];
+  CHECK(FN(unsigned char (*)(const void *, char *, long, uint32_t), "_CFStringGetCString")(encoding, buf, sizeof buf, 0x600) &&
+        !strcmp(buf, "--------RRRRRRRRGGGGGGGGBBBBBBBB"));
+  FN(void (*)(void *), "_CFRelease")(encoding);
+  FN(void (*)(void *), "_CFRelease")(list);
+
+  unsigned iterator = 7;
+  void *matching = FN(void *(*)(const char *), "_IOServiceMatching")("IOEthernetInterface");
+  CHECK(matching && FN(int (*)(unsigned, void *, unsigned *), "_IOServiceGetMatchingServices")(0, matching, &iterator) == 0);
+  CHECK(iterator == 0 && FN(unsigned (*)(unsigned), "_IOIteratorNext")(iterator) == 0);
+}
+
 int main(void) {
   setenv("RS_DARWIN_LOG", "0", 1);  // what the layer refuses below is refused on purpose
   dw_init();
@@ -330,6 +408,8 @@ int main(void) {
   test_libc();
   test_net();
   test_files();
+  test_cf();
+  test_display();
   test_tables();
   test_errno();
   test_pthread();
