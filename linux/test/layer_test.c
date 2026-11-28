@@ -159,9 +159,12 @@ static void test_threads(void) {
   pthread_t t;
   unsigned id = 0;
   void *result = NULL;
+  pthread_attr_setstacksize(&attr.host, 32768);  // and with a stack too small for this host: it gets a larger one
   // a thread asked for with a real-time policy starts all the same
   CHECK(FN(int (*)(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *), "_pthread_create")(&t, &attr.host, thread_body, &id) == 0);
   CHECK(pthread_join(t, &result) == 0 && result == &id && id != 0);
+  CHECK(FN(int (*)(pthread_t, void **), "_pthread_join")((pthread_t)0, NULL) == 3);  // no such thread: ESRCH, not a fault
+  CHECK(FN(int (*)(pthread_t), "_pthread_detach")((pthread_t)0) == 3);
   CHECK(id != FN(unsigned (*)(pthread_t), "_pthread_mach_thread_np")(pthread_self()));
   CHECK(FN(unsigned (*)(pthread_t), "_pthread_mach_thread_np")((pthread_t)0) == 0);  // no thread, no port
   CHECK(FN(int (*)(pthread_attr_t *, int), "_pthread_attr_setdetachstate")(&attr.host, 7) == 22);
@@ -423,6 +426,27 @@ static int render(void *ref, uint32_t *flags, const void *when, uint32_t bus, ui
   return 0;
 }
 
+// A backend in the layer's place of the silent clock: it is started with the graph and given the function that
+// fetches the game's sound, as two channels.
+static dw_audio_render g_backend_render;
+static void *g_backend_ctx;
+static int g_backend_started, g_backend_stopped;
+
+static int backend_start(double rate, uint32_t frames, dw_audio_render render, void *ctx) {
+  g_backend_render = render, g_backend_ctx = ctx;
+  g_backend_started += rate == 48000.0 && frames == 256;
+  return 0;
+}
+static void backend_stop(void) { g_backend_stopped++; }
+
+// The game's callback, filling the buffer of each channel: 0.25 on the left, -0.5 on the right.
+static int render_tone(void *ref, uint32_t *flags, const void *when, uint32_t bus, uint32_t frames, void *data) {
+  struct list { uint32_t count; struct { uint32_t channels, bytes; void *data; } buffers[2]; } *l = data;
+  (void)ref, (void)flags, (void)when, (void)bus;
+  for (uint32_t i = 0; i < frames; i++) ((float *)l->buffers[0].data)[i] = 0.25f, ((float *)l->buffers[1].data)[i] = -0.5f;
+  return 0;
+}
+
 static void test_audio(void) {
   struct address { uint32_t selector, scope, element; };
 #define CC(a, b, c, d) ((uint32_t)(a) << 24 | (uint32_t)(b) << 16 | (uint32_t)(c) << 8 | (uint32_t)(d))
@@ -476,6 +500,25 @@ static void test_audio(void) {
   nanosleep(&wait, NULL);
   CHECK(g_render_calls == calls);  // stopped
   CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
+
+  // with a backend: no clock thread; the backend asks for the sound and gets what the game's callback filled
+  static const dw_audio_backend backend = {"test", backend_start, backend_stop};
+  dw_audio_set_backend(&backend);
+  CHECK(FN(int (*)(void **), "_NewAUGraph")(&graph) == 0);
+  CHECK(add(graph, &out_desc, &out_node) == 0 && add(graph, &mixer_desc, &mixer_node) == 0);
+  CHECK(FN(int (*)(void *, int32_t, void *, void **), "_AUGraphNodeInfo")(graph, mixer_node, NULL, &mixer_unit) == 0);
+  CHECK(FN(int (*)(void *, uint32_t, uint32_t, uint32_t, const void *, uint32_t), "_AudioUnitSetProperty")(mixer_unit, 8, 1, 0, &format, sizeof format) == 0);
+  struct { void *proc, *ref; } tone = {(void *)render_tone, NULL};
+  CHECK(FN(int (*)(void *, int32_t, uint32_t, const void *), "_AUGraphSetNodeInputCallback")(graph, mixer_node, 0, &tone) == 0);
+  CHECK(FN(int (*)(void *), "_AUGraphStart")(graph) == 0 && g_backend_started == 1 && g_backend_render);
+  float left[256], right[256];
+  memset(left, 0x7f, sizeof left);
+  memset(right, 0x7f, sizeof right);
+  if (g_backend_render) g_backend_render(g_backend_ctx, left, right, 256);
+  CHECK(left[0] == 0.25f && left[255] == 0.25f && right[0] == -0.5f && right[255] == -0.5f);
+  CHECK(FN(int (*)(void *), "_AUGraphStop")(graph) == 0 && g_backend_stopped == 1);
+  CHECK(FN(int (*)(void *), "_DisposeAUGraph")(graph) == 0);
+  dw_audio_set_backend(NULL);
 #undef CC
 }
 

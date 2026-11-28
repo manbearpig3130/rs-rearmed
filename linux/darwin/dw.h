@@ -45,6 +45,17 @@ const char *dw_path(const char *path, char *buf, size_t n);
 // The display's modes as the shell knows them, {width, height} each, for the renderer's list (dw_display.c).
 void dw_display_set_modes(const int (*modes)[2], int n);
 
+// Where the game's sound goes (dw_audio.c). A backend is started when the game starts its audio graph, and from
+// then calls RENDER on its own audio thread whenever it wants FRAMES more frames (at most 4096), which fills the
+// two channels with what the game plays. Without one, a thread calls it on the clock and drops the sound.
+typedef void (*dw_audio_render)(void *ctx, float *left, float *right, uint32_t frames);
+typedef struct {
+  const char *name;
+  int (*start)(double rate, uint32_t frames, dw_audio_render render, void *ctx);  // 0, or the silent clock is used
+  void (*stop)(void);
+} dw_audio_backend;
+void dw_audio_set_backend(const dw_audio_backend *backend);
+
 // errno: Darwin's number for the host's, and DW_ERR for a returned one.
 int dw_errno_from_host(int host);
 #define DW_ERR(r) dw_errno_from_host(r)

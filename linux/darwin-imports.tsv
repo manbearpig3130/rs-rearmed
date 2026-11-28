@@ -447,12 +447,12 @@ libSystem	_pthread_cond_timedwait	call	adapt	see pthread_cond_wait; ETIMEDOUT is
 libSystem	_pthread_cond_wait	call	adapt	a condition with Darwin's static initializer is made on first use
 libSystem	_pthread_condattr_destroy	call	same	
 libSystem	_pthread_condattr_init	call	same	
-libSystem	_pthread_create	call	adapt	the error numbers; the thunk's larger stack stays
-libSystem	_pthread_detach	call	same	
+libSystem	_pthread_create	call	adapt	the error numbers; a stack of at least 1 MB, as the host's libraries and glibc's thread-local storage use the game's stacks too
+libSystem	_pthread_detach	call	adapt	a handle of zero is no such thread (ESRCH), where glibc would read it
 libSystem	_pthread_exit	call	same	
 libSystem	_pthread_getschedparam	call	adapt	the policy numbers and the priority range
 libSystem	_pthread_getspecific	call	same	
-libSystem	_pthread_join	call	same	
+libSystem	_pthread_join	call	adapt	a handle of zero is no such thread (ESRCH), where glibc would read it
 libSystem	_pthread_key_create	call	adapt	pthread_key_t is 8 bytes on Darwin, 4 here: the game's 8 are all written
 libSystem	_pthread_key_delete	call	same	
 libSystem	_pthread_mach_thread_np	call	emulate	the thread's id as a port number

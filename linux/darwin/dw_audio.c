@@ -5,8 +5,9 @@
 // audio units (AUGraph: a mixer into a device output) with a callback that Wwise fills, and for the guitar opens
 // an input device with an I/O procedure. Here there is one output device, stereo at 48,000 Hz, and no input.
 // The graph is kept as the game made it, and while it runs a thread calls the game's callback once a buffer, on
-// the clock, and throws the sound away: so Wwise runs, and the game with it. A sound backend takes the thread's
-// place later (linux/PLAN.md, X3).
+// the clock, and throws the sound away: so Wwise runs, and the game with it. Where the program has a sound
+// backend (dw_audio_set_backend: PipeWire, linux/src/audio_pipewire.c) that calls for the sound instead and
+// plays it.
 //
 // RS_AUDIO_LOG=1 logs every question once; a question with no answer is always logged once.
 #define _GNU_SOURCE
@@ -301,40 +302,77 @@ typedef struct graph {
   pthread_t thread;
   _Atomic int running;
   int started;
+  int backend;  // started with the backend, not the silent clock
+  double sample;
+  float peak;
+  uint32_t peak_frames;
 } graph;
 
+// What the game plays for the next FRAMES frames, as two channels: each callback of the graph is called with
+// buffers in the format its unit was given, and what they fill is summed.
+static void graph_render(void *ctx, float *left, float *right, uint32_t frames) {
+  graph *g = ctx;
+  static __thread float scratch[MAX_BUSES][4096 * 2];
+  if (frames > 4096) frames = 4096;
+  memset(left, 0, frames * sizeof(float));
+  memset(right, 0, frames * sizeof(float));
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  time_stamp when = {.sample_time = g->sample, .host_time = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec,
+                     .rate_scalar = 1.0, .flags = 1 | 2 | 4};  // sample time, host time and rate valid
+  for (int n = 0; n < g->count; n++)
+    for (uint32_t bus = 0; bus < MAX_BUSES; bus++) {
+      unit *u = &g->nodes[n];
+      if (!u->proc[bus]) continue;
+      const stream_format *f = u->in[bus].channels ? &u->in[bus] : &u->out;
+      uint32_t channels = f->channels ? f->channels : 2;
+      int planar = (f->flags & 0x20) != 0, is_float = !f->format || ((f->flags & 0x1) && f->bits == 32);
+      buffer_list list = {0};
+      memset(scratch, 0, sizeof(float) * 2 * 4096 * (planar ? (channels > MAX_BUSES ? MAX_BUSES : channels) : 1));
+      if (planar) {  // one buffer a channel
+        list.count = channels > 8 ? 8 : channels;
+        for (uint32_t c = 0; c < list.count; c++) list.buffers[c] = (audio_buffer){1, frames * 4, scratch[c]};
+      } else {
+        if (channels > 2) channels = 2;
+        list.count = 1;
+        list.buffers[0] = (audio_buffer){channels, frames * 4 * channels, scratch[0]};
+      }
+      uint32_t flags = 0;
+      if (u->proc[bus](u->ref[bus], &flags, &when, bus, frames, &list) != 0 || !is_float) continue;  // an error, or a format not mixed here
+      if (planar) {
+        const float *l = list.buffers[0].data, *r = list.count > 1 ? list.buffers[1].data : list.buffers[0].data;
+        for (uint32_t i = 0; i < frames; i++) left[i] += l[i], right[i] += r[i];
+      } else {
+        const float *d = list.buffers[0].data;
+        for (uint32_t i = 0; i < frames; i++) left[i] += d[i * channels], right[i] += d[i * channels + (channels > 1)];
+      }
+    }
+  g->sample += frames;
+  if (audio_log()) {  // the loudest sample of each five seconds, to see that the game plays something
+    float peak = g->peak;
+    for (uint32_t i = 0; i < frames; i++) {
+      float a = left[i] < 0 ? -left[i] : left[i], b = right[i] < 0 ? -right[i] : right[i];
+      if (a > peak) peak = a;
+      if (b > peak) peak = b;
+    }
+    g->peak = peak;
+    if ((g->peak_frames += frames) >= (uint32_t)(5 * g_rate)) {
+      fprintf(stderr, "[audio] the last five seconds' loudest sample: %.4f\n", (double)g->peak);
+      g->peak = 0, g->peak_frames = 0;
+    }
+  }
+}
+
+// With no backend: the callback on the clock, the sound dropped.
 static void *graph_thread(void *arg) {
   graph *g = arg;
   pthread_setname_np(pthread_self(), "rs-audio-silent");
-  static float scratch[MAX_BUSES][4096 * 8];
+  static float left[4096], right[4096];
   struct timespec next;
   clock_gettime(CLOCK_MONOTONIC, &next);
-  double sample = 0;
   while (atomic_load(&g->running)) {
     uint32_t frames = g_frames > 4096 ? 4096 : g_frames;
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    time_stamp when = {.sample_time = sample, .host_time = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec,
-                       .rate_scalar = 1.0, .flags = 1 | 2 | 4};  // sample time, host time and rate valid
-    for (int n = 0; n < g->count; n++)
-      for (uint32_t bus = 0; bus < MAX_BUSES; bus++) {
-        unit *u = &g->nodes[n];
-        if (!u->proc[bus]) continue;
-        const stream_format *f = u->in[bus].channels ? &u->in[bus] : &u->out;
-        uint32_t channels = f->channels ? f->channels : 2, bytes = f->bytes_per_frame ? f->bytes_per_frame : 4;
-        buffer_list list = {0};
-        if (f->flags & 0x20) {  // one buffer a channel
-          list.count = channels > 8 ? 8 : channels;
-          for (uint32_t c = 0; c < list.count; c++)
-            list.buffers[c] = (audio_buffer){1, frames * bytes, scratch[c]};
-        } else {
-          list.count = 1;
-          list.buffers[0] = (audio_buffer){channels, frames * bytes, scratch[0]};
-        }
-        uint32_t flags = 0;
-        u->proc[bus](u->ref[bus], &flags, &when, bus, frames, &list);
-      }
-    sample += frames;
+    graph_render(g, left, right, frames);
     long ns = (long)(1e9 * frames / g_rate);
     next.tv_nsec += ns;
     while (next.tv_nsec >= 1000000000L) next.tv_nsec -= 1000000000L, next.tv_sec++;
@@ -342,6 +380,9 @@ static void *graph_thread(void *arg) {
   }
   return NULL;
 }
+
+static const dw_audio_backend *g_backend;
+void dw_audio_set_backend(const dw_audio_backend *backend) { g_backend = backend; }
 
 int dw_NewAUGraph(graph **out) {
   *out = calloc(1, sizeof(graph));
@@ -416,13 +457,18 @@ DW_FUNCTION("_AUGraphSetNodeInputCallback", dw_AUGraphSetNodeInputCallback);
 int dw_AUGraphStart(graph *g) {
   if (!g) return -50;
   if (g->started) return noErr;
-  atomic_store(&g->running, 1);
-  if (pthread_create(&g->thread, NULL, graph_thread, g)) {
-    atomic_store(&g->running, 0);
-    return kUnspecified;
+  if (g_backend && g_backend->start(g_rate, g_frames, graph_render, g) == 0) {
+    g->backend = 1;
+  } else {
+    atomic_store(&g->running, 1);
+    if (pthread_create(&g->thread, NULL, graph_thread, g)) {
+      atomic_store(&g->running, 0);
+      return kUnspecified;
+    }
   }
   g->started = 1;
-  if (audio_log()) fprintf(stderr, "[audio] graph: started, silent, %u frames a call at %.0f Hz\n", g_frames, g_rate);
+  if (audio_log())
+    fprintf(stderr, "[audio] graph: started, %s, %u frames a call at %.0f Hz\n", g->backend ? g_backend->name : "silent", g_frames, g_rate);
   return noErr;
 }
 DW_FUNCTION("_AUGraphStart", dw_AUGraphStart);
@@ -430,8 +476,13 @@ DW_FUNCTION("_AUGraphStart", dw_AUGraphStart);
 int dw_AUGraphStop(graph *g) {
   if (!g) return -50;
   if (!g->started) return noErr;
-  atomic_store(&g->running, 0);
-  pthread_join(g->thread, NULL);
+  if (g->backend) {
+    g_backend->stop();
+    g->backend = 0;
+  } else {
+    atomic_store(&g->running, 0);
+    pthread_join(g->thread, NULL);
+  }
   g->started = 0;
   return noErr;
 }

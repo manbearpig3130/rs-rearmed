@@ -193,10 +193,40 @@ DW_FUNCTION("_sched_get_priority_max", dw_sched_get_priority_max);
 
 // The error numbers. The game's code runs on the thread as it is, on a stack of the size the game asked for (the
 // translated build needs larger ones; this one does not).
+//
+// The stack is the size the game asked for, but no smaller than 1 MB. The game asks for small ones here and there,
+// sized for its own code on macOS; on this host the same thread also runs the host's libraries under the game's
+// calls (the C library, the OpenGL driver), and glibc takes each thread's thread-local storage out of its stack,
+// more of it with every library loaded, refusing a stack that cannot hold it.
+#define DW_MIN_STACK (1u << 20)
 int dw_pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start)(void *), void *arg) {
-  return DW_ERR(pthread_create(thread, attr, start, arg));
+  size_t size = 0;
+  int r;
+  if (attr && !pthread_attr_getstacksize(attr, &size) && size < DW_MIN_STACK) {
+    pthread_attr_t larger = *attr;  // the game's own is left as it set it
+    pthread_attr_setstacksize(&larger, DW_MIN_STACK);
+    r = pthread_create(thread, &larger, start, arg);
+  } else {
+    r = pthread_create(thread, attr, start, arg);
+  }
+  if (r) dw_log("pthread_create failed: %d (a stack of %zu bytes asked for)", r, size);
+  return DW_ERR(r);
 }
 DW_FUNCTION("_pthread_create", dw_pthread_create);
+
+// A thread that was never made (a handle of zero) cannot be waited for: no such thread, as macOS answers, where
+// glibc would read the handle.
+int dw_pthread_join(pthread_t thread, void **result) {
+  if (!thread) return 3;  // ESRCH
+  return DW_ERR(pthread_join(thread, result));
+}
+DW_FUNCTION("_pthread_join", dw_pthread_join);
+
+int dw_pthread_detach(pthread_t thread) {
+  if (!thread) return 3;
+  return DW_ERR(pthread_detach(thread));
+}
+DW_FUNCTION("_pthread_detach", dw_pthread_detach);
 
 // On Darwin it names the calling thread and takes the name alone; Linux keeps 15 characters.
 int dw_pthread_setname_np(const char *name) {
