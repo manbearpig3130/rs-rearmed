@@ -2422,6 +2422,8 @@ let optionSpecs: [OptionSpec] = [
                kind: .toggle(defaultOn: true), editions: "both", group: "Audio and guitar input", advanced: true),
     OptionSpec(key: "RS_AUDIO_INPUT_TRIM", title: "Drop stale guitar input", detail: "Up to 8 ms of old input never reaches the speakers. Off: as the original.",
                kind: .toggle(defaultOn: true), editions: "both", group: "Audio and guitar input", advanced: true),
+    OptionSpec(key: "RS_AUDIO_INPUT_LEAN", title: "Lower guitar latency", detail: "No spare buffer of guitar input: 2.7 ms less delay, if the interface keeps up. Off: one spare.",
+               kind: .toggle(defaultOn: false), editions: "mac", group: "Audio and guitar input", advanced: true),
     OptionSpec(key: "RS_AUDIO_INPUT", title: "Guitar input fixes", detail: "The channel, gain and list below. Off: the game's input as it is.",
                kind: .toggle(defaultOn: true), editions: "both", group: "Audio and guitar input", advanced: true),
     OptionSpec(key: "RS_AUDIO_INPUT_CHANNEL", title: "Input channel", detail: "From 1, for every device. Empty: every channel is listed.",

@@ -92,6 +92,9 @@ OPTIONS = (
            toggle(True), AUDIO, True, "yes"),
     Option("RS_AUDIO_INPUT_TRIM", "Drop stale guitar input",
            "Up to 8 ms of old input never reaches the speakers. Off: as the original.", toggle(True), AUDIO, True, "yes"),
+    Option("RS_AUDIO_INPUT_LEAN", "Lower guitar latency",
+           "No spare buffer of guitar input: 2.7 ms less delay, if the interface keeps up. Off: one spare.", toggle(False),
+           AUDIO, True, "yes"),
     Option("RS_AUDIO_INPUT", "Guitar input fixes", "The channel, gain and list below. Off: the game's input as it is.",
            toggle(True), AUDIO, True, "yes"),
     Option("RS_AUDIO_INPUT_CHANNEL", "Input channel", "From 1, for every device. Empty: every channel is listed.",
@@ -177,6 +180,8 @@ LINUX_DETAIL = {
     "RS_AUDIO_FRAMES": "Frames per callback asked of PipeWire, which may give another size. Default 256.",
     "RS_WINDOW_ANY_SHAPE": "Off: a window keeps 16:9, as the original game's.",
     "RS_AUDIO_RT": "The game's audio engine thread runs real-time, as PipeWire's own threads do. Off: as the original.",
+    "RS_AUDIO_INPUT_LEAN": "No spare buffer of guitar input: 2.7 ms less delay. Best with the interface's Pro Audio "
+                           "profile, where its input and output share one clock. Off: one spare.",
     "RS_AUDIO_INPUT_FILE": "Another per-device Channel and GainDb file. Empty: guitar-input.ini in RS Re-ARMed's folder.",
     "RS_GL_MTENGINE": "Off by default. On: Mesa's multithreaded OpenGL, the drawing calls on a thread of the driver's.",
     "RS_FULLSCREEN": "Whatever the game's Windowed Mode setting, or forced at each start. F11 or Alt+Enter changes it "

@@ -9,7 +9,8 @@
 //   * the output device's I/O buffer, which the game never sets (the system default, 512 frames).
 // This module sets the output device's buffer (RS_AUDIO_FRAMES, default 256; never above half the ring,
 // see audio_out.c), runs the LEngine thread as a real-time thread in the output device's
-// audio workgroup (RS_AUDIO_RT), keeps the input queue from holding stale audio (RS_AUDIO_INPUT_TRIM), gives
+// audio workgroup (RS_AUDIO_RT), keeps the input queue from holding stale audio (RS_AUDIO_INPUT_TRIM; with no
+// spare slot: RS_AUDIO_INPUT_LEAN, off by default), gives
 // each device one UID string so the device scan doesn't skip an interface as failed (RS_AUDIO_STABLE_UIDS), and
 // lists input devices first so an unreadable output-only device can't end that scan (RS_AUDIO_INPUTS_FIRST).
 // LatencyBuffer is also the audio engine setting in the game's Audio settings (Get/SetAudioLatency,

@@ -17,6 +17,14 @@
 // When the queue is full and the writer has overwritten the read slot, the order is already mixed up in
 // the original; the trim then drops from the read index as well.
 //
+// The lean queue (RS_AUDIO_INPUT_LEAN=1; off by default): no slot kept beyond what a burst needs, 2.7 ms less
+// delay at 128 frames a slot. Where the input and the output run on one clock (a Linux interface's Pro Audio
+// profile), the input's buffer and the engine's read come within a fraction of a millisecond of each other, so
+// a read that finds the next slot not there yet waits up to three tenths of an output buffer for it. A start
+// whose timing keeps missing all the same (eight waits that end with nothing) keeps the spare slot for the
+// rest of the session. Measured on Linux with a Blender on Pro Audio: 25.4 to 22.7 ms from the interface's
+// input to its output, and no empty reads in three quarters of an hour of songs.
+//
 // With RS_AUDIO_LOG the queue's level goes to the log about every five seconds when it changes, and once a
 // minute: the slots waiting when the engine reads, how long that sound had waited (where the platform's input
 // layer stamps each buffer's arrival, as Linux's does), and the trims and empty reads so far.
@@ -39,6 +47,26 @@ static inline void flag_clear(uint8_t *q, unsigned i) { __atomic_store_n(Q_FLAG(
 static inline uint16_t next_slot(uint16_t i) { return (uint16_t)((i + 1u) % Q_SLOTS); }
 
 static atomic_ulong g_trims, g_dropped, g_empty;
+// The slots kept beyond what a burst needs: 1, or 0 with the lean queue until a start's timing misses too often.
+// These and the rest below are the Wwise thread's alone, the one reader.
+static int g_spare = -1;
+static int g_flowing;      // the last read found a slot: the input is running, and a wait is worth it
+static unsigned g_missed;  // waits that ended with nothing
+#define MISSES_BEFORE_SPARE 8
+
+// Waits up to three tenths of an output buffer's time for the read slot to be filled.
+static int wait_for_slot(uint8_t *q) {
+  unsigned frames = atomic_load_explicit(&rs_audio_out_frames, memory_order_relaxed);
+  if (!frames || frames > 256) frames = 256;
+  long left_us = (long)frames * 300000 / 48000;
+  const struct timespec step = {0, 40000};
+  while (left_us > 0) {
+    nanosleep(&step, NULL);
+    left_us -= 40;
+    if (flag_ld(q, Q_RD(q)) == 1) return 1;
+  }
+  return 0;
+}
 
 // The most filled slots a read may find at a fresh slot before the oldest are dropped; >= Q_SLOTS: never.
 static unsigned trim_limit(unsigned slot_bytes, unsigned out_frames) {
@@ -48,7 +76,11 @@ static unsigned trim_limit(unsigned slot_bytes, unsigned out_frames) {
   unsigned blocks = (out_frames + AK_REFILL_FRAMES - 1) / AK_REFILL_FRAMES;
   if (!blocks) blocks = 1;
   unsigned per_block = (AK_REFILL_FRAMES + slot_frames - 1) / slot_frames;
-  return per_block * blocks + 1;
+  if (g_spare < 0) {
+    g_spare = rs_audio_env_on("RS_AUDIO_INPUT_LEAN", 0) ? 0 : 1;
+    if (!g_spare) rs_audio_log("input queue: lean, no spare slot (RS_AUDIO_INPUT_LEAN)");
+  }
+  return per_block * blocks + (unsigned)g_spare;
 }
 
 // Drops all but the newest `limit` of the filled run that starts at the read index (offset 0).
@@ -129,6 +161,14 @@ static uint16_t rs_queue_read(uint8_t *q, void *dst, uint16_t req, unsigned limi
   if (Q_OFF(q) == 0 && rs_audio_log_on()) waiting_report(q);
   uint16_t rd = Q_RD(q);
   int filled = flag_ld(q, rd) == 1;
+  if (!filled && g_spare == 0 && g_flowing && limit < Q_SLOTS) {
+    filled = wait_for_slot(q);
+    if (!filled && ++g_missed == MISSES_BEFORE_SPARE) {
+      g_spare = 1;
+      rs_audio_log("input queue: this start's timing keeps the engine ahead of the input: the spare slot is kept from here");
+    }
+  }
+  g_flowing = filled;
   Q_EMPTY(q) = !filled;
   if (!filled) {  // the engine wanted input and none had come: a gap in what the game hears
     unsigned long e = atomic_fetch_add_explicit(&g_empty, 1, memory_order_relaxed) + 1;
