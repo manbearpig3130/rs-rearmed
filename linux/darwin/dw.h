@@ -35,6 +35,13 @@ const dw_entry *dw_functions(size_t *n);
 const dw_entry *dw_objects(size_t *n);
 void dw_init(void);  // once, before the image is bound: the objects that are made at start
 
+// A line on stderr, `[darwin] ...`: what the layer refused or did not know. RS_DARWIN_LOG=0 turns them off.
+void dw_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
+// A path as the game wrote it, found on a file system that tells letter cases apart (dw_file.c): PATH itself
+// when it is there, else BUF with each missing part replaced by the name that differs in case alone.
+const char *dw_path(const char *path, char *buf, size_t n);
+
 // errno: Darwin's number for the host's, and DW_ERR for a returned one.
 int dw_errno_from_host(int host);
 #define DW_ERR(r) dw_errno_from_host(r)

@@ -43,6 +43,12 @@ int rsl_run_initializers(int argc, char **argv, char **envp);
 // How many initializers have a frame description the host's unwinder finds: a C++ throw unwinds through those.
 int rsl_initializers_with_unwind(void);
 
+// A survey, to see what a part of the game asks for in one run: a call of a function with no answer is noted
+// (stderr, once each) and returns 0 instead of ending the run. What the game does after that proves nothing.
+void rsl_survey(int on);
+void rsl_report_survey(FILE *out);
+int rsl_survey_note(const rsl_import *im);  // 1 the first time
+
 // --- the imports (imports.c) ---
 void rsl_imports_begin(int count_calls);
 rsl_import *rsl_answer(const char *library, const char *symbol, int lazy);

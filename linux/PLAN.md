@@ -6,8 +6,9 @@ page is what to do about it, in what order, and what has been done. The editions
 ## Status
 
 - **Investigated** (2026-11-26, from 1.20.0), **and begun on x86-64** (2026-11-28): a loader builds there and runs
-  the game's 3,487 initializers as they are ([X1](#x1-the-games-initializers-run)). No window, no sound and no
-  install yet, and nothing for arm64.
+  the game's 3,487 initializers and then its start, `GameBootstrap`, whole, as they are
+  ([X1](#x1-the-games-initializers-run), [X2](#x2-a-picture)). No window, no sound and no install yet, and
+  nothing for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -72,8 +73,10 @@ On the machine itself, with Python and Steam alone:
 
 Done when: all 3,487 initializers run on x86-64 Linux, and the machine's report is in hand.
 
-**Done 2026-11-28 on Bazzite**, with the image decrypted on a Mac and copied over; the download through Steam on
-Linux is not tried yet. The run: 3,487 of 3,487, and the same 16 imports with the same counts as on the Mac. The
+**Done 2026-11-28 on Bazzite**, first with the image decrypted on a Mac and copied over, then by this route whole:
+`download_depot` in Steam on Bazzite puts the depot in
+`~/.local/share/Steam/steamrt64/steamapps/content/app_221680/depot_221682` (Steam names the folder when it is
+done), and `decrypt.py` there writes the same image, byte for byte. The run: 3,487 of 3,487, and the same 16 imports with the same counts as on the Mac. The
 report:
 
 | Asked | Bazzite 45, AMD Renoir graphics |
@@ -139,6 +142,28 @@ of the engine's Objective-C and the online stub's nine go in as jumps at their f
 [the patches](X86-64.md#running-the-original-code).
 
 Done when: the title screen, the menus, and a song's note highway without sound.
+
+**Begun 2026-11-28: the game's start runs.** `rs-rearmed --boot DIR` calls the game's `GameBootstrap` after the
+initializers, with DIR as the game's folder (the depot as Steam downloaded it), and it runs to its end: the game's
+root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.psarc` opened, the main service.
+
+- **The layer has 84 functions** now (`linux/darwin`): pthreads (objects with Darwin's static initializers made
+  on first use, the numbers, scheduling accepted and not applied), Mach's clock, semaphores and port type, the
+  `OSAtomic` calls, `sysctl` for the fourteen names and the one numbered question, the files (`open`'s flags,
+  Darwin's `struct stat` and `struct dirent`, `fcntl`, `poll`, `select`, `sem_open`), `setjmp`, signals, the
+  locale, `strerror`, and the fifteen network calls, refused. Who answers now: 259 the host, 90 the layer, 332
+  nothing yet (emulate 41, shim 162, layer 31, stub 98).
+- **Names in any letter case.** The game lower-cases the paths it builds (a `Steam` folder becomes `steam`), which
+  macOS's file system forgives. The layer's `dw_path` finds a path that is not there as written by looking for
+  each missing part under another case. Without it the game finds none of its files on Linux.
+- **`sysctl` answers as an Intel Mac** on x86-64 (SSE2 and the rest present, `x86_64`, the CPU's frequency), not as
+  the Apple silicon Mac the Mac app runs on: these are the answers the game's code was written against.
+- **A survey** (`--survey`): a function with no answer is noted and returns 0, and the run goes on, so one run
+  lists what a stage asks for. What follows such a call proves nothing; it is for making the list.
+  `--frames N` then calls `GameFrame`. The first frame asks for the Steam library (`SteamAPI_Init`, its
+  callbacks and contexts) and CoreAudio's devices; then the renderer.
+- **Next**: the Steam shim built for Linux; the audio layer's silent form; the shell and the renderer's OpenGL
+  path, which need a distrobox for their headers.
 
 ### X3. Sound and the guitar
 
@@ -413,3 +438,8 @@ Proposed; none is final before the step that tests it.
   is 3,208 bytes (checked against the Mac's own header). The operators new and delete are bound by the ordinary
   table though the image calls them, so a call's pointer is told by its section. Next: X2, which needs the
   game's files on the machine.
+- **2026-11-28, the game's start.** The Mac depot downloaded by Steam on the Bazzite PC (`download_depot`; the
+  folder is under `steamrt64`, which `first_run.py --machine` now finds; its paths no longer carry the account's
+  name where the home folder is a link). Decrypted there: the same image as the Mac's. The layer grew from 9
+  functions to 84 in one batch, led by a survey run, and `GameBootstrap` then ran whole on the first try with
+  them, once paths were found in any letter case. `GameFrame` stops at the Steam library. Next: the Steam shim.

@@ -14,7 +14,7 @@ $(error This builds for x86-64 Linux alone, where the game's code runs as it is:
 endif
 
 # -fno-strict-aliasing: the layer reads and writes the game's objects through its own types.
-ALL_CFLAGS = -std=gnu11 -Wall -Wextra -fno-strict-aliasing -pthread $(CFLAGS) -Isrc -Idarwin -I$(OUT)
+ALL_CFLAGS = -std=gnu11 -Wall -Wextra -fno-strict-aliasing -pthread $(CFLAGS) -Isrc -Idarwin -I$(OUT) -I$(OUT)/target
 LIBS = -ldl -lm -pthread
 
 LAYER = $(sort $(wildcard darwin/*.c))
@@ -36,6 +36,14 @@ $(OUT)/imports_table.inc: darwin-imports.tsv gen_import_table.py import_census.p
 
 $(OUT)/src/imports.o: $(OUT)/imports_table.inc
 
+# The game's addresses by name (RC_ADDR_<name>), from the Mac target's tables as every edition's build has them.
+TARGET = ../tools/targets
+$(OUT)/target/rc_target_names.h: $(TARGET)/targets.py $(wildcard $(TARGET)/mac-x64/*) $(wildcard $(TARGET)/names/*)
+	@mkdir -p $(OUT)/target
+	$(PYTHON) $(TARGET)/targets.py gen --target mac-x64 $(OUT)/target >/dev/null
+
+$(OUT)/src/main.o: $(OUT)/target/rc_target_names.h
+
 $(OUT)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(ALL_CFLAGS) -MMD -MP -c -o $@ $<
@@ -46,7 +54,7 @@ check: $(OUT)/rs-rearmed $(OUT)/layer_test
 	 else echo "no image at $(IMAGE): the game's initializers not run"; fi
 
 clean:
-	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/imports_table.inc $(OUT)/rs-rearmed $(OUT)/layer_test
+	rm -rf $(OUT)/src $(OUT)/darwin $(OUT)/test $(OUT)/target $(OUT)/imports_table.inc $(OUT)/rs-rearmed $(OUT)/layer_test
 
 .PHONY: all check clean
 -include $(OBJ:.o=.d) $(OUT)/test/layer_test.d

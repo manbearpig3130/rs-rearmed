@@ -553,8 +553,11 @@ def tool(*cmd, lines=40):
 
 
 def home(path):
-    h = os.path.expanduser("~")
-    return "~" + path[len(h):] if path.startswith(h) else path
+    """PATH with the home folder as `~`, also where the home folder is a link (/home to /var/home on an image-based system)."""
+    for h in (os.path.expanduser("~"), os.path.realpath(os.path.expanduser("~"))):
+        if path == h or path.startswith(h + os.sep):
+            return "~" + path[len(h):]
+    return path
 
 
 def steam_roots():
@@ -600,7 +603,9 @@ def steam_facts(say):
                 depots = re.findall(r'"(2216\d\d)"\s*\{', text)
                 say("  Rocksmith 2014 is installed in %s: depots %s (221682 is the Mac game's)"
                     % (home(lib), ", ".join(depots) or "not listed"))
-        for content in (os.path.join(root, "ubuntu12_32", "steamapps", "content"), os.path.join(root, "steamapps", "content")):
+        # download_depot's folder is under Steam's runtime folder (steamrt64 on Bazzite in 2026; ubuntu12_32 before)
+        import glob
+        for content in sorted(glob.glob(os.path.join(root, "*", "steamapps", "content"))) + [os.path.join(root, "steamapps", "content")]:
             depot = os.path.join(content, "app_221680", "depot_221682")
             if os.path.isdir(depot):
                 exe = os.path.join(depot, "Rocksmith2014.app", "Contents", "MacOS", "Rocksmith2014")

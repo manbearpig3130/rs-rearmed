@@ -1,6 +1,8 @@
 // The layer's tables, and the objects of libSystem the image holds the address of. See dw.h.
 #define _GNU_SOURCE
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
 
@@ -27,6 +29,21 @@ const dw_entry *dw_functions(size_t *n) {
 const dw_entry *dw_objects(size_t *n) {
   *n = (size_t)(__stop_dw_set_objects - __start_dw_set_objects);
   return __start_dw_set_objects;
+}
+
+void dw_log(const char *fmt, ...) {
+  static int on = -1;
+  if (on < 0) {
+    const char *e = getenv("RS_DARWIN_LOG");
+    on = !(e && *e == '0');
+  }
+  if (!on) return;
+  char line[512];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(line, sizeof line, fmt, ap);
+  va_end(ap);
+  fprintf(stderr, "[darwin] %s\n", line);
 }
 
 // ___stack_chk_guard: the value the image's functions put above their locals and check on return. On Darwin it is

@@ -533,7 +533,7 @@ libSystem	_strtol	call	same
 libSystem	_strtoll	call	same	
 libSystem	_strtoul	call	same	
 libSystem	_strtoull	call	same	
-libSystem	_sysctl	call	emulate	the names in the image (hw.memsize, hw.logicalcpu, hw.physicalcpu, hw.cachelinesize, hw.l2cachesize, hw.cpufrequency, hw.machine, hw.optional.mmx and four sse, kern.ostype, kern.osrelease), each as an Apple silicon Mac answers it
+libSystem	_sysctl	call	emulate	the names in the image (hw.memsize, hw.logicalcpu, hw.physicalcpu, hw.cachelinesize, hw.l2cachesize, hw.cpufrequency, hw.machine, hw.optional.mmx and four sse, kern.ostype, kern.osrelease), each as a Mac with the host's CPU answers it: an Intel Mac on x86-64, an Apple silicon one on arm64
 libSystem	_sysctlbyname	call	emulate	see sysctl
 libSystem	_system	call	adapt	never runs a command: logs it and fails (the network guard's rule for a URL, for any command)
 libSystem	_tan	call	same	

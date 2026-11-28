@@ -26,6 +26,7 @@ import test_first_run as made_up  # noqa: E402
 BUILDS = (sys.platform.startswith("linux") and platform.machine() == "x86_64"
           and shutil.which("make") and (shutil.which("cc") or shutil.which("gcc")))
 REAL = os.environ.get("RC_IMAGE") or census.DEFAULT_IMAGE
+GAME = os.environ.get("RS_GAME_DIR")  # the game's folder (the Mac depot): with it, the game's start is run too
 
 
 class Table(unittest.TestCase):
@@ -146,6 +147,17 @@ class Loader(unittest.TestCase):
         self.assertEqual((int(counts.group(1)), int(counts.group(2))),
                          (len(table), sum(1 for kind, _, _ in table.values() if kind == "call")))
         self.assertEqual(int(counts.group(3)), sum(1 for _, cls, _ in table.values() if cls == "same"))
+
+    def test_the_games_start(self):
+        """GameBootstrap, whole: the game's root, Lua, its settings, the file system, the main service."""
+        if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
+            self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
+        code, out, err = self.run_loader(REAL, "--boot", GAME)
+        self.assertEqual(code, 3, out + err)  # it ends at the first import with no answer yet
+        self.assertIn("GameBootstrap, with the game in", out)
+        self.assertNotIn("in initializer", err)
+        # every import of the C library, pthreads, Mach and the files has an answer: what stops it is a library's
+        self.assertRegex(err, r"the game called \S+ \S+ \((shim|layer)\), which has no answer yet")
 
 
 if __name__ == "__main__":

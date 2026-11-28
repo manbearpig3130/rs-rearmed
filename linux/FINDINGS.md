@@ -210,7 +210,8 @@ libc's.
 - **Emulate, 36.** `OSAtomic*` (C atomics), `mach_absolute_time` and its timebase, the four Mach semaphore calls
   (POSIX semaphores behind port numbers), `sysctl` and `sysctlbyname` for the fourteen names in the image (`hw.memsize`,
   `hw.logicalcpu`, `hw.cachelinesize`, `hw.optional.sse2`, `kern.osrelease`, ...), each answered as an Apple silicon Mac
-  answers it, since that is what the Mac app is tested with; the rune table the C library's `isalpha` family reads inline
+  answers it, since that is what the Mac app is tested with (on x86-64, where the game's own code runs, as an
+  Intel Mac answers: [X86-64.md](X86-64.md)); the rune table the C library's `isalpha` family reads inline
   (`_DefaultRuneLocale`, `__maskrune`), `__stderrp` and its two siblings, `__stack_chk_guard`, `memset_pattern16`,
   `__sincosf_stret`, `__invert_f4`, `__exp10`, and `tcgetattr`, which answers that there is no terminal.
 - **Refuse, 15.** `socket`, `connect`, `gethostbyname` and the rest answer as a machine with no network. The Mac

@@ -24,6 +24,7 @@ static int g_count;
 static uint8_t *g_traps;    // no access: an unanswered import's address is in here
 static uint8_t *g_stubs;    // with counting on
 static uint64_t *g_counts;
+static uint32_t g_surveyed[MAX_IMPORTS];  // calls of each unanswered import, in a survey
 
 // The host's libraries that the `same` rows are in, besides the C library.
 static const char *const k_libs[] = {"libm.so.6", "libstdc++.so.6", "libgcc_s.so.1"};
@@ -119,6 +120,21 @@ const rsl_import *rsl_import_at(uint64_t addr) {
   if (!g_traps || addr < base || addr >= base + (uint64_t)MAX_IMPORTS * TRAP_STRIDE) return NULL;
   uint64_t i = (addr - base) / TRAP_STRIDE;
   return i < (uint64_t)g_nimports ? &g_imports[i] : NULL;
+}
+
+int rsl_survey_note(const rsl_import *im) { return __atomic_fetch_add(&g_surveyed[im - g_imports], 1, __ATOMIC_RELAXED) == 0; }
+
+void rsl_report_survey(FILE *out) {
+  int n = 0;
+  for (int i = 0; i < g_nimports; i++) n += g_surveyed[i] != 0;
+  fprintf(out, "survey: %d functions with no answer were called\n", n);
+  for (int c = 0; c <= RSL_NCLASSES; c++)
+    for (int i = 0; i < g_nimports; i++) {
+      if (!g_surveyed[i]) continue;
+      int k = 0;
+      while (k < RSL_NCLASSES && strcmp(rsl_classes[k], g_imports[i].cls)) k++;
+      if (k == c) fprintf(out, "%9u  %-8s %-14s %s\n", g_surveyed[i], g_imports[i].cls, g_imports[i].library, g_imports[i].symbol);
+    }
 }
 
 const rsl_import *rsl_imports(int *n) {

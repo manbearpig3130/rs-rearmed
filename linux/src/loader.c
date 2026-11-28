@@ -26,6 +26,7 @@ static uint64_t *g_inits;  // __mod_init_func, in the image's memory
 static int g_ninits;
 static volatile int g_running = -1;  // the initializer being run
 static const char *g_libs[MAX_LIBS];  // by ordinal - 1
+static int g_survey;  // rsl_survey: an unanswered function is noted and returns 0
 static uint64_t g_lazy_lo, g_lazy_hi;  // __la_symbol_ptr: the pointers the image's calls of its imports go through
 static int g_nlibs;
 
@@ -176,8 +177,10 @@ int rsl_initializers_with_unwind(void) {
 
 // A fault ends the run and says what it was. An unanswered import is an address in a region with no access
 // (imports.c), so a call or a read of it lands here and is named.
+void rsl_survey(int on) { g_survey = on; }
+
 static void on_fault(int sig, siginfo_t *si, void *ctx) {
-  const ucontext_t *uc = ctx;
+  ucontext_t *uc = ctx;
   uint64_t pc = (uint64_t)uc->uc_mcontext.gregs[REG_RIP], sp = (uint64_t)uc->uc_mcontext.gregs[REG_RSP];
   uint64_t addr = (uint64_t)si->si_addr;
   char in[96] = "";
@@ -185,6 +188,16 @@ static void on_fault(int sig, siginfo_t *si, void *ctx) {
   if (i >= 0)
     snprintf(in, sizeof in, ", in initializer %d of %d, at 0x%llx", i + 1, g_ninits, (unsigned long long)g_inits[i]);
   const rsl_import *im = sig == SIGSEGV || sig == SIGBUS ? rsl_import_at(addr) : NULL;
+  if (im && pc == addr && g_survey) {  // noted once, then as if it had returned 0
+    if (rsl_survey_note(im))
+      dprintf(2, "[survey] %s %s (%s), from 0x%llx%s\n", im->library, im->symbol, im->cls,
+              (unsigned long long)*(const uint64_t *)sp, in);
+    uc->uc_mcontext.gregs[REG_RIP] = (greg_t) * (const uint64_t *)sp;
+    uc->uc_mcontext.gregs[REG_RSP] = (greg_t)(sp + 8);
+    uc->uc_mcontext.gregs[REG_RAX] = 0;
+    if (uc->uc_mcontext.fpregs) memset(&uc->uc_mcontext.fpregs->_xmm[0], 0, sizeof uc->uc_mcontext.fpregs->_xmm[0]);
+    return;
+  }
   if (im && pc == addr) {  // sp holds the call's return address
     dprintf(2, "[rs-rearmed] the game called %s %s (%s), which has no answer yet\n[rs-rearmed]   from 0x%llx%s\n",
             im->library, im->symbol, im->cls, (unsigned long long)*(const uint64_t *)sp, in);
@@ -195,6 +208,7 @@ static void on_fault(int sig, siginfo_t *si, void *ctx) {
             im->library, im->symbol, im->cls, (unsigned long long)pc, in);
     _exit(3);
   }
+  if (g_survey) rsl_report_survey(stderr);
   dprintf(2, "[rs-rearmed] %s: address 0x%llx, at 0x%llx (%s)%s\n", strsignal(sig), (unsigned long long)addr,
           (unsigned long long)pc, pc >= g_info.lo && pc < g_info.hi ? "the game's code" : "not the game's code", in);
   _exit(4);
