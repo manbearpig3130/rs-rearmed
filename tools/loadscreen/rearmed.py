@@ -2,9 +2,14 @@
 """Paint a red "Re-ARMed 2026" graffiti tag over the Rocksmith 2014 Remastered logo.
 
     rearmed.py <logo.png> <out.png> [--variant A|B|C] [--seed N]
+    rearmed.py --tag-only <out.png> [--variant A|B|C] [--seed N]
 
 Input and output are 1024x256 RGBA images of gfxassets/views/logo_elk_final.dds
 (or logo_graded_elk_final.dds). Needs Pillow and numpy.
+
+--tag-only writes the tag alone, transparent where it is not: tag.png beside this
+file is that, for variant A. logo.py puts it on the logo where there is no Pillow,
+numpy and Marker Felt (the Linux setup), and test_logo.py checks the two agree.
 
 The tag is drawn at SS times the size with hard edges and scaled down once at
 the end, so its edges are crisp and only anti-aliased: flat red fill, a shine
@@ -134,12 +139,15 @@ def tag(size, variant):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("logo")
+    ap.add_argument("logo", nargs="?")
     ap.add_argument("out")
     ap.add_argument("--variant", default="A")
     ap.add_argument("--seed", type=int, default=2026)
+    ap.add_argument("--tag-only", action="store_true")
     a = ap.parse_args()
-    logo = np.asarray(Image.open(a.logo).convert("RGBA"))
+    if a.tag_only == bool(a.logo):
+        ap.error("a logo to paint on, or --tag-only")
+    logo = np.zeros((256, 1024, 4), np.uint8) if a.tag_only else np.asarray(Image.open(a.logo).convert("RGBA"))
     size = (logo.shape[1], logo.shape[0])
     rng = np.random.default_rng(a.seed)
 

@@ -100,6 +100,9 @@ if(Python3_FOUND)
   # The x86-64 Linux loader and the Darwin layer (linux/src, linux/darwin): the table they are built from
   # anywhere; built and run on x86-64 Linux alone.
   add_test(NAME linux.loader COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/test_loader.py)
+  # The title logo put on the game's texture with the standard library alone (tools/loadscreen/logo.py), which
+  # the Linux setup uses: made-up textures and pictures, and tag.png against what rearmed.py draws where it can.
+  add_test(NAME loadscreen.logo COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/loadscreen/test_logo.py)
   # The Linux setup and start (linux/install/rs_install.py, over tools/play-native/gamefiles.py): on made-up Steam
   # folders and a made-up game, on any machine.
   add_test(NAME linux.install COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/install/test_rs_install.py)

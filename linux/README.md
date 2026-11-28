@@ -10,7 +10,7 @@ input through PipeWire and its videos (on Bazzite, 2026-11-28: a player calibrat
 song), and the Mac app's built-in fixes module whole (no intro screens, the batched DLC mounting, the frame-rate
 fixes). The game's files come from the player's own Steam: `install/rs_install.py` has Steam download the Mac
 game and the account's DLC, makes RS Re-ARMed's copy and starts the game ([below](#set-up-and-play-x86-64)).
-Not there yet: mods, the title logo, full screen, an audio interface's channels as separate inputs, and
+Not there yet: mods, full screen, an audio interface's channels as separate inputs, and
 anything for arm64, which is investigated only.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
@@ -121,6 +121,7 @@ another place), laid out as the Mac app's home:
 | | |
 |---|---|
 | `game/` | RS Re-ARMed's own copy of the game's files: clones on btrfs and XFS, which take no room, and a real copy (7.7 GB) elsewhere. A Steam update or a cleared download cannot break it. **Custom songs go in `game/dlc`.** |
+| `game/static.psarc.rearmed` | the game's `static.psarc` with RS Re-ARMed's title logo, made by the setup (`tools/loadscreen/logo.py`: Python and `openssl` alone); each start links `static.psarc` to it, or to the original with `RS_REARMED=0` |
 | `image/` | the game's code, decrypted, which `rs-rearmed` loads. It is checked to be the build RS Re-ARMed is made for |
 | `steam/` | the saves. They start as a copy of Steam's own (`userdata/<account>/221680/remote`, where the Windows game played through Steam keeps the same files), without the stored Ubisoft sign-in; Steam's are never written |
 | `settings.env`, `options.env` | switches as `KEY=value` lines (`RS_MODS_INTRO=0`, `RS_LATENCY_BUFFER=2`, ...: [the Mac's list](../docs/mac/INSTALL.md)); the environment wins |

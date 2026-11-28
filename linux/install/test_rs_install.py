@@ -259,6 +259,31 @@ class Setup(Base):
         self.assertIn("the game's copy: complete", out.getvalue())
         self.assertIn("song archives in game/dlc: 1", out.getvalue())
 
+    def test_the_title_logo_is_made_in_the_copy_and_never_fails_a_setup(self):
+        self.tools()
+        import logo
+        src = self.game(os.path.join(self.tmp, "game"))
+        made = []
+
+        def build(archive, out):
+            made.append((os.path.basename(archive), os.path.basename(out)))
+            write(out, b"with the logo")
+        game = os.path.join(self.home, "game")
+        with mock.patch.dict(os.environ, {"RS_REARMED": "0"}), mock.patch.object(logo, "build", build):
+            self.assertEqual(self.setup("--game", src, "--no-download"), 0)
+        self.assertEqual(made, [])  # switched off: not made
+        with mock.patch.object(logo, "build", side_effect=SystemExit("no key for this archive")):
+            self.assertEqual(self.setup("--game", src, "--no-download"), 0)  # (the made-up archive is none)
+        self.assertIn("the title logo was not made (no key for this archive)", sys.stdout.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(game, "static.psarc.rearmed")))
+        with mock.patch.object(logo, "build", build):
+            self.assertEqual(self.setup("--game", src, "--no-download"), 0)
+            self.assertEqual(self.setup("--game", src, "--no-download"), 0)
+        self.assertEqual(made, [("static.psarc.original", "static.psarc.rearmed")])  # once: it is there then
+        rs_install.prepare(self.home, self.steam, {})
+        self.assertEqual(read(os.path.join(game, "static.psarc")), "with the logo")
+        self.assertTrue(rs_install.set_up(self.home))
+
     def test_a_folder_that_is_not_the_game(self):
         self.tools()
         with mock.patch("sys.stderr", io.StringIO()) as err:

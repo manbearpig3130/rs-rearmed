@@ -37,6 +37,7 @@ SUITES = {
     "cache_overlay": ("the menu overlay", "cmd", "{py} tools/play-native/test_cache_overlay.py"),
     "settings":      ("settings.env", "cmd", "{py} tools/play-native/test_settings.py"),
     "update":        ("the installer replacing itself with a newer release", "cmd", "tools/installer/test_update.sh"),
+    "logo":          ("the title logo without Pillow", "cmd", "{py} tools/loadscreen/test_logo.py"),
     "decrypt":       ("the Mac image's decryption", "cmd", "{py} tools/steamless/test_decrypt.py"),
     "targets":       ("the per-game tables", "cmd",
                       "{py} tools/targets/check.py && {py} tools/targets/test_targets.py"),
@@ -103,7 +104,9 @@ RULES = {
     "tools/release/": rule(suites=["release"]),
     "tools/perf/": rule(suites=["perf"]),
     "tools/ws8/keyfifo/": NOTHING,
-    "tools/loadscreen/": NOTHING,
+    # The title logo: the Mac's and Learn & Play's build.sh is run by their installs; logo.py, the same with the
+    # standard library alone, is the Linux setup's (linux/install/rs_install.py).
+    "tools/loadscreen/": rule(suites=["logo", "linux"]),
     # The Linux port (linux/README.md): its notes, the table of what the Mac game imports from macOS, and the
     # x86-64 Linux build's loader and Darwin layer, none of which reaches either edition's app.
     "linux/": rule(suites=["linux"]),

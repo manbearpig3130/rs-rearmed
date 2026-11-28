@@ -48,7 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TOOLS = next((p for p in (os.path.join(HERE, "tools"), os.path.normpath(os.path.join(HERE, "..", "..", "tools")))
               if os.path.isdir(os.path.join(p, "play-native"))), None)
 if TOOLS:
-    for _d in ("play-native", "steamless", "targets"):
+    for _d in ("play-native", "steamless", "targets", "loadscreen"):
         sys.path.insert(0, os.path.join(TOOLS, _d))
 
 APP = 221680
@@ -390,6 +390,24 @@ def fetch_dlc(gamefiles, steam, home, lines, say):
         say("note: the DLC was not downloaded (%s). `refresh` gets it later." % e)
 
 
+def make_title_logo(home, say):
+    """RS Re-ARMed's title logo, static.psarc.rearmed in the copy, made from the copy's own static.psarc
+    (tools/loadscreen/logo.py: the tag is a picture beside it, and nothing but Python and openssl is needed). Each
+    start links static.psarc to it (title_logo). Never fails a setup: without it the game shows its own logo."""
+    game = os.path.join(home, "game")
+    src, dst = os.path.join(game, "static.psarc.original"), os.path.join(game, "static.psarc.rearmed")
+    if os.environ.get("RS_REARMED", "1") == "0" or os.path.isfile(dst) or not os.path.isfile(src):
+        return
+    try:
+        import logo
+        logo.build(src, dst)
+        say("The title logo: made (%s)." % dst)
+    except (Exception, SystemExit) as e:  # noqa: BLE001  (the archive's key not found exits, as the tools' own runs do)
+        if os.path.exists(dst + ".part"):
+            os.unlink(dst + ".part")
+        say("note: the title logo was not made (%s). The game shows its own." % e)
+
+
 def setup(args):
     home, steam = home_folder(args.home), steam_folder(args.steam)
     gamefiles, decrypt = the_tools()
@@ -431,6 +449,7 @@ def setup(args):
         gamefiles.key_from_image(dest, image, gamefiles.Progress(lines))  # the archives' key, for the menus' overlay
     except gamefiles.Failure as e:
         raise Failure(str(e), e.code or 1)
+    make_title_logo(home, say)
     say("RS Re-ARMed is set up in %s. Custom songs go in %s." % (home, os.path.join(dest, "dlc")))
     return 0
 
@@ -451,6 +470,7 @@ def refresh(args):
         gamefiles.refresh(dest, progress)
     except gamefiles.Failure as e:
         raise Failure(str(e), e.code or 1)
+    make_title_logo(home, progress.say)  # (a new static.psarc took the old one's logo with it: gamefiles)
     return 0
 
 

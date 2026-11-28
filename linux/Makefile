@@ -288,7 +288,7 @@ SDL_SO := $(shell pkg-config --variable=libdir sdl3 2>/dev/null)/libSDL3.so.0
 appdir: all gl bink
 	rm -rf $(APPDIR)
 	mkdir -p $(APPLIB) $(APPDIR)/usr/bin $(APPSHARE)/tools/play-native $(APPSHARE)/tools/steamless \
-	    $(APPSHARE)/tools/targets/mac-x64 $(APPDIR)/usr/share/applications $(APPDIR)/usr/share/icons/hicolor/scalable/apps
+	    $(APPSHARE)/tools/targets/mac-x64 $(APPSHARE)/tools/loadscreen $(APPDIR)/usr/share/applications $(APPDIR)/usr/share/icons/hicolor/scalable/apps
 	for f in $(APP_PROGRAMS); do strip --strip-debug -o $(APPLIB)/$$f $(OUT)/$$f || exit 1; done
 	chmod 755 $(APPLIB)/rs-rearmed
 	cp -L $(SDL_SO) $(APPLIB)/
@@ -297,6 +297,8 @@ appdir: all gl bink
 	install -m 644 ../tools/play-native/gamefiles.py ../tools/play-native/cache_overlay.py ../tools/play-native/psarc_key.py \
 	    $(APPSHARE)/tools/play-native/
 	install -m 644 ../tools/steamless/decrypt.py $(APPSHARE)/tools/steamless/
+	install -m 644 ../tools/psarc_extract.py ../tools/psarc_pack.py $(APPSHARE)/tools/
+	install -m 644 ../tools/loadscreen/logo.py ../tools/loadscreen/tag.png $(APPSHARE)/tools/loadscreen/
 	install -m 644 ../tools/targets/targets.py $(APPSHARE)/tools/targets/
 	install -m 644 ../tools/targets/mac-x64/target.toml $(APPSHARE)/tools/targets/mac-x64/
 	install -m 644 install/rs-rearmed.desktop $(APPDIR)/usr/share/applications/

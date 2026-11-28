@@ -13,8 +13,8 @@ page is what to do about it, in what order, and what has been done. The editions
   has calibrated and played a song with the cable (2026-11-28): no crackle, the notes detected, the latency as
   good as they know it. The built-in fixes module runs whole, at hook points and mid points. The game's files are
   set up from the player's Steam, and the game started from them, by `install/rs_install.py`
-  ([X4](#x4-install-and-play)). Not there: mods and edits, the title logo, full screen, an interface's channels
-  as inputs, anything for arm64.
+  ([X4](#x4-install-and-play)). The title logo is made there too. Not there: mods and edits, full screen, an
+  interface's channels as inputs, anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -319,7 +319,15 @@ the game up in the player's real folder and started it. The build system's SDL 3
 system may lack; the system's Python 3 runs the setup. Built on Fedora 45 it needs glibc 2.44: a build on an
 older base (a container with an older distribution, SDL 3 from source) is the next step for other systems.
 
-Not done: the title logo (`tools/loadscreen` needs its Python packages), the account's ticket-based choice when
+**Done (2026-11-28): the title logo.** The Mac draws the tag with Pillow, numpy, etcpak and a font of macOS's,
+none of which a Linux desktop is sure to have. The tag itself is our own artwork and no part of the game, so it
+is in the tree as a picture (`tools/loadscreen/tag.png`, which a test holds to what `rearmed.py` draws), and
+`tools/loadscreen/logo.py` puts it on the two logo textures with the standard library alone: a PNG reader, DXT5
+blocks decoded and encoded (the blocks under the tag only; its encoder is closer to the uncompressed picture
+than the Mac build's, 30.7 dB against 27.0), the archive rewritten by `psarc_pack.py`. Four seconds in the
+setup or a refresh, and each start links `static.psarc` to it.
+
+Not done: the account's ticket-based choice when
 several accounts use one Steam (the library's own choice, the last signed in, stands), the RS1 DLC asked of
 Steam (the package cache answers), a copy on another drive than the home folder.
 
@@ -668,3 +676,5 @@ Proposed; none is final before the step that tests it.
 - **2026-11-28, the AppImage.** The packaged build, and the player's first run of it on the Bazzite PC: the
   setup into the real folder (the game found, 312 files cloned, the image decrypted; the DLC had come in the
   test before), then the game.
+- **2026-11-28, the title logo.** `tools/loadscreen/logo.py` and `tag.png`; made in the player's copy on the
+  Bazzite PC by a refresh, and the title screen shows it.
