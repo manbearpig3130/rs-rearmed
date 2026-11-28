@@ -221,11 +221,25 @@ root, Lua, `Rocksmith.ini`, the display settings, the file system with `cache.ps
     functions are replaced whole, so no instruction of theirs is moved. This is the first form of
     [X5](#x5-fixes-and-mods)'s patches; hook points and mid points, which run the function's own instructions
     after the native code, still need the moving.
-- **Next**: a profile made and a song started (the note highway); Bink for the videos; the three functions in
-  the place of the engine's Objective-C when a run reaches them; full screen; the render thread; then sound
-  (X3).
+- **The menus go on** (scripted): a profile is made and saved (its `_PRFLDB` file and `LocalProfiles.json`, through
+  the Steam library's storage), the auto-save notice, the choice of path with its pictures, the input selection.
+  Two faults on the way were threads: the game asks for stacks sized for macOS, and glibc, which takes each
+  thread's thread-local storage out of its stack, refused one once more libraries were loaded; the game then
+  joined the thread it never got. A thread now has 1 MB at the least, and joining or detaching a handle of zero
+  is `ESRCH`, as on macOS.
+- **Next**: a song started (the note highway); Bink for the videos; the three functions in the place of the
+  engine's Objective-C when a run reaches them; full screen; the render thread.
 
 ### X3. Sound and the guitar
+
+**Sound out works** (2026-11-28). The audio graph's sound goes to a PipeWire stream (`src/audio_pipewire.c`, the
+backend of `dw_audio.c`; the silent clock stays for a build or a machine without PipeWire, and `RS_AUDIO=silent`).
+The stream asks for the game's buffer, 256 frames at 48,000 Hz, as its latency, and on the Bazzite PC PipeWire
+gives it: 256 frames a call, 5.3 ms. The game is asked in buffers of its own size and PipeWire's requests are
+met from a small queue between. The intro and the title play (the loudest sample of each five seconds is
+logged with `RS_AUDIO_LOG=1`). Not measured yet: the latency end to end, and underruns under load. Not there
+yet: an input device (the cable, a microphone, an interface), and the app's own device policy
+(`shims/coreaudio`).
 
 [arm64's step 3](#3-sound-and-the-guitar) as it is: the audio layer on PipeWire, the FFT, latency measured, here
 against the same machine's Proton route as well.
@@ -518,3 +532,5 @@ Proposed; none is final before the step that tests it.
 - **2026-11-28, the first menu.** Keys from a script; the `online` override module from its own sources with a
   jump at each of its nine functions; the runtime's headers used as they are (the shadow copies in
   `linux/direct` of the step before are gone). Enter on the title screen opens the profiles' menu.
+- **2026-11-28, sound.** A profile made by script, and the menus after it. Threads get a stack of 1 MB at the
+  least. The graph's sound to PipeWire, which grants the 256 frames asked for.

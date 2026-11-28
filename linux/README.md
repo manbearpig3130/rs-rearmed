@@ -7,8 +7,8 @@ run as it is.
 
 **There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
 tools, and the x86-64 build as far as it goes: the game's own code, as it is, in a window on x86-64 Linux, drawing
-its intro, its title screen and its first menu (on Bazzite, 2026-11-28). No sound, no videos, no install; no
-song played yet.
+its intro, its title screen and its menus, with its sound through PipeWire (on Bazzite, 2026-11-28). No guitar
+input, no videos, no install; no song played yet.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
@@ -32,10 +32,10 @@ The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x8
 
   | What a Linux build does | Imports | |
   |---|---|---|
-  | The host's own function of that name (glibc, libm, GNU libstdc++) | 259 | no code |
+  | The host's own function of that name (glibc, libm, GNU libstdc++) | 257 | no code |
   | The project's shims (the renderer, Cg, Bink, Steam), built for Linux | 162 | a build, and the renderer's OpenGL path on Mesa |
   | The runtime's own (`rc_file`, `rc_setjmp`) | 11 | small changes |
-  | A function of ours over the host's (flags, struct layouts, `errno`) | 30 | new, a few lines each |
+  | A function of ours over the host's (flags, struct layouts, `errno`) | 32 | new, a few lines each |
   | A Darwin-only facility written anew (Mach, `OSAtomic`, vDSP, a small CoreFoundation) | 75 | new |
   | A stand-in for a macOS service (CoreAudio's devices, the display's modes) | 31 | new: the audio layer is the large one |
   | The network, refused | 15 | new, a few lines each |
@@ -91,6 +91,8 @@ build/linux/rs-rearmed --run GAME          # the game in a window
 SDL_VIDEODRIVER=offscreen build/linux/rs-rearmed --run GAME --frames 600 --picture f --picture-every 60
                                            # with no display: ten seconds, a frame saved every second (f.<n>.ppm)
 #   --keys 1300:return,1500:down           keys typed by a script, each at its frame
+#   RS_AUDIO=silent                        the game's sound asked for and dropped (PipeWire is used where it was
+#                                          there to build with); RS_AUDIO_LOG=1 logs the audio layer's questions
 python3 linux/test_loader.py               # its test (ctest: linux.loader)
 ```
 

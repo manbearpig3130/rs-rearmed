@@ -111,6 +111,10 @@ int main(int argc, char **argv, char **envp) {
   if (run) {
 #ifdef RSL_HAVE_SHELL
     fflush(stdout);
+#ifdef RSL_HAVE_PIPEWIRE
+    const char *audio = getenv("RS_AUDIO");  // RS_AUDIO=silent: the game's sound is asked for and dropped
+    if (!(audio && !strcmp(audio, "silent"))) rsl_audio_pipewire();
+#endif
     rsl_shell_options opt = {run, width, height, frames, survey, picture, picture_frame, picture_every, keys};
     int status = rsl_shell_run(&opt);
     if (count) rsl_report_calls(stdout);

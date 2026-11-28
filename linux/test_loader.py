@@ -208,7 +208,7 @@ class Picture(unittest.TestCase):
         if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
             self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
         home, picture = os.path.join(self.tmp.name, "home"), os.path.join(self.tmp.name, "frame")
-        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen")
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen", RS_AUDIO="silent")  # no window, and no sound played
         r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "300",
                             "--picture", picture, "--picture-every", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         out, err = r.stdout.decode(), r.stderr.decode()
@@ -234,7 +234,7 @@ class Picture(unittest.TestCase):
         if not os.path.exists(REAL) or not GAME or not os.path.isdir(GAME):
             self.skipTest("needs the decrypted image and RS_GAME_DIR, the game's folder")
         home, picture = os.path.join(self.tmp.name, "home2"), os.path.join(self.tmp.name, "menu")
-        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen")
+        env = dict(os.environ, RS_NATIVE_HOME=home, RS_STEAM_DATA_DIR=os.path.join(home, "steam"), SDL_VIDEODRIVER="offscreen", RS_AUDIO="silent")  # no window, and no sound played
         r = subprocess.run([os.path.join(self.out, "rs-rearmed"), "--image", REAL, "--run", GAME, "--frames", "1900",
                             "--keys", "1300:return", "--picture", picture, "--picture-every", "300"],
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)

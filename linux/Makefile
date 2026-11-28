@@ -68,6 +68,16 @@ SHELL_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-comment -Wno-
 SHELL_OBJ = $(OUT)/shell/shell.o $(OUT)/shell/seam_platform.o $(OUT)/shell/rsp_engine.o $(OUT)/shell/rsp_logic.o \
     $(OUT)/shell/rsp_paths.o $(OUT)/shell/rsp_config.o
 ALL_CFLAGS_EXTRA = -DRSL_HAVE_SHELL
+# Sound, where PipeWire is there to build with: the game's audio graph to a PipeWire stream.
+PW_LIBS := $(shell pkg-config --libs libpipewire-0.3 2>/dev/null)
+ifneq ($(PW_LIBS),)
+ALL_CFLAGS_EXTRA += -DRSL_HAVE_PIPEWIRE
+SHELL_OBJ += $(OUT)/shell/audio_pipewire.o
+$(OUT)/shell/audio_pipewire.o: src/audio_pipewire.c src/rsl.h darwin/dw.h
+	@mkdir -p $(OUT)/shell
+	$(CC) -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing -pthread $(CFLAGS) $(shell pkg-config --cflags libpipewire-0.3) \
+	    -Isrc -Idarwin -c -o $@ $<
+endif
 $(OUT)/shell/shell.o: src/shell.c src/rsl.h $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/shell
 	$(CC) $(SHELL_CFLAGS) -c -o $@ $<
@@ -85,7 +95,7 @@ all: $(OUT)/rs-rearmed $(OUT)/libsteam_api.so
 gl: $(OUT)/libRSSystemGL.so $(OUT)/libRSOpenGL.so $(OUT)/libCg.so
 
 $(OUT)/rs-rearmed: $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(NATIVE_OBJ) $(SHELL_OBJ) $(LIBS) $(SDL_LIBS) $(PW_LIBS)
 
 # The project's replacement libraries, from the sources the Mac app builds them from (shims/), each a shared
 # library beside the program. compat/ has the few macOS functions they call.

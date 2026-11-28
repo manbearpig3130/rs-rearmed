@@ -66,6 +66,9 @@ int rsl_shell_run(const rsl_shell_options *opt);  // the window, the game's star
 // A function of one of the project's libraries, by the Mac library's name ("OpenGL") and the function's.
 void *rsl_shim_function(const char *library, const char *name);
 
+// --- sound (audio_pipewire.c, where PipeWire is there to build with) ---
+void rsl_audio_pipewire(void);  // the game's sound goes to PipeWire from the next start of its audio graph
+
 // --- native functions in the place of game functions (patch.c) ---
 struct rc_ctx;
 // The game function at ADDRESS becomes a jump to NATIVE, an override as rc_ov.h has them. 0, or -1.
