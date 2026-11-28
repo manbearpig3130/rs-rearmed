@@ -543,7 +543,7 @@ class Isolated(Base):
                             "m = runpy.run_path(sys.argv[0] and %r, run_name='loaded')\n"
                             "import rs_settings; print(len(rs_settings.MODS))" % os.path.join(HERE, "rs_install.py"),
                             self.home], capture_output=True, text=True)
-        self.assertEqual((r.returncode, r.stdout.strip()), (0, "9"), r.stderr)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "11"), r.stderr)
 
 
 class Menu(Base):
