@@ -1,13 +1,14 @@
-# Linux, arm64 and x86-64 (investigated, not built)
+# Linux, arm64 and x86-64 (investigated; x86-64 begun)
 
 A port of RS Re-ARMed to Linux, with Linux in the place of macOS underneath the Mac game. Two machines are in mind:
 an Apple silicon Mac running Fedora Asahi Remix, where the game would otherwise need an x86 emulator inside a
 virtual machine and gets the same translated code as on macOS; and an x86-64 desktop, where the game's own code can
 run as it is.
 
-**Nothing here builds yet.** This folder holds the investigation of what the port takes, the plan, and two tools.
-The game's own initializers have run on x86-64 Linux (Bazzite) through one of them, `first_run.py`. The work is on
-the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
+**There is no game to play here yet.** This folder holds the investigation of what the port takes, the plan, two
+tools, and the start of the x86-64 build: a loader that maps the game's image on x86-64 Linux, answers its
+imports and runs its 3,487 initializers as they are (on Bazzite, 2026-11-28). No window, no sound, no install.
+The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |
 |---|---|
@@ -16,6 +17,7 @@ the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 | [PLAN.md](PLAN.md) | the steps, what each proves and needs, the open questions, the risks, and a log of what was done |
 | [darwin-imports.tsv](darwin-imports.tsv) | every import of the Mac game's image, with what a Linux build does about it |
 | `first_run.py` | the first thing to run on an x86-64 Linux machine: the game's initializers, with nothing built |
+| `Makefile`, `src`, `darwin` | the x86-64 build: the loader, and the Darwin layer that answers the game's imports |
 
 ## In short
 
@@ -68,6 +70,19 @@ python3 linux/test_first_run.py           # its test (ctest: linux.first_run)
 
 Nothing is built or installed: the image is mapped and run in the Python process. It needs an x86-64 process and
 the decrypted image ([PLAN.md](PLAN.md#x0-the-first-run-with-nothing-built) says how to get it on Linux).
+
+## The x86-64 build
+
+```sh
+make -C linux                              # build/linux/rs-rearmed: a C compiler, make and Python
+build/linux/rs-rearmed --bind-only         # who answers each of the image's 681 imports
+build/linux/rs-rearmed --init-only --count # the initializers run, and the imports they called
+make -C linux check                        # the Darwin layer's own test, and --init-only
+python3 linux/test_loader.py               # its test (ctest: linux.loader)
+```
+
+The image is `--image FILE`, else `RC_IMAGE`, else `build/steamless/Rocksmith2014_x64_decrypted`. An import that
+nothing answers yet stops the run when the game first calls or reads it, and is named.
 
 ## The census
 

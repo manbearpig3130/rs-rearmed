@@ -5,11 +5,13 @@ page is what to do about it, in what order, and what has been done. The editions
 
 ## Status
 
-- **Investigated, not built** (2026-11-26, from 1.20.0). Nothing of RS Re-ARMed compiles for Linux yet; the game's
-  own initializers have run there ([the first run](#x0-the-first-run-with-nothing-built), 2026-11-28).
+- **Investigated** (2026-11-26, from 1.20.0), **and begun on x86-64** (2026-11-28): a loader builds there and runs
+  the game's 3,487 initializers as they are ([X1](#x1-the-games-initializers-run)). No window, no sound and no
+  install yet, and nothing for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
-  about each (`darwin-imports.tsv`), and the tool that reads them from the image and checks the table
-  (`import_census.py`, ctest `linux.imports`).
+  about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
+  (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
+  (`src`), the Darwin layer's first functions (`darwin`), a `Makefile` and their tests.
 - **Checked so far**: the translated game's C passes a compile check for arm64 Linux unchanged; the import table
   matches the image and a build's thunk report; which imports only the replaced parts of the game call
   ([how](FINDINGS.md#how-this-was-found)).
@@ -99,6 +101,35 @@ report:
 - **`shims/libstdcxx`'s ABI test** against the system's library.
 
 Done when: `--init-only` runs all 3,487 on an x86-64 Linux machine.
+
+**Done 2026-11-28 on Bazzite.** `make -C linux` builds `build/linux/rs-rearmed` with the host's `gcc`, `make` and
+Python and no other package; `rs-rearmed --init-only` maps the image at 0x100000000, binds its 681 imports and runs
+all 3,487 initializers (a millisecond; the load takes 18).
+
+- **The loader** (`src/loader.c`, `src/imports.c`, 492 lines). Nothing is rebased: the image is at its own
+  address or the run stops. An import is the Darwin layer's where it has one, the host's own where the table
+  says `same`, and otherwise an address in a region with no access, one per import: the first call or read of
+  it stops the run with its name, its class, where it was called from and in which initializer (exit status 3).
+  So a `same` row is the one way to the host's function: a name the table lacks is not bound by accident.
+  `--count` puts a counter in front of every called import and lists the calls; `--bind-only` stops before
+  the initializers.
+- **Who answers today**: 259 the host's own, 15 the layer's, 407 nothing yet (adapt 26, emulate 64, runtime 11,
+  shim 162, layer 31, refuse 15, stub 98).
+- **The Darwin layer's first cut** (`darwin`, 9 functions and 6 objects): the five the initializers call
+  (`pthread_key_create`, `pthread_mutexattr_settype`, `sched_get_priority_min` and `max`, `__bzero`), `__error`
+  with the errno rule and its table of numbers, the rune table with `__maskrune`, `__tolower` and `__toupper`,
+  the stack guard, the three standard streams and the task port. A function registers under its import's name
+  where it is defined (`DW_FUNCTION`), gathered by the linker.
+- **Unwinding.** The image's `__eh_frame` is registered with the host's unwinder (libgcc's, looked up at run
+  time so that it is the one libstdc++ throws through). It finds a frame description for 3,275 of the 3,487
+  initializers. No throw through the game's code has been tried yet.
+- **Tests** (`test_loader.py`, ctest `linux.loader`): the build without a warning, the layer's own test
+  (`test/layer_test.c`: each function called with Darwin's layouts and numbers), a made-up image whose
+  initializer calls one import, an import with no answer named, and the real image's initializers with the
+  counts `first_run.py` has.
+- **Left for later**: the test programs built as Mach-O (the layer's own test and the made-up image stand in
+  until arm64 needs them through the translator), and `shims/libstdcxx`'s ABI test against the system's library
+  (it comes with the shims, in X2).
 
 ### X2. A picture
 
@@ -254,6 +285,10 @@ To find out:
 6. **x86-64**: can LLVM's Mach-O linker make the test programs with no macOS SDK; how fast is the translated game
    there against the original. (Answered on Bazzite, 2026-11-28: 0x100000000 is free in a Linux process, and
    memory may be made executable.)
+15. **A throw through the game's code** on Linux: the unwind tables are registered, and 212 of the 3,487
+    initializers have no frame description there. Whether any function that an exception passes has none (Apple's
+    linker keeps a compact form of its own beside DWARF) is for the first throwing path to show: the game's file
+    reading throws and catches inside Crypto++.
 14. **Who can download the Mac depot.** The game on Steam is one app with a Windows and a Mac depot, and an
     account that has it for the Mac has both; whether every account that bought it for Windows does is for the
     console to say (`missing license for depot`). Learn & Play's license has no Mac download
@@ -330,6 +365,11 @@ Proposed; none is final before the step that tests it.
   is 64-bit and runs on an x86-64 Linux as it is; what it asks of the system is mostly the C library. The Windows
   games are 32-bit programs that ask for Windows, which is Wine's work, and Proton does it today.
 - **x86-64 ships as an AppImage** made from a folder that runs anywhere, with none of the game in it.
+- **The x86-64 build is a `Makefile`** (`linux/Makefile`), not part of the Mac's CMake project: Bazzite has `make`
+  and `gcc` on the host and no CMake, and the loader and the layer need the C library's headers alone. What
+  needs more (EGL, SDL, PipeWire) builds in a distrobox.
+- **An import with no answer is an address with no access**, not a function that logs: a read of an object is
+  caught as a call is, and nothing is generated per import.
 
 ## For the maintainer
 
@@ -366,3 +406,10 @@ Proposed; none is final before the step that tests it.
   compatibility context with all six extensions, PipeWire at 48 kHz. The report's OpenGL question had a mistake
   this run found: asked for no surface type, EGL looks for a window config, which a surfaceless display has not;
   it now asks for none. Not yet tried: `download_depot` in Steam on Linux. Next: X1's loader.
+- **2026-11-28, X1.** The loader in C (`linux/src`), the Darwin layer's first cut (`linux/darwin`), a `Makefile`
+  and `test_loader.py`, built and run on the Bazzite PC: 3,487 of 3,487 initializers, the 16 imports and counts
+  of the first run, the image's unwind tables registered. Two things the run corrected: the decrypted image's
+  `__LINKEDIT` ends where its bytes do, not on a page, so the mapping is rounded up; and Darwin's `_RuneLocale`
+  is 3,208 bytes (checked against the Mac's own header). The operators new and delete are bound by the ordinary
+  table though the image calls them, so a call's pointer is told by its section. Next: X2, which needs the
+  game's files on the machine.

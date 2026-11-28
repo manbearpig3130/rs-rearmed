@@ -74,8 +74,8 @@ SUITES = {
     "ct.bink":       ("Bink", "ctest", r"^bink\."),
     "ct.game":       ("the game libraries", "ctest", r"^game\."),
     "ct.shims":      ("the shims' architectures and names", "ctest", r"^(shim|libstdcxx)\."),
-    "linux":         ("the Linux port's table of the Mac game's imports, and its first run", "cmd",
-                      "{py} linux/test_import_census.py && {py} linux/test_first_run.py"),
+    "linux":         ("the Linux port's table of the Mac game's imports, its first run and its loader", "cmd",
+                      "{py} linux/test_import_census.py && {py} linux/test_first_run.py && {py} linux/test_loader.py"),
 }
 
 RECOMP = ("hooks", "inner64", "inner32", "hand32")
@@ -103,8 +103,8 @@ RULES = {
     "tools/perf/": rule(suites=["perf"]),
     "tools/ws8/keyfifo/": NOTHING,
     "tools/loadscreen/": NOTHING,
-    # The Linux port, not built yet (linux/README.md): its notes, and the table of what the Mac game imports from
-    # macOS, which reaches neither edition's app.
+    # The Linux port (linux/README.md): its notes, the table of what the Mac game imports from macOS, and the
+    # x86-64 Linux build's loader and Darwin layer, none of which reaches either edition's app.
     "linux/": rule(suites=["linux"]),
 
     # The installer and the install scripts.

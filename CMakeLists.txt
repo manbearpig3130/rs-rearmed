@@ -97,4 +97,7 @@ if(Python3_FOUND)
   # The game's own code run untranslated (linux/first_run.py): its tables anywhere; a made-up image and, when there
   # is one, the decrypted image's initializers where the process is x86-64.
   add_test(NAME linux.first_run COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/test_first_run.py)
+  # The x86-64 Linux loader and the Darwin layer (linux/src, linux/darwin): the table they are built from
+  # anywhere; built and run on x86-64 Linux alone.
+  add_test(NAME linux.loader COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/linux/test_loader.py)
 endif()

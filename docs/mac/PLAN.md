@@ -254,8 +254,9 @@ Being looked into, with no promise of if or when:
   rate and the GPU's time by pass in Learn & Play; a check of the GPU's heat before a run; the guitar input from a
   file, so that notes are hit and no interface is needed; draws and passes a frame, to see that two runs drew the same;
   and a loop of songs that watches the memory for leaks.
-- **Linux, arm64 and x86-64**: investigated, not built ([linux](../../linux/README.md)). The translated game compiles
-  for both as it is, and on x86-64 the game's own code can run untranslated; what it calls does not exist there. This game imports 681 symbols from macOS's libraries, of which a
+- **Linux, arm64 and x86-64**: investigated, and begun on x86-64 ([linux](../../linux/README.md)). The translated game compiles
+  for both as it is, and on x86-64 the game's own code runs untranslated: a loader there runs its 3,487
+  initializers. What it calls does not exist there. This game imports 681 symbols from macOS's libraries, of which a
   Linux build would take 421 from Linux's own or the project's shims, write about 160 and stub the rest; the shell,
   the renderer's context and the audio devices need Linux forms ([its plan](../../linux/PLAN.md)).
 - **One code base for both games**: shared today are the recompiler with its two front ends, the renderer, CoreAudio,
