@@ -37,6 +37,24 @@ static struct {
   int told;
 } g;
 
+// The frames PipeWire asks for in this call: pw_buffer's `requested`, which PipeWire has from 0.3.50. The packaged
+// build is made with the headers of an older one (install/Containerfile), so the field is read by its place, after
+// `size`, and only where the library that runs is new enough to have it: 0 otherwise, a buffer's whole room.
+static uint64_t requested_of(const struct pw_buffer *b) {
+  static int has = -1;
+  if (has < 0) {
+    int major = 0, minor = 0, micro = 0;
+    sscanf(pw_get_library_version(), "%d.%d.%d", &major, &minor, &micro);
+    has = major > 0 || minor > 3 || (minor == 3 && micro >= 50);
+  }
+  const struct {
+    struct spa_buffer *buffer;
+    void *user_data;
+    uint64_t size, requested;
+  } *newer = (const void *)b;
+  return has ? newer->requested : 0;
+}
+
 static void on_process(void *data) {
   (void)data;
   struct pw_buffer *b = pw_stream_dequeue_buffer(g.stream);
@@ -48,7 +66,8 @@ static void on_process(void *data) {
     return;
   }
   uint32_t want = d->maxsize / (2 * sizeof(float));
-  if (b->requested && b->requested < want) want = (uint32_t)b->requested;
+  uint64_t requested = requested_of(b);
+  if (requested && requested < want) want = (uint32_t)requested;
   if (want > 4096) want = 4096;
   if (!g.told) {
     g.told = 1;

@@ -11,6 +11,7 @@ static inline float rs_strtof_c(const char *s, char **end) {
   if (!c) c = newlocale(LC_ALL_MASK, "C", (locale_t)0);
   return c ? strtof_l(s, end, c) : strtof(s, end);
 }
-#define strtof_l(s, end, loc) ((loc) ? (strtof_l)((s), (end), (loc)) : rs_strtof_c((s), (end)))
+static inline float rs_strtof_l(const char *s, char **end, locale_t loc) { return loc ? strtof_l(s, end, loc) : rs_strtof_c(s, end); }
+#define strtof_l(s, end, loc) rs_strtof_l((s), (end), (locale_t)(loc))
 
 #endif

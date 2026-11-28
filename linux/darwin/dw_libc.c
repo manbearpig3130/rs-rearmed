@@ -21,10 +21,11 @@ void dw_memset_pattern16(void *dst, const void *pattern, size_t n) {
 }
 DW_FUNCTION("_memset_pattern16", dw_memset_pattern16);
 
-// __exp10, __exp10f: what Apple's compiler makes of pow(10, x).
-double dw_exp10(double x) { return exp10(x); }
+// __exp10, __exp10f: what Apple's compiler makes of pow(10, x). As pow, which is exact where the result is (a
+// thousand for 3): glibc's own exp10 is that only from 2.39.
+double dw_exp10(double x) { return pow(10.0, x); }
 DW_FUNCTION("___exp10", dw_exp10);
-float dw_exp10f(float x) { return exp10f(x); }
+float dw_exp10f(float x) { return powf(10.0f, x); }
 DW_FUNCTION("___exp10f", dw_exp10f);
 
 // __sincosf_stret: both at once, returned as a pair of floats in one register, as a C struct of two is.

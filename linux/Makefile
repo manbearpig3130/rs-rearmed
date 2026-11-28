@@ -128,6 +128,7 @@ PLATFORM = ../shims/platform
 APP = ../tools/ws7/recomp/app
 # (-Wno-comment and the two after it: the shared sources are written for clang on the Mac)
 SHELL_CFLAGS = -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-comment -Wno-unused-variable -Wno-format-truncation \
+    -Wno-unused-result \
     -fno-strict-aliasing -pthread $(CFLAGS) $(shell pkg-config --cflags sdl3) \
     -DRSL_HAVE_SHELL -Isrc -Idarwin -Icompat -include compat/rs_linux.h -I$(OUT)/target -I$(RUNTIME) -I$(PLATFORM)/include -I$(PLATFORM)/src -I$(APP)
 SHELL_OBJ = $(OUT)/shell/shell.o $(OUT)/shell/seam_platform.o $(OUT)/shell/rsp_engine.o $(OUT)/shell/rsp_logic.o \
