@@ -788,6 +788,24 @@ Proposed; none is final before the step that tests it.
   against a Mac framework (Sunlight, Secondary Monitor, Override Input Volume), the ones that need the Metal
   renderer's render API (note and highway colours), the helpers that are Mac programs (Song Stems, Tone Host),
   and the mods' settings app.
+- **2026-11-28, the latency a player hears, with a cable, on both systems.** `tools/latency/loop_test.py`: a cable
+  from an output of the interface to a spare input, the guitar on another input, and the interface records the
+  pluck beside the game's sound through one converter. The same mixer (a 12-channel USB one), the same cable, the
+  game in its Tone Designer, audio engine setting 1:
+
+  | | from the string to the game's sound |
+  |---|---|
+  | The Mac edition (Apple silicon, macOS) | 22.9 ms (22.0 to 24.1 of ten plucks); 38 ms at setting 4 |
+  | Linux (Bazzite, PipeWire at 128 frames, the interface's default profile) | 23.8 ms (23.1 to 26.0 of eleven) |
+  | Linux, the interface's Pro Audio profile | 23.3 ms (21.9 to 25.0 of nine) |
+
+  The two are within a millisecond, and the estimate below (15.6 ms through the game and 8 by PipeWire's figures)
+  was right. The first Linux run said 35.7 ms, and the 12 more were not the port's: the USB audio driver still
+  had a switch set from finding out why this mixer was silent (`quirk_flags`, PLAYBACK_FIRST, which has the driver
+  send its whole queue of output packets ahead of the sound: up to 12 ms that stays in front of everything). A
+  click sent round the cable through a bare PipeWire link showed it (22.9 ms a trip at 128 frames with the
+  switch, 13.9 without), and a restart cleared it. Worth knowing for anyone who tries that switch on a device
+  with implicit feedback.
 - **2026-11-28, the latency measured.** `latency_test.py` runs a second, windowless copy of the game on a copy of
   the player's folder, between two made-up PipeWire devices (a loopback pair as its input, a null sink as its
   output), takes it into the Tone Designer with scripted keys, plays clicks into the input and records what the
