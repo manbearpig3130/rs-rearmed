@@ -250,7 +250,7 @@ static uint8_t *far_jump_with(uint16_t movabs, uint64_t value, void *target) {
   return s;
 }
 
-// BYTES written at ADDRESS: the game's code, which is made writable for it, or a stub of ours, which is. While an
+// BYTES written at ADDRESS: the game's code, made writable for it where it is not, or a stub of ours. While an
 // edit group is being written the old bytes are kept, to put back if a later edit of the group cannot be done.
 #define MAX_UNDO 1024
 static struct {
@@ -276,17 +276,14 @@ static int write_code(uint64_t address, const uint8_t *bytes, size_t n, const ch
     g_undo[g_nundo].address = address, g_undo[g_nundo].n = (uint8_t)n;
     memcpy(g_undo[g_nundo++].old, (const void *)address, n);
   }
+  // (the loader maps the game's code writable already, as a mod expects of the image: this is for code that is not)
   uint64_t page = (uint64_t)sysconf(_SC_PAGESIZE) - 1, lo = address & ~page, hi = (address + n + page) & ~page;
-  if (mprotect((void *)lo, hi - lo, PROT_READ | PROT_WRITE)) {
+  if (mprotect((void *)lo, hi - lo, PROT_READ | PROT_WRITE | PROT_EXEC)) {
     fprintf(stderr, "[rs-rearmed] the game's code at 0x%llx (%s) cannot be written: ", (unsigned long long)address, name);
     perror(NULL);
     return -1;
   }
   memcpy((void *)address, bytes, n);
-  if (mprotect((void *)lo, hi - lo, PROT_READ | PROT_EXEC)) {
-    perror("[rs-rearmed] the game's code cannot be made executable again");
-    return -1;
-  }
   return 0;
 }
 

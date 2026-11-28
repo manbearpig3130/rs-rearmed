@@ -11,8 +11,8 @@ song), and the Mac app's built-in fixes module whole (no intro screens, the batc
 fixes). The game's files come from the player's own Steam: `install/rs_install.py` has Steam download the Mac
 game and the account's DLC, makes RS Re-ARMed's copy and starts the game ([below](#set-up-and-play-x86-64)).
 An audio interface's channels are listed as inputs of their own, as on the Mac. Mods load (a `.so` in the home
-folder's `mods`: hook points, mid points, edit groups, the files a mod serves). Not there yet: the mods of
-`rearmed-mods` built for Linux, and anything for arm64, which is investigated only.
+folder's `mods`: hook points, mid points, edit groups, the overlay, the files a mod serves; `rearmed-mods`
+builds for it from its own `linux/`). Not there yet: anything for arm64, which is investigated only.
 The work is on the branches `port/linux-arm64` and, on top of it, `port/linux-x86_64`.
 
 | Read | For |

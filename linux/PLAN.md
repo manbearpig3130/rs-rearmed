@@ -15,7 +15,8 @@ page is what to do about it, in what order, and what has been done. The editions
   set up from the player's Steam, and the game started from them, by `install/rs_install.py`
   ([X4](#x4-install-and-play)). The title logo is made there too, the window goes full screen, and an interface's
   channels are inputs of their own. A mod is loaded and has what the Mac's has: hook points, mid points, edit
-  groups, the files it serves. Not there: the mods of `rearmed-mods` built for Linux, anything for arm64.
+  groups, the files it serves. `rearmed-mods` builds for Linux and loads, Seven-String Guitar's edits and mid points with it. Not there: the
+  mods written against a Mac framework, the mods' settings app, anything for arm64.
 - **In the tree**: the findings, this plan, the table of the Mac game's 681 imports with what a Linux build does
   about each (`darwin-imports.tsv`), the tool that reads them from the image and checks the table
   (`import_census.py`, ctest `linux.imports`), the first run (`first_run.py`), and the x86-64 build: the loader
@@ -345,8 +346,8 @@ Steam (the package cache answers), a copy on another drive than the home folder.
 
 ### X5. Fixes and mods
 
-**Hook points, mid points, edits and the whole fixes module are in, and a mod is loaded; the mods themselves are
-not built for Linux yet** (2026-11-28).
+**Hook points, mid points, edits, the overlay API and the whole fixes module are in, and `rearmed-mods` builds
+for Linux and loads** (2026-11-28).
 
 - **A hook point** is a 5-byte jump at the function's entry to a stub near the image (`src/patch.c`). The stub
   makes an `rc_ctx` of the CPU's registers and calls the runtime's own `rc_hook_call`; its `orig` runs the
@@ -395,9 +396,9 @@ not built for Linux yet** (2026-11-28).
   and the group is refused, as on a game that has not got it. The mid points are written after the mods have
   loaded: one among an edit's bytes moves what the edit left, and one at an instruction an edit's jump covers
   (two of Seven-String's) goes in at the moved copy.
-- **Not in**: the mods themselves, which `rearmed-mods` builds as Mach-O libraries for the Mac. With
-  Seven-String's edits on and no mod behind them the game stops early, as it must: the edits send it to arrays
-  that the mod's hooks fill.
+- **The mods themselves** are `rearmed-mods`' to build (its `linux/build.sh`). With Seven-String's edits on and
+  no mod behind them the game stops early, as it must: the edits send it to arrays that the mod's hooks fill.
+  With the mod, it runs.
 - **Three things the build needed**: gcc reads a weak constant's default where it is used when optimizing, so
   `rc_hook.c` is built at `-O0` for the hook points' table to be the one `patch.c` gives; the fixes name the
   C++ allocator as Mach-O writes it (`__Znwm`); and `rc_nofile.h` asks `sysctlbyname` for the open-file limit
@@ -771,6 +772,21 @@ Proposed; none is final before the step that tests it.
   game's frame, before the frame is shown or saved. The test mod draws a square and an image and reads the frame
   back: the colours it drew, in the saved picture as well. Not there: the render API (`rs_render.h`), which is the
   Metal renderer's on the Mac; a mod finds it absent, as on the Mac's OpenGL renderer.
+- **2026-11-28, rearmed-mods on Linux, and 1.21.0.** The mods library builds from its own sources as
+  `rearmed-mods.so` (its repository's `linux/`: AES and SHA-256 for CommonCrypto, Mach's memory calls, the
+  overlay's text with FreeType). Everything it asks of the program was there but the overlay API (above) and one
+  thing a translated build has for nothing: **the image is writable**. The fixes and the mods change constants
+  among the code's (`__TEXT`'s `__const`), which on the Mac is data like the rest of the image; the loader now
+  maps every segment writable as well as what the file asks. The port was merged up to upstream 1.21.0, which
+  rearmed-mods 0.20.0 is made for (new mid points, the edit groups `seven_line`, more names): the tables made
+  again (186 sites, the same five by a breakpoint; 153 longer edits). On the PC, with Seven-String Guitar and
+  Plain Packages on: 623 edits written, 165 mid points hooked, and the game through the title, the profiles and
+  the main menu into Learn a Song's list, where with the edits and no mod it stopped at the first guitar. A
+  volume key reaches the volume mod, which reads the game's mixer and draws its line of text over the frame. A
+  fault outside the game's code is reported with its library and function now. Not there: the mods written
+  against a Mac framework (Sunlight, Secondary Monitor, Override Input Volume), the ones that need the Metal
+  renderer's render API (note and highway colours), the helpers that are Mac programs (Song Stems, Tone Host),
+  and the mods' settings app.
 - **2026-11-28, a real interface.** A mixer with a 12-channel USB input (TC-Helicon Blender) on the Bazzite PC:
   the game lists "Blender channel 1" to "channel 10" and opens them, 128 frames each. An input may have up to 32
   channels now (it was eight; the layer's buffer for what the game hears is the entry's own, not a thread's).

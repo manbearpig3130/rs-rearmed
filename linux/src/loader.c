@@ -317,9 +317,12 @@ int rsl_load(const char *path, int count_calls, rsl_info *info) {
   // Weak binds are left: a definition the image shares with itself already points into the image, and the
   // operators new and delete have ordinary binds as well.
 
-  for (int i = 0; i < nsegs; i++) {  // each segment as the file asks: Mach-O's protection bits are mmap's
+  // Each segment as the file asks (Mach-O's protection bits are mmap's), and writable as well: where the game's
+  // code is translated the image is data, all of it writable, and the fixes and the mods are written to that. They
+  // change constants among the code's (__TEXT's __const), and the program writes its jumps into the code.
+  for (int i = 0; i < nsegs; i++) {
     if (!seg[i]->vmsize || !strcmp(seg[i]->segname, "__PAGEZERO")) continue;
-    if (mprotect((void *)seg[i]->vmaddr, (seg[i]->vmsize + page) & ~page, (int)(seg[i]->initprot & 7))) {
+    if (mprotect((void *)seg[i]->vmaddr, (seg[i]->vmsize + page) & ~page, (int)(seg[i]->initprot & 7) | PROT_WRITE)) {
       perror("[rs-rearmed] the image's code cannot be made executable");
       return -1;
     }
