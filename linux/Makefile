@@ -49,9 +49,11 @@ $(OUT)/target/hooks.inc: $(TARGET)/names/hooks.list
 $(OUT)/native/rc_hook.o: $(RUNTIME)/rc_hook.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
+# (rc_edit_enable there is the translated build's, where an edit group is a switch the translated code reads: here
+# it would say "on" and change nothing. The program has its own, src/patch.c.)
 $(OUT)/native/rc_mid.o: $(RUNTIME)/rc_mid.c $(OUT)/target/rc_target_names.h
 	@mkdir -p $(OUT)/native
-	$(CC) $(NATIVE_CFLAGS) -O0 -c -o $@ $<
+	$(CC) $(NATIVE_CFLAGS) -O0 -Drc_edit_enable=rc_edit_enable_translated -c -o $@ $<
 $(OUT)/native/rc_file.o: $(RUNTIME)/rc_file.c $(RUNTIME)/rc_file.h
 	@mkdir -p $(OUT)/native
 	$(CC) $(NATIVE_CFLAGS) -c -o $@ $<

@@ -51,6 +51,7 @@ __attribute__((constructor)) static void test_mod_init(void) {
   fprintf(stderr, "[test-mod] on %s: game_frame %s, the settings folder %s\n", rc_target(), r ? "refused" : "hooked",
           getenv("RS_NATIVE_HOME") ? "known" : "not known");
   rc_hook_add_name("no_such_point", before_frame, NULL, NULL);  // refused, with a line of the runtime's
+  if (rc_edit_enable("plain_packages")) fprintf(stderr, "[test-mod] the edit group was refused, and the mod goes without it\n");
   static const rc_file_provider files = {.open = provide_open, .read = provide_read, .close = provide_close, .list = provide_list};
   rc_file_provide(&files);
 }

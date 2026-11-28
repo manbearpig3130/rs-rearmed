@@ -299,6 +299,9 @@ class Picture(unittest.TestCase):
         self.assertIn("[rc] mod loaded: test_mod.so", err)
         self.assertIn("[test-mod] on mac-x64: game_frame hooked, the settings folder known", err)
         self.assertIn("no_such_point", err)  # the runtime says a point it has not got
+        # an edit group is refused, and said to be, until the Linux build can change the game's code for one
+        self.assertIn("[rc] edits plain_packages: refused", err)
+        self.assertIn("[test-mod] the edit group was refused", err)
         self.assertIn("[test-mod] 100 frames: 100 hooks before, 100 after; the provider was asked for files: yes", err)
         r = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(env, RS_LOAD_MODS="0"))
         self.assertEqual(r.returncode, 0)

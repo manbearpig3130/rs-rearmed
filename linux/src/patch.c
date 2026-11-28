@@ -686,3 +686,14 @@ int rsl_load_mods(const char *home, const char *game) {
   rc_mods_load(mods);
   return n;
 }
+
+// An edit group (rc_mid.h): instructions of the game a mod switches to others, 620 of them on this game, nearly
+// all Seven-String's. In a translated build the group is a switch the translated code reads; here it is bytes to
+// change in the loaded code, a good part of them longer than what they replace, and that is not written yet
+// (linux/PLAN.md). So a group is refused, with a line, as the interface has a group refused on a game without
+// it: a mod that goes on regardless would have the game's own layouts under its feet.
+int rc_edit_enable(const char *group) {
+  fprintf(stderr, "[rc] edits %s: refused: edit groups are not in the Linux build yet\n", group ? group : "(none)");
+  return -1;
+}
+

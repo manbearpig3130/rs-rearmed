@@ -729,5 +729,11 @@ Proposed; none is final before the step that tests it.
   Linux's structure fields) are behind the layer's nine file functions, the same nine the Mac's thunks send
   there; `RS_FILE_LOG=1` logs what is served. A test mod (`test/mods/test_mod.c`) is loaded from the mods
   folder, its hook runs around the game's frame, its provider is asked for the game's files and adds a name to
-  the dlc folder's listing. Not in: edit groups (`rc_edit_enable`: 620 edits, most of them Seven-String's), which
-  on this host are bytes to change in the loaded code, 150 of them longer than what they replace.
+  the dlc folder's listing. Not in: edit groups (`rc_edit_enable`), refused with a log line for now. On this host an
+  edit is bytes to change in the loaded code. Of the game's 620 (618 Seven-String's, 2 Plain Packages'): 470
+  change bytes in place or fit their range; 70 are longer and their range holds a jump to a detour; 80 are
+  longer in a range under five bytes, so the detour takes the next instructions too (5 of those run into
+  another edit's range, to be made one detour); 3 lie under a mid point's jump (in-place ones, to be applied
+  before the mid points are written). No branch lands inside any of the ranges. With the 5 mid points a jump
+  cannot be written at ([patch-sites.tsv](patch-sites.tsv), all Seven-String's), that is the work Seven-String
+  needs here; Plain Packages needs its two edits.
